@@ -1,0 +1,14 @@
+{
+  "name": "clickhouse-trigger-hackathon",
+  "version": "0.1.0",
+  "private": true,
+  "description": "ClickHouse x Trigger.dev Virtual Summer Hackathon 2026 - Beyond the Wall of Text",
+  "type": "module",
+  "dependencies": {
+    "@clickhouse/client": "^1.23.1",
+    "@trigger.dev/sdk": "^4.5.4"
+  },
+  "devDependencies": {
+    "@trigger.dev/build": "^4.5.4"
+  }
+}
