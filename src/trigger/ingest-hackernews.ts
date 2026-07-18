@@ -47,7 +47,7 @@ function toRow(item: HNApiItem) {
 
 async function fetchJson<T>(path: string): Promise<T | null> {
   const res = await fetch(`${HN_API}/${path}`);
-  if (!res.ok) return null;
+  if (!res.ok) throw new Error(`HN API ${path} failed: ${res.status} ${res.statusText}`);
   return (await res.json()) as T | null;
 }
 

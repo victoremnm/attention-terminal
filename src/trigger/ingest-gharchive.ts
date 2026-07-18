@@ -53,7 +53,10 @@ export const ingestGhArchive = schedules.task({
                    JSONExtractString(payload,'action'), toUInt32(JSONExtractUInt(payload,'number'))
             FROM url('${url}', 'JSONEachRow',
                      'id String, type String, actor Tuple(login String), repo Tuple(name String), payload String, created_at DateTime')
-            SETTINGS input_format_json_read_objects_as_strings = 1, input_format_skip_unknown_fields = 1, max_insert_threads = 4`,
+            SETTINGS input_format_json_read_objects_as_strings = 1,
+                     input_format_json_ignore_unknown_keys_in_named_tuple = 1,
+                     input_format_skip_unknown_fields = 1,
+                     max_insert_threads = 4`,
         });
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);

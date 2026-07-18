@@ -20,13 +20,13 @@ export const clickhouse = createClient({
   },
 });
 
-// Insert client: server-side batching, fire-and-forget. Safe for our tables —
-// hackernews is a ReplacingMergeTree so re-sending rows after a retry dedups.
+// Insert client: server-side batching with flush acknowledgement. Retries are
+// safe because hackernews is a ReplacingMergeTree and ingest_log is append-only.
 export const clickhouseInsert = createClient({
   ...base,
   clickhouse_settings: {
     async_insert: 1,
-    wait_for_async_insert: 0,
+    wait_for_async_insert: 1,
   },
 });
 
