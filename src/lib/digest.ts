@@ -1,5 +1,5 @@
 import { q } from "./queries";
-import { DigestSchema, type DigestCluster, type DigestPayload, type Verdict } from "./render-payload";
+import { DigestSchema, type DigestCluster, type DigestPayload, type EvidenceLink, type Verdict } from "./render-payload";
 
 const TOPICS = [
   { key: "postgres", subject: "Postgres 18", tokens: ["postgres", "postgresql", "pg"], repos: ["postgres", "postgresql"] },
@@ -30,6 +30,7 @@ interface ActivityRow {
 }
 
 interface TakeRow {
+  id: number;
   title: string;
   score: number;
   comments: number;
@@ -39,6 +40,11 @@ const clamp01 = (n: number) => Math.max(0, Math.min(1, n));
 const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
 const sum = (xs: number[]) => xs.reduce((a, b) => a + b, 0);
 const sqlString = (value: string) => `'${value.replaceAll("'", "''")}'`;
+const hnSearchUrl = (topic: Topic) =>
+  `https://hn.algolia.com/?dateRange=last30d&page=0&prefix=false&query=${encodeURIComponent(topic.tokens.join(" OR "))}&sort=byDate&type=story`;
+const githubSearchUrl = (topic: Topic) =>
+  `https://github.com/search?q=${encodeURIComponent(topic.repos.join(" OR "))}&type=repositories&s=updated&o=desc`;
+const hnItemUrl = (id: number) => `https://news.ycombinator.com/item?id=${id}`;
 
 function tokenWhere(topic: Topic) {
   return topic.tokens.map((token) => `hasToken(lower(title), ${sqlString(token)})`).join(" OR ");
@@ -123,6 +129,7 @@ export async function dailyDigest(noiseFloor = 0.2): Promise<DigestPayload> {
 
   const clusters = [...bySubject.entries()]
     .map(([subject, subjectRows]) => {
+      const topic = TOPICS.find((candidate) => candidate.subject === subject);
       const recent = subjectRows.filter((row) => row.age === 0);
       const baseline = subjectRows.filter((row) => row.age > 0);
       const talk24h = sum(recent.map((row) => Number(row.talk_threads)));
@@ -151,6 +158,10 @@ export async function dailyDigest(noiseFloor = 0.2): Promise<DigestPayload> {
           ghStars24h: Math.round(ghStars24h),
           repos: Math.round(repos),
         },
+        links: {
+          hn: topic ? hnSearchUrl(topic) : `https://hn.algolia.com/?dateRange=last30d&page=0&prefix=false&query=${encodeURIComponent(subject)}&sort=byDate&type=story`,
+          github: topic ? githubSearchUrl(topic) : `https://github.com/search?q=${encodeURIComponent(subject)}&type=repositories&s=updated&o=desc`,
+        },
         signal,
       };
     })
@@ -175,7 +186,7 @@ export async function debateTakes(subjectId: string) {
   const topic = topicForId(subjectId);
   if (!topic) return null;
   const { rows } = await q<TakeRow>(
-    `SELECT title, score, greatest(descendants, 0) AS comments
+    `SELECT id, title, score, greatest(descendants, 0) AS comments
      FROM hackernews
      WHERE type = 'story'
        AND deleted = 0
@@ -188,12 +199,20 @@ export async function debateTakes(subjectId: string) {
   );
   const positive = /(launch|released|introducing|show hn|faster|stable|production|open source|new)/i;
   const negative = /(why|against|problem|incident|fails|broken|deprecated|security|postmortem|cost)/i;
-  const agree = rows.filter((row) => positive.test(row.title)).map((row) => row.title).slice(0, 3);
-  const dispute = rows.filter((row) => negative.test(row.title)).map((row) => row.title).slice(0, 3);
-  const fallback = rows.map((row) => row.title);
+  const toLink = (row: TakeRow): EvidenceLink => ({
+    title: row.title,
+    url: hnItemUrl(row.id),
+    source: "hn",
+    score: row.score,
+    comments: row.comments,
+  });
+  const agree = rows.filter((row) => positive.test(row.title)).map(toLink).slice(0, 3);
+  const dispute = rows.filter((row) => negative.test(row.title)).map(toLink).slice(0, 3);
+  const fallback = rows.map(toLink);
+  const outlier = rows.toSorted((a, b) => b.comments - a.comments)[0];
   return {
     agree: (agree.length ? agree : fallback.slice(0, 2)).slice(0, 3),
     dispute: (dispute.length ? dispute : fallback.slice(2, 4)).slice(0, 3),
-    outlier: rows.sort((a, b) => b.comments - a.comments)[0]?.title,
+    outlier: outlier ? toLink(outlier) : undefined,
   };
 }

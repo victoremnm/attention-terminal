@@ -17,6 +17,14 @@ export const VerdictTileSchema = z.object({
   detail: z.string().max(240).optional(),
 });
 
+export const EvidenceLinkSchema = z.object({
+  title: z.string().max(240),
+  url: z.string().url(),
+  source: z.enum(["hn", "github", "external"]),
+  score: z.number().optional(),
+  comments: z.number().optional(),
+});
+
 export const DigestClusterSchema = z.object({
   id: z.string(),
   subject: z.string(),
@@ -31,11 +39,15 @@ export const DigestClusterSchema = z.object({
     ghStars24h: z.number().int().nonnegative(),
     repos: z.number().int().nonnegative(),
   }),
+  links: z.object({
+    hn: z.string().url(),
+    github: z.string().url(),
+  }),
   takes: z
     .object({
-      agree: z.array(z.string()),
-      dispute: z.array(z.string()),
-      outlier: z.string().optional(),
+      agree: z.array(EvidenceLinkSchema),
+      dispute: z.array(EvidenceLinkSchema),
+      outlier: EvidenceLinkSchema.optional(),
     })
     .optional(),
 });
@@ -106,6 +118,7 @@ export const RenderPayloadSchema = z.discriminatedUnion("type", [
 
 export type Verdict = z.infer<typeof VerdictSchema>;
 export type VerdictTile = z.infer<typeof VerdictTileSchema>;
+export type EvidenceLink = z.infer<typeof EvidenceLinkSchema>;
 export type DigestCluster = z.infer<typeof DigestClusterSchema>;
 export type DigestPayload = z.infer<typeof DigestSchema>;
 export type TickerPayload = z.infer<typeof TickerSchema>;

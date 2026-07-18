@@ -35,10 +35,14 @@ function DigestAnswer({ payload }: { payload: DigestPayload }) {
             <div className="mono agent-digest-verdict" style={{ color: VERDICT_COLOR[cluster.verdict] }}>{cluster.verdict}</div>
             <Sparkline data={cluster.spark} color={VERDICT_COLOR[cluster.verdict]} w={74} h={22} />
             <div>
-              <h3>{cluster.subject}</h3>
+              <h3>
+                <a href={cluster.links.hn} target="_blank" rel="noreferrer">{cluster.subject}</a>
+              </h3>
               <p>{cluster.skinny}</p>
               <span className="mono">
-                {cluster.sources.hnThreads} HN · {cluster.sources.comments} cmts · {cluster.sources.ghStars24h} stars · {cluster.sources.repos} repos
+                <a href={cluster.links.hn} target="_blank" rel="noreferrer">{cluster.sources.hnThreads} HN</a>
+                {" · "}{cluster.sources.comments} cmts{" · "}
+                <a href={cluster.links.github} target="_blank" rel="noreferrer">{cluster.sources.ghStars24h} stars · {cluster.sources.repos} repos</a>
               </span>
             </div>
             <div className="mono agent-share">{Math.round(cluster.talkShare * 100)}% talk</div>

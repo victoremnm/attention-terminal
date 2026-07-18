@@ -11,7 +11,7 @@ const answerReference = `Answer grammar:
 - Always answer with exactly one primary renderAnswer payload when the answer contains data.
 - Fixed verdict vocabulary: ACCELERATING, PEAKING, COOLING, DORMANT, BREAKOUT, DIVERGENT.
 - Do not emit HTML, JSX, markdown tables, or long prose walls.
-- Digest payload: { type: "digest", generatedAt, noiseFloor, clusters }.
+- Digest payload: { type: "digest", generatedAt, noiseFloor, clusters }. Each cluster must include links: { hn, github } for validation.
 - Ticker payload: { type: "ticker", filter, generatedAt, items }.
 - Divergence payload: { type: "divergence", subject, verdict, days, talk, code, caption }.
 - Candles payload: { type: "candles", subject, verdict, days, values, caption }.

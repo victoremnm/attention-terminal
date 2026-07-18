@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import type { DigestCluster, DigestPayload } from "@/lib/render-payload";
+import type { DigestCluster, DigestPayload, EvidenceLink } from "@/lib/render-payload";
 import { Sparkline } from "./charts";
 
 const BAND_LABELS: Record<DigestCluster["band"], string> = {
@@ -26,14 +26,17 @@ function ageLabel(generatedAt: string) {
   return `data ${minutes}m old`;
 }
 
-function sourceLine(cluster: DigestCluster) {
-  const sources = [
-    `${cluster.sources.hnThreads} HN threads`,
-    `${cluster.sources.comments} cmts`,
-    `${cluster.sources.ghStars24h.toLocaleString()} stars/24h`,
-    `${cluster.sources.repos} repos`,
-  ];
-  return `${sources.filter((part) => !part.startsWith("0 ")).length} sources · ${sources.join(" · ")}`;
+function TakeLink({ take }: { take: EvidenceLink }) {
+  return (
+    <p>
+      <a href={take.url} target="_blank" rel="noreferrer">
+        {take.title}
+      </a>
+      {(take.score !== undefined || take.comments !== undefined) && (
+        <span className="mono"> {take.score ?? 0} pts · {take.comments ?? 0} cmts</span>
+      )}
+    </p>
+  );
 }
 
 function ClusterRow({ cluster }: { cluster: DigestCluster }) {
@@ -57,34 +60,50 @@ function ClusterRow({ cluster }: { cluster: DigestCluster }) {
 
   return (
     <article className="skinny-row">
-      <button className="skinny-row-main" onClick={toggle} aria-expanded={open}>
+      <div className="skinny-row-main">
         <span className="skinny-verdict mono" style={{ color: VERDICT_COLOR[cluster.verdict] }}>
           {cluster.verdict}
         </span>
         <span className="skinny-spark"><Sparkline data={cluster.spark} color={VERDICT_COLOR[cluster.verdict]} w={86} h={24} /></span>
         <span className="skinny-copy">
-          <span className="skinny-subject">{cluster.subject}</span>
+          <span className="skinny-title-line">
+            <button className="skinny-subject" type="button" onClick={toggle} aria-expanded={open}>
+              {cluster.subject}
+            </button>
+            <a href={cluster.links.hn} target="_blank" rel="noreferrer" className="evidence-link mono">HN</a>
+            <a href={cluster.links.github} target="_blank" rel="noreferrer" className="evidence-link mono">GH</a>
+          </span>
           <span className="skinny-text">{cluster.skinny}</span>
-          <span className="skinny-sources mono">{sourceLine(cluster)}</span>
+          <span className="skinny-sources mono">
+            {[
+              `${cluster.sources.hnThreads} HN threads`,
+              `${cluster.sources.comments} cmts`,
+              `${cluster.sources.ghStars24h.toLocaleString()} stars/24h`,
+              `${cluster.sources.repos} repos`,
+            ].filter((part) => !part.startsWith("0 ")).length} sources ·{" "}
+            <a href={cluster.links.hn} target="_blank" rel="noreferrer">{cluster.sources.hnThreads} HN threads</a>
+            {" · "}{cluster.sources.comments} cmts{" · "}
+            <a href={cluster.links.github} target="_blank" rel="noreferrer">{cluster.sources.ghStars24h.toLocaleString()} stars/24h · {cluster.sources.repos} repos</a>
+          </span>
         </span>
         <span className="skinny-share mono">
           <b>{Math.round(cluster.talkShare * 100)}% talk</b>
           <i>{Math.round(codeShare * 100)}% code</i>
         </span>
-      </button>
+      </div>
       {open && (
         <div className="debate-map">
           <div>
             <div className="debate-label mono">AGREE</div>
-            {(takes?.agree ?? (loading ? ["loading..."] : ["no clear agreeing take"])).map((take) => <p key={take}>{take}</p>)}
+            {loading && !takes ? <p>loading...</p> : (takes?.agree.length ? takes.agree.map((take) => <TakeLink key={take.url} take={take} />) : <p>no clear agreeing take</p>)}
           </div>
           <div>
             <div className="debate-label mono">DISPUTE</div>
-            {(takes?.dispute ?? (loading ? ["loading..."] : ["no clear dispute"])).map((take) => <p key={take}>{take}</p>)}
+            {loading && !takes ? <p>loading...</p> : (takes?.dispute.length ? takes.dispute.map((take) => <TakeLink key={take.url} take={take} />) : <p>no clear dispute</p>)}
           </div>
           <div>
             <div className="debate-label mono">OUTLIER</div>
-            <p>{takes?.outlier ?? (loading ? "loading..." : "tap again after takes load")}</p>
+            {takes?.outlier ? <TakeLink take={takes.outlier} /> : <p>{loading ? "loading..." : "tap a take to validate it"}</p>}
           </div>
         </div>
       )}
