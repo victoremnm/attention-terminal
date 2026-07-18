@@ -15,14 +15,14 @@
 | ClickHouse Cloud | org `lfefoundation`, service "My first service", GCP us-central1, v26.2 |
 | ClickHouse endpoint | `https://kmmno2h0ec.us-central1.gcp.clickhouse.cloud:8443` (HTTPS) / `:9440` (native) |
 | Trigger.dev | project `lfefoundation` (`proj_inafrgiuiixqgirbqbww`), dev environment |
-| Anthropic | model provider for the Trigger.dev `attention-agent`; `ANTHROPIC_API_KEY` required in Trigger.dev env |
+| OpenAI | model provider for the Trigger.dev `attention-agent`; `OPENAI_API_KEY` required in Trigger.dev env |
 | Hugging Face | public Hub models API; optional `HUGGINGFACE_TOKEN`/`HF_TOKEN` for higher rate limits |
 
 Secrets live in 1Password (Personal vault) and are mirrored into `.env` (gitignored):
 
 - `API Credential - clickhouse-trigger-dev-api-key` — Cloud API key (`KEY_ID`/`KEY_SECRET`) + DB credentials (`DB_USER`/`DB_PASSWORD`/`DB_HOST`)
 - `API Credential - Trigger.dev` — `TRIGGER_SECRET_KEY` (dev)
-- Anthropic API key — `ANTHROPIC_API_KEY` for the Trigger.dev chat agent
+- OpenAI API key — `OPENAI_API_KEY` for the Trigger.dev chat agent, stored at `op://Personal/API Credential - OpenAI clickhouse-trigger-dev-api-key/credential`
 
 ## Development
 

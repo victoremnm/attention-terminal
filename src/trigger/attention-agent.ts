@@ -1,11 +1,11 @@
 import { prompts } from "@trigger.dev/sdk";
 import { chat } from "@trigger.dev/sdk/ai";
-import { anthropic } from "@ai-sdk/anthropic";
+import { openai } from "@ai-sdk/openai";
 import { createProviderRegistry, stepCountIs, streamText } from "ai";
 import { z } from "zod";
 import { attentionTools } from "../lib/agent-tools";
 
-const registry = createProviderRegistry({ anthropic });
+const registry = createProviderRegistry({ openai });
 
 const answerReference = `Answer grammar:
 - Always answer with exactly one primary renderAnswer payload when the answer contains data.
@@ -23,7 +23,7 @@ const answerReference = `Answer grammar:
 const systemPrompt = prompts.define({
   id: "attention-terminal-analyst",
   description: "System prompt for the Attention Terminal ClickHouse analyst agent",
-  model: "anthropic:claude-sonnet-4-5",
+  model: "openai:gpt-5.1",
   config: { temperature: 0.2 },
   variables: z.object({
     answerReference: z.string(),
@@ -60,7 +60,7 @@ export const attentionAgent = chat.agent({
 
   run: async ({ messages, tools, signal }) => {
     return streamText({
-      model: anthropic("claude-sonnet-4-5"),
+      model: openai("gpt-5.1"),
       ...chat.toStreamTextOptions({ registry }),
       messages,
       tools,

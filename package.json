@@ -5,7 +5,7 @@
   "description": "ClickHouse x Trigger.dev Virtual Summer Hackathon 2026 - Beyond the Wall of Text",
   "type": "module",
   "dependencies": {
-    "@ai-sdk/anthropic": "^4.0.16",
+    "@ai-sdk/openai": "^4.0.16",
     "@ai-sdk/react": "^4.0.34",
     "@clickhouse/client": "^1.23.1",
     "@trigger.dev/sdk": "^4.5.4",
