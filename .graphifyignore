@@ -1,0 +1,13 @@
+.env
+.env.*
+.git/
+.next/
+.trigger/
+.vercel/
+.venv/
+.venv-*/
+node_modules/
+dist/
+graphify-out/
+tsconfig.tsbuildinfo
+package-lock.json

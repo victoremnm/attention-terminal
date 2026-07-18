@@ -4,5 +4,6 @@ node_modules/
 .trigger/
 dist/
 .DS_Store
+graphify-out/
 .vercel
 .next/
