@@ -49,8 +49,10 @@ export const ingestGhArchive = schedules.task({
         await clickhouse.command({
           query: `
             INSERT INTO github_events
+              (event_id, event_type, actor_login, repo_name, created_at, action, ref_type, number)
             SELECT toUInt64OrZero(id), type, tupleElement(actor,'login'), tupleElement(repo,'name'), created_at,
-                   JSONExtractString(payload,'action'), toUInt32(JSONExtractUInt(payload,'number'))
+                   JSONExtractString(payload,'action'), JSONExtractString(payload,'ref_type'),
+                   toUInt32(JSONExtractUInt(payload,'number'))
             FROM url('${url}', 'JSONEachRow',
                      'id String, type String, actor Tuple(login String), repo Tuple(name String), payload String, created_at DateTime')
             SETTINGS input_format_json_read_objects_as_strings = 1,

@@ -53,6 +53,7 @@ export async function tickerLanes(): Promise<TickerLanes> {
       `SELECT repo_name AS name, max(created_at) AS at
        FROM github_events
        WHERE event_type = 'CreateEvent'
+         AND ref_type = 'repository'
          AND created_at > (SELECT max(created_at) FROM github_events) - INTERVAL 6 HOUR
        GROUP BY repo_name ORDER BY at DESC LIMIT 8`,
       ["github_events"]
@@ -73,6 +74,7 @@ export async function tickerLanes(): Promise<TickerLanes> {
          SELECT repo_name, count() / 29 AS daily_avg
          FROM github_events
          WHERE event_type = 'WatchEvent'
+           AND created_at > (SELECT max(created_at) FROM github_events) - INTERVAL 30 DAY
            AND created_at <= (SELECT max(created_at) FROM github_events) - INTERVAL 24 HOUR
          GROUP BY repo_name
        )
