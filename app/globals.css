@@ -55,6 +55,7 @@ a { color: inherit; }
 .main { padding: 16px 20px 60px; min-width: 0; }
 
 /* ticker */
+.ticker-shell { width: min(1060px, 100%); padding: 20px 24px 0; }
 .ticker { border: 1px solid var(--line); border-radius: 8px; background: var(--panel); padding: 10px 12px 12px; }
 .tk-head { font-size: 10.5px; letter-spacing: .14em; color: var(--ink); margin-bottom: 8px; display: flex; gap: 10px; }
 .tk-lane { margin-top: 8px; }
