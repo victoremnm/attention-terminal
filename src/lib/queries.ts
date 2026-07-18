@@ -11,9 +11,13 @@ export interface Provenance {
   tables: string[];
 }
 
-async function q<T>(sql: string, tables: string[]): Promise<{ rows: T[]; provenance: Provenance }> {
+export async function q<T>(
+  sql: string,
+  tables: string[],
+  query_params?: Record<string, unknown>
+): Promise<{ rows: T[]; provenance: Provenance }> {
   const t0 = Date.now();
-  const rs = await clickhouse.query({ query: sql, format: "JSONEachRow" });
+  const rs = await clickhouse.query({ query: sql, format: "JSONEachRow", query_params });
   const rows = await rs.json<T>();
   const elapsedMs = Date.now() - t0;
   let rowsRead: number | undefined;
