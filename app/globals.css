@@ -1,0 +1,114 @@
+/* Attention Terminal — terminal-dark (wireframe direction 1a).
+   Deliberate single-theme design: this is a terminal, it is dark. */
+:root {
+  color-scheme: dark;
+  --s: #14171a;
+  --panel: #191d21;
+  --panel-2: #1f2429;
+  --ink: #cdd6dd;
+  --line: rgba(255, 255, 255, 0.16);
+  --line-soft: rgba(255, 255, 255, 0.08);
+  --muted: rgba(255, 255, 255, 0.42);
+  --cyan: #38cdec;
+  --mag: #ff4f97;
+  --amber: #f5b53d;
+  --mono: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
+  --sans: system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+  background: var(--s); color: var(--ink);
+  font-family: var(--sans); font-size: 14.5px; line-height: 1.5;
+}
+a { color: inherit; }
+.mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.muted { color: var(--muted); }
+
+/* shell: chat rail + main */
+.shell { display: grid; grid-template-columns: 230px 1fr; min-height: 100vh; }
+@media (max-width: 760px) { .shell { grid-template-columns: 1fr; } }
+
+/* chat rail */
+.rail {
+  border-right: 1px solid var(--line-soft); padding: 18px 16px;
+  display: flex; flex-direction: column; gap: 14px;
+  position: sticky; top: 0; height: 100vh;
+}
+@media (max-width: 760px) { .rail { position: static; height: auto; border-right: 0; border-bottom: 1px solid var(--line-soft); } }
+.rail .logo { font-family: var(--mono); font-size: 13.5px; font-weight: 700; letter-spacing: .06em; }
+.rail .tagline { font-size: 12px; color: var(--muted); margin-top: -8px; }
+.rail .session-h { font-family: var(--mono); font-size: 10px; letter-spacing: .18em; color: var(--muted); margin-top: 10px; }
+.rail .session { display: flex; flex-direction: column; gap: 8px; flex: 1; }
+.rail .session a {
+  font-family: var(--mono); font-size: 12px; color: var(--ink); text-decoration: none;
+  padding: 6px 8px; border-radius: 4px; border: 1px solid transparent;
+}
+.rail .session a:hover, .rail .session a:focus-visible { border-color: var(--line); background: var(--panel); }
+.askbox {
+  border: 1px solid var(--line); border-radius: 6px; background: var(--panel);
+  padding: 9px 11px; font-family: var(--mono); font-size: 12px; color: var(--muted);
+  width: 100%; cursor: not-allowed;
+}
+
+/* main column */
+.main { padding: 16px 20px 60px; min-width: 0; }
+
+/* ticker */
+.ticker { border: 1px solid var(--line); border-radius: 8px; background: var(--panel); padding: 10px 12px 12px; }
+.tk-head { font-size: 10.5px; letter-spacing: .14em; color: var(--ink); margin-bottom: 8px; display: flex; gap: 10px; }
+.tk-lane { margin-top: 8px; }
+.tk-lane-title { font-size: 9.5px; letter-spacing: .16em; color: var(--muted); margin-bottom: 5px; }
+.tk-scroll { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; scrollbar-width: thin; }
+.tk-card {
+  flex: none; width: 190px; display: flex; flex-direction: column; gap: 3px;
+  background: var(--panel-2); border: 1px solid var(--line-soft); border-radius: 6px;
+  padding: 8px 10px; text-decoration: none;
+}
+.tk-card:hover, .tk-card:focus-visible { border-color: var(--line); }
+.tk-kicker { font-size: 8.5px; letter-spacing: .16em; color: var(--muted); }
+.tk-name { font-size: 12px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tk-metric { font-size: 12px; color: var(--cyan); }
+.tk-foot { display: flex; align-items: center; gap: 8px; min-height: 14px; }
+.tk-delta { font-size: 10px; color: var(--muted); }
+
+/* answer feed */
+.feed { display: flex; flex-direction: column; gap: 14px; margin-top: 14px; }
+.answer { border: 1px solid var(--line); border-radius: 8px; background: var(--panel); padding: 14px 16px; }
+.answer-q { font-size: 12.5px; color: var(--muted); margin-bottom: 10px; }
+
+/* verdict tile */
+.verdict {
+  display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap;
+  border: 1px solid var(--line-soft); border-radius: 6px; background: var(--panel-2);
+  padding: 9px 12px; margin-bottom: 12px;
+}
+.verdict-state { font-size: 17px; font-weight: 800; letter-spacing: .04em; }
+.verdict-metric { font-size: 14px; }
+.verdict-metric em { font-style: normal; font-size: 10.5px; color: var(--muted); margin-left: 4px; }
+.verdict-detail { font-size: 12px; color: var(--muted); }
+
+/* charts */
+.chart { margin: 0; }
+.chart svg { display: block; width: 100%; height: auto; }
+.legend { display: flex; gap: 16px; align-items: center; font-size: 11px; color: var(--ink); margin-top: 6px; flex-wrap: wrap; }
+.legend .swatch { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 5px; }
+
+.caption { font-size: 12.5px; color: var(--ink); margin: 10px 0 0; max-width: 640px; }
+.context-strip {
+  display: flex; gap: 14px; align-items: center; margin-top: 12px;
+  padding-top: 10px; border-top: 1px solid var(--line-soft);
+  font-size: 10.5px; color: var(--muted);
+}
+.chip {
+  font-family: var(--mono); font-size: 10.5px; color: var(--ink);
+  background: transparent; border: 1px solid var(--line); border-radius: 4px;
+  padding: 3px 8px; cursor: pointer;
+}
+.chip:hover, .chip:focus-visible { border-color: var(--cyan); color: var(--cyan); }
+
+/* SQL flip back */
+.card-back .back-head { font-size: 11px; letter-spacing: .1em; color: var(--muted); margin-bottom: 10px; }
+.back-query { border: 1px solid var(--line-soft); border-radius: 6px; background: var(--s); margin-bottom: 10px; }
+.back-query pre { margin: 0; padding: 10px 12px; font-size: 10.5px; line-height: 1.55; overflow-x: auto; color: var(--ink); }
+.back-meta { display: flex; gap: 14px; flex-wrap: wrap; padding: 7px 12px; border-top: 1px solid var(--line-soft); font-size: 10px; color: var(--muted); }

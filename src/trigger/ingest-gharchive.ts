@@ -1,7 +1,7 @@
 import { logger, schedules } from "@trigger.dev/sdk";
 import { clickhouse, logIngest, selectRows } from "../lib/clickhouse";
 
-const MAX_FILES_PER_RUN = 6;
+const MAX_FILES_PER_RUN = 12;
 
 // GH Archive file names use unpadded hours: 2026-07-17-0.json.gz .. -23.json.gz
 function hourKey(d: Date): string {
@@ -49,8 +49,14 @@ export const ingestGhArchive = schedules.task({
         await clickhouse.command({
           query: `
             INSERT INTO github_events
+              (event_id, event_type, actor_login, repo_name, created_at, action, ref_type,
+               commit_count, distinct_commit_count, pr_merged, number)
             SELECT toUInt64OrZero(id), type, tupleElement(actor,'login'), tupleElement(repo,'name'), created_at,
-                   JSONExtractString(payload,'action'), toUInt32(JSONExtractUInt(payload,'number'))
+                   JSONExtractString(payload,'action'), JSONExtractString(payload,'ref_type'),
+                   toUInt16(JSONExtractUInt(payload,'size')),
+                   toUInt16(JSONExtractUInt(payload,'distinct_size')),
+                   toUInt8(JSONExtractBool(payload,'pull_request','merged')),
+                   toUInt32(JSONExtractUInt(payload,'number'))
             FROM url('${url}', 'JSONEachRow',
                      'id String, type String, actor Tuple(login String), repo Tuple(name String), payload String, created_at DateTime')
             SETTINGS input_format_json_read_objects_as_strings = 1,
