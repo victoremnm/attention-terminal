@@ -51,6 +51,7 @@ export function TickerRail({ initial }: { initial: TickerLanes }) {
     <section className="ticker" aria-label="Breakout ticker">
       <div className="tk-head mono">📌 PINNED · BREAKOUT TICKER <span className="muted">refreshes 60s</span></div>
       <Lane title="NEW REPOS" cards={lanes.newRepos} />
+      <Lane title="SHIPPING VELOCITY" cards={lanes.shippingVelocity} />
       <Lane title="STAR BREAKOUTS" cards={lanes.starBreakouts} />
       <Lane title="RISING STORIES" cards={lanes.risingStories} />
     </section>

@@ -38,6 +38,7 @@ export interface TickerCard {
 
 export interface TickerLanes {
   newRepos: TickerCard[];
+  shippingVelocity: TickerCard[];
   starBreakouts: TickerCard[];
   risingStories: TickerCard[];
   provenance: Provenance[];
@@ -45,7 +46,7 @@ export interface TickerLanes {
 }
 
 export async function tickerLanes(): Promise<TickerLanes> {
-  const [repos, stars, stories] = await Promise.all([
+  const [repos, shipping, stars, stories] = await Promise.all([
     q<{ name: string; at: string }>(
       // Window anchored to the feed's own high-water mark, not wall clock -
       // GH Archive is hourly and may lag during catch-up; the freshness strip
@@ -56,6 +57,20 @@ export async function tickerLanes(): Promise<TickerLanes> {
          AND ref_type = 'repository'
          AND created_at > (SELECT max(created_at) FROM github_events) - INTERVAL 6 HOUR
        GROUP BY repo_name ORDER BY at DESC LIMIT 8`,
+      ["github_events"]
+    ),
+    q<{ name: string; commits: string; prs: string; merges: string; issues: string }>(
+      `SELECT repo_name AS name,
+              sum(commit_count) AS commits,
+              countIf(event_type = 'PullRequestEvent' AND action = 'opened') AS prs,
+              countIf(event_type = 'PullRequestEvent' AND action = 'closed' AND pr_merged = 1) AS merges,
+              countIf(event_type = 'IssuesEvent' AND action = 'opened') AS issues
+       FROM github_events
+       WHERE created_at > (SELECT max(created_at) FROM github_events) - INTERVAL 24 HOUR
+         AND event_type IN ('PushEvent', 'PullRequestEvent', 'IssuesEvent')
+       GROUP BY repo_name
+       HAVING commits + prs + merges + issues > 0
+       ORDER BY commits + prs * 3 + merges * 5 + issues * 2 DESC LIMIT 8`,
       ["github_events"]
     ),
     q<{ name: string; stars: string; surge: number; spark: number[] }>(
@@ -104,6 +119,13 @@ export async function tickerLanes(): Promise<TickerLanes> {
       metric: "born " + r.at.slice(11, 16) + " UTC",
       href: `https://github.com/${r.name}`,
     })),
+    shippingVelocity: shipping.rows.map((r) => ({
+      kicker: "SHIPPING",
+      name: r.name,
+      metric: `${r.commits} commits`,
+      delta: `${r.prs} PRs · ${r.merges} merged · ${r.issues} issues`,
+      href: `https://github.com/${r.name}`,
+    })),
     starBreakouts: stars.rows.map((r) => ({
       kicker: "STARS 24H",
       name: r.name,
@@ -119,7 +141,7 @@ export async function tickerLanes(): Promise<TickerLanes> {
       delta: `${r.score} pts`,
       href: `https://news.ycombinator.com/item?id=${r.id}`,
     })),
-    provenance: [repos.provenance, stars.provenance, stories.provenance],
+    provenance: [repos.provenance, shipping.provenance, stars.provenance, stories.provenance],
     fetchedAt: new Date().toISOString(),
   };
 }
