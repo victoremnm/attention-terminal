@@ -59,7 +59,7 @@ export async function tickerLanes(): Promise<TickerLanes> {
     ),
     q<{ name: string; stars: string; surge: number; spark: number[] }>(
       `WITH recent AS (
-         SELECT repo_name, count() AS stars,
+         SELECT repo_name, sum(cnt) AS stars,
                 groupArray(8)(cnt) AS spark
          FROM (
            SELECT repo_name, toStartOfHour(created_at) AS h, count() AS cnt

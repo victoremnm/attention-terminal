@@ -54,6 +54,12 @@ export function seriesVerdict(daily: number[]): VerdictResult {
  */
 export function divergenceVerdict(talk: number[], code: number[]): VerdictResult & { detail: string } {
   const ratioOf = (xs: number[]) => avg(xs.slice(-7)) / Math.max(avg(xs.slice(0, -7)), 0.01);
+  const recentTalk = talk.slice(-7).reduce((a, b) => a + b, 0);
+  const recentCode = code.slice(-7).reduce((a, b) => a + b, 0);
+  if (recentTalk === 0 && recentCode === 0) {
+    const base = seriesVerdict(talk.map((t, i) => t + (code[i] ?? 0)));
+    return { ...base, detail: "talk and code inactive in the last 7 days" };
+  }
   const talkR = ratioOf(talk);
   const codeR = ratioOf(code);
   const spread = talkR / Math.max(codeR, 0.01);
