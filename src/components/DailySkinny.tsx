@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { DigestCluster, DigestPayload, EvidenceLink } from "@/lib/render-payload";
 import { Sparkline } from "./charts";
+import { useIngestPulse } from "./useIngestPulse";
 
 const BAND_LABELS: Record<DigestCluster["band"], string> = {
   shipping: "SHIPPING",
@@ -19,8 +20,8 @@ const VERDICT_COLOR: Record<string, string> = {
   DIVERGENT: "var(--mag)",
 };
 
-function ageLabel(generatedAt: string) {
-  const seconds = Math.max(0, Math.round((Date.now() - new Date(generatedAt).getTime()) / 1000));
+function ageLabel(freshAt: string | Date | number) {
+  const seconds = Math.max(0, Math.round((Date.now() - new Date(freshAt).getTime()) / 1000));
   if (seconds < 90) return `data ${seconds}s old`;
   const minutes = Math.round(seconds / 60);
   return `data ${minutes}m old`;
@@ -111,15 +112,20 @@ function ClusterRow({ cluster }: { cluster: DigestCluster }) {
   );
 }
 
-export function DailySkinny({ initial }: { initial: DigestPayload }) {
+export function DailySkinny({ initial, ingestToken }: { initial: DigestPayload; ingestToken?: string }) {
   const [digest, setDigest] = useState(initial);
   const [noiseFloor, setNoiseFloor] = useState(initial.noiseFloor);
   const [fresh, setFresh] = useState("data 0s old");
+  // Trigger.dev Realtime: the chip resets the moment an ingestion run lands.
+  const { lastIngestAt, isIngesting } = useIngestPulse(ingestToken);
+  const ingestKey = lastIngestAt?.getTime() ?? 0;
 
   useEffect(() => {
-    const tick = setInterval(() => setFresh(ageLabel(digest.generatedAt)), 1000);
+    const freshAt = ingestKey ? ingestKey : digest.generatedAt;
+    setFresh(ageLabel(freshAt));
+    const tick = setInterval(() => setFresh(ageLabel(freshAt)), 1000);
     return () => clearInterval(tick);
-  }, [digest.generatedAt]);
+  }, [digest.generatedAt, ingestKey]);
 
   useEffect(() => {
     const handle = setTimeout(async () => {
@@ -146,7 +152,7 @@ export function DailySkinny({ initial }: { initial: DigestPayload }) {
           <p className="skinny-meta mono">
             {new Intl.DateTimeFormat("en-US", { dateStyle: "full", timeZone: "UTC" }).format(new Date(digest.generatedAt))}
             <span>{digest.clusters.length} things worth your attention</span>
-            <span className="fresh-chip">{fresh}</span>
+            <span className="fresh-chip">{isIngesting ? "◉ ingesting · " : ""}{fresh}</span>
           </p>
         </div>
         <label className="noise-control mono">

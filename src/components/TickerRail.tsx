@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import type { TickerCard, TickerLanes } from "@/lib/queries";
 import { Sparkline } from "./charts";
+import { useIngestPulse } from "./useIngestPulse";
 
 function Card({ card }: { card: TickerCard }) {
   const inner = (
@@ -34,22 +35,29 @@ function Lane({ title, cards }: { title: string; cards: TickerCard[] }) {
   );
 }
 
-export function TickerRail({ initial }: { initial: TickerLanes }) {
+export function TickerRail({ initial, ingestToken }: { initial: TickerLanes; ingestToken?: string }) {
   const [lanes, setLanes] = useState(initial);
+  // Ticks as ingestion lands (Trigger.dev Realtime); 0 while no run completed yet.
+  const { lastIngestAt } = useIngestPulse(ingestToken);
+  const ingestKey = lastIngestAt?.getTime() ?? 0;
+
   useEffect(() => {
-    const t = setInterval(async () => {
+    async function refetch() {
       try {
         const res = await fetch("/api/ticker");
         if (res.ok) setLanes(await res.json());
       } catch {
         // keep showing the last good data
       }
-    }, 60_000);
+    }
+    if (ingestKey) refetch();
+    // 60s poll stays as the fallback when Realtime is unavailable.
+    const t = setInterval(refetch, 60_000);
     return () => clearInterval(t);
-  }, []);
+  }, [ingestKey]);
   return (
     <section className="ticker" aria-label="Breakout ticker">
-      <div className="tk-head mono">📌 PINNED · BREAKOUT TICKER <span className="muted">refreshes 60s</span></div>
+      <div className="tk-head mono">📌 PINNED · BREAKOUT TICKER <span className="muted">{ingestToken ? "ticks with ingestion" : "refreshes 60s"}</span></div>
       <Lane title="NEW REPOS" cards={lanes.newRepos} />
       <Lane title="SHIPPING VELOCITY" cards={lanes.shippingVelocity} />
       <Lane title="STAR BREAKOUTS" cards={lanes.starBreakouts} />

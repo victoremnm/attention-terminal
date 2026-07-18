@@ -8,6 +8,7 @@
     "@ai-sdk/openai": "^4.0.16",
     "@ai-sdk/react": "^4.0.34",
     "@clickhouse/client": "^1.23.1",
+    "@trigger.dev/react-hooks": "^4.5.4",
     "@trigger.dev/sdk": "^4.5.4",
     "ai": "^7.0.31",
     "next": "^16.2.10",

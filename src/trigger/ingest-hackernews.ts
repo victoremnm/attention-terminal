@@ -1,4 +1,4 @@
-import { logger, schedules } from "@trigger.dev/sdk";
+import { logger, metadata, schedules, tags } from "@trigger.dev/sdk";
 import { clickhouseInsert, logIngest, selectRows } from "../lib/clickhouse";
 
 const HN_API = "https://hacker-news.firebaseio.com/v0";
@@ -69,6 +69,10 @@ export const ingestHackernews = schedules.task({
   maxDuration: 280,
   queue: { concurrencyLimit: 1 },
   run: async () => {
+    // "ingest" tag lets the frontend subscribe to all ingestion runs via
+    // Realtime with a single tag-scoped public token.
+    await tags.add("ingest");
+
     // The database is the watermark; the task stays stateless and self-heals
     // after downtime (catch-up is capped per run, the next run continues).
     const [{ watermark }] = await selectRows<{ watermark: string }>(
@@ -88,6 +92,7 @@ export const ingestHackernews = schedules.task({
 
     const ids = [...new Set([...newIds, ...updatedIds])];
     if (ids.length === 0) {
+      metadata.set("ingest", { source: "hackernews", inserted: 0, watermark: maxItem });
       logger.log("Nothing to ingest", { maxKnown, maxItem });
       return { inserted: 0, maxKnown, maxItem };
     }
@@ -103,6 +108,13 @@ export const ingestHackernews = schedules.task({
       });
     }
 
+    metadata.set("ingest", {
+      source: "hackernews",
+      inserted: rows.length,
+      newItems: newIds.length,
+      updatedItems: updatedIds.length,
+      watermark: maxItem,
+    });
     logger.log("Ingested HackerNews items", {
       newItems: newIds.length,
       updatedItems: updatedIds.length,
