@@ -1,7 +1,7 @@
 import { logger, schedules } from "@trigger.dev/sdk";
 import { clickhouse, logIngest, selectRows } from "../lib/clickhouse";
 
-const MAX_FILES_PER_RUN = 6;
+const MAX_FILES_PER_RUN = 12;
 
 // GH Archive file names use unpadded hours: 2026-07-17-0.json.gz .. -23.json.gz
 function hourKey(d: Date): string {
