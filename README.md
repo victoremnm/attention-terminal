@@ -15,6 +15,7 @@
 | ClickHouse Cloud | org `lfefoundation`, service "My first service", GCP us-central1, v26.2 |
 | ClickHouse endpoint | `https://kmmno2h0ec.us-central1.gcp.clickhouse.cloud:8443` (HTTPS) / `:9440` (native) |
 | Trigger.dev | project `lfefoundation` (`proj_inafrgiuiixqgirbqbww`), dev environment |
+| Hugging Face | public Hub models API; optional `HUGGINGFACE_TOKEN`/`HF_TOKEN` for higher rate limits |
 
 Secrets live in 1Password (Personal vault) and are mirrored into `.env` (gitignored):
 
