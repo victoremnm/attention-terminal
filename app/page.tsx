@@ -7,10 +7,9 @@ import { AreaChart, DualLine } from "@/components/charts";
 export const dynamic = "force-dynamic";
 
 const SESSION = [
-  "is htmx hype or real?",
-  "rust, this month",
-  "what's heating up in databases?",
-  "new repos right now",
+  { label: "new repos right now", href: "#ticker" },
+  { label: "is htmx hype or real?", href: "#htmx" },
+  { label: "rust, this month", href: "#rust" },
 ];
 
 export default async function Home() {
@@ -32,8 +31,8 @@ export default async function Home() {
         <div className="tagline">ask about tech attention</div>
         <div className="session-h">SESSION ─────────</div>
         <nav className="session">
-          {SESSION.map((q) => (
-            <a key={q} href="#feed">› {q}</a>
+          {SESSION.map((item) => (
+            <a key={item.href} href={item.href}>› {item.label}</a>
           ))}
         </nav>
         <input
@@ -45,31 +44,37 @@ export default async function Home() {
       </aside>
 
       <main className="main">
-        <TickerRail initial={lanes} />
+        <div id="ticker">
+          <TickerRail initial={lanes} />
+        </div>
 
         <div className="feed" id="feed">
-          <AnswerCard
-            question="is htmx hype or real?"
-            verdict={htmxVerdict}
-            detail={htmxVerdict.detail}
-            spark={htmx.talk}
-            caption="HN chatter (talk) vs GitHub activity on htmx repos (code), each normalized to its own 30-day peak. Where the lines separate is where the narrative and the shipping disagree."
-            freshness={freshLabel}
-            provenance={[htmx.provenance]}
-          >
-            <DualLine days={htmx.days} a={htmx.talk} b={htmx.code} aLabel="talk · HN mentions/day" bLabel="code · GH events/day" />
-          </AnswerCard>
+          <section id="htmx">
+            <AnswerCard
+              question="is htmx hype or real?"
+              verdict={htmxVerdict}
+              detail={htmxVerdict.detail}
+              spark={htmx.talk}
+              caption="HN chatter (talk) vs GitHub activity on htmx repos (code), each normalized to its own 30-day peak. Where the lines separate is where the narrative and the shipping disagree."
+              freshness={freshLabel}
+              provenance={[htmx.provenance]}
+            >
+              <DualLine days={htmx.days} a={htmx.talk} b={htmx.code} aLabel="talk · HN mentions/day" bLabel="code · GH events/day" />
+            </AnswerCard>
+          </section>
 
-          <AnswerCard
-            question="rust, this month"
-            verdict={rustVerdict}
-            spark={rust.stories}
-            caption="Rust-mention stories per day on HN over the last 30 days; the labeled point is the month's peak."
-            freshness={freshLabel}
-            provenance={[rust.provenance]}
-          >
-            <AreaChart days={rust.days} values={rust.stories} label="HN stories mentioning rust / day" />
-          </AnswerCard>
+          <section id="rust">
+            <AnswerCard
+              question="rust, this month"
+              verdict={rustVerdict}
+              spark={rust.stories}
+              caption="Rust-mention stories per day on HN over the last 30 days; the labeled point is the month's peak."
+              freshness={freshLabel}
+              provenance={[rust.provenance]}
+            >
+              <AreaChart days={rust.days} values={rust.stories} label="HN stories mentioning rust / day" />
+            </AnswerCard>
+          </section>
         </div>
       </main>
     </div>
