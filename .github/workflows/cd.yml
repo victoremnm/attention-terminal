@@ -1,0 +1,58 @@
+name: CD
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Migrate ClickHouse and deploy Trigger.dev
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Use Node.js 24.x
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24.x"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Use Go 1.24.x
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.24.x"
+
+      - name: Install Goose
+        run: go install github.com/pressly/goose/v3/cmd/goose@v3.25.0
+
+      - name: Validate Goose migrations
+        run: goose -dir migrations validate
+
+      - name: Run ClickHouse migrations
+        env:
+          CLICKHOUSE_HOST: ${{ secrets.CLICKHOUSE_HOST }}
+          CLICKHOUSE_USER: ${{ secrets.CLICKHOUSE_USER }}
+          CLICKHOUSE_PASSWORD: ${{ secrets.CLICKHOUSE_PASSWORD }}
+          CLICKHOUSE_DATABASE: default
+          GOOSE_DRIVER: clickhouse
+        run: |
+          GOOSE_DBSTRING="clickhouse://${CLICKHOUSE_USER}:${CLICKHOUSE_PASSWORD}@${CLICKHOUSE_HOST}:9440/${CLICKHOUSE_DATABASE}?secure=true"
+          export GOOSE_DBSTRING
+          goose -dir migrations up
+
+      # CLI version pinned to match @trigger.dev/sdk in package.json —
+      # the deploy fails on version mismatches. Bump both together.
+      - name: Deploy Trigger.dev
+        env:
+          TRIGGER_ACCESS_TOKEN: ${{ secrets.TRIGGER_ACCESS_TOKEN }}
+        run: npx trigger.dev@4.5.4 deploy
