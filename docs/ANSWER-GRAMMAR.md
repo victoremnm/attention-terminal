@@ -41,8 +41,8 @@ verdict-plus-one-visual composition · feed-with-pinning canvas · terminal-dark
 
 ### 4. Breakout Ticker
 - **Intent:** "now" questions ("what's new right now?", "new repos today", "star breakouts")
-- **Visual:** live card feed — new repos (CreateEvent), star breakouts (WatchEvent vs baseline), rising HN stories; each card: name, one metric, micro-sparkline
-- **Data:** live tables; thresholds from 30-day baselines
+- **Visual:** live `/trending` card feed — new repos (CreateEvent), top forked repos in the latest feed hour (ForkEvent), shipping velocity, star breakouts (WatchEvent vs baseline), rising HN stories; each card: repo/story name, one headline metric, optional micro-sparkline, and compact activity chips
+- **Data:** live tables; thresholds from 30-day baselines. GH Archive 2026 push rows do not expose commit lists/counts in the current source sample, so shipping cards lead with pushes unless true commit counts are available.
 - **Live:** ✅ subscribes to Trigger.dev Realtime; ticks as ingestion lands. Pinned ticker keeps ticking at the top rail — this is the demo's dogfood moment (this repo appears in its own feed)
 - **Payload sketch:** `{ type: "ticker", filter: "repos" | "stars" | "stories" | "all", items: [...] }` + stream channel id
 
@@ -55,11 +55,11 @@ verdict-plus-one-visual composition · feed-with-pinning canvas · terminal-dark
 
 | Question shape | Primary type |
 |---|---|
-| empty prompt / daily-open / "what's new" | Daily Skinny Digest |
+| empty prompt / daily-open / "what's new" | Daily Skinny Digest (`/`) |
 | one subject + trend/history | Candles |
 | one subject + "real?/hype?/vs" | Divergence |
 | category / plural / "compare" (3+ subjects) | Matrix |
-| "now / new / latest / live" | Ticker |
+| "now / new / latest / live" | Ticker (`/trending`) |
 | entity lookup ("tell me about X") | Candles (Entity Card is v2) |
 | lifecycle/hype-cycle asked explicitly | Matrix + DIVERGENT/PEAKING verdict (Lifecycle curve is v2) |
 | unanswerable from data | verdict tile `DORMANT`/no-data + caption explaining what we *can* answer — never a prose essay |

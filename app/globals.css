@@ -54,24 +54,109 @@ a { color: inherit; }
 /* main column */
 .main { padding: 16px 20px 60px; min-width: 0; }
 
+.surface-nav {
+  width: min(1060px, 100%);
+  display: flex;
+  gap: 6px;
+  padding: 18px 24px 0;
+}
+.surface-nav a {
+  border: 1px solid var(--line-soft);
+  border-radius: 4px;
+  padding: 4px 9px;
+  color: var(--muted);
+  font-size: 10px;
+  letter-spacing: .1em;
+  text-decoration: none;
+  text-transform: uppercase;
+}
+.surface-nav a:hover,
+.surface-nav a:focus-visible,
+.surface-nav a[aria-current="page"] {
+  border-color: var(--line);
+  color: var(--ink);
+  background: var(--panel);
+}
+
 /* ticker */
-.ticker-shell { width: min(1060px, 100%); padding: 20px 24px 0; }
+.trending-shell {
+  width: min(1060px, 100%);
+  padding: 28px 24px 72px;
+}
+.trending-head {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding-bottom: 18px;
+}
+.trending-head h1 {
+  margin: 0;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: clamp(42px, 8vw, 86px);
+  line-height: .92;
+  letter-spacing: 0;
+}
+.trending-copy {
+  max-width: 640px;
+  margin: 0;
+  color: var(--muted);
+}
 .ticker { border: 1px solid var(--line); border-radius: 8px; background: var(--panel); padding: 10px 12px 12px; }
-.tk-head { font-size: 10.5px; letter-spacing: .14em; color: var(--ink); margin-bottom: 8px; display: flex; gap: 10px; }
-.tk-lane { margin-top: 8px; }
-.tk-lane-title { font-size: 9.5px; letter-spacing: .16em; color: var(--muted); margin-bottom: 5px; }
+.tk-head { font-size: 10.5px; letter-spacing: .14em; color: var(--ink); margin-bottom: 8px; display: flex; gap: 10px; flex-wrap: wrap; }
+.tk-lane {
+  margin-top: 10px;
+  border-top: 1px solid var(--line-soft);
+  padding-top: 8px;
+}
+.tk-lane:first-of-type {
+  border-top: 0;
+  padding-top: 0;
+}
+.tk-lane-title { font-size: 9.5px; letter-spacing: .16em; color: var(--muted); margin-bottom: 6px; }
 .tk-scroll { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; scrollbar-width: thin; }
 .tk-card {
-  flex: none; width: 190px; display: flex; flex-direction: column; gap: 3px;
+  flex: none; width: 232px; min-height: 116px; display: flex; flex-direction: column; gap: 6px;
   background: var(--panel-2); border: 1px solid var(--line-soft); border-radius: 6px;
-  padding: 8px 10px; text-decoration: none;
+  padding: 9px 10px; text-decoration: none;
 }
 .tk-card:hover, .tk-card:focus-visible { border-color: var(--line); }
+.tk-card-top {
+  display: flex;
+  min-height: 16px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
 .tk-kicker { font-size: 8.5px; letter-spacing: .16em; color: var(--muted); }
 .tk-name { font-size: 12px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tk-metric { font-size: 12px; color: var(--cyan); }
-.tk-foot { display: flex; align-items: center; gap: 8px; min-height: 14px; }
+.tk-foot { display: flex; align-items: center; gap: 8px; min-height: 16px; flex-wrap: wrap; }
 .tk-delta { font-size: 10px; color: var(--muted); }
+.tk-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: auto;
+}
+.tk-stats span {
+  border: 1px solid var(--line-soft);
+  border-radius: 3px;
+  padding: 1px 5px;
+  color: var(--muted);
+  font-size: 9px;
+  line-height: 1.45;
+}
+.tk-stats span[data-tone="hot"] {
+  border-color: color-mix(in srgb, var(--cyan) 48%, var(--line-soft) 52%);
+  color: var(--cyan);
+}
+.tk-stats span[data-tone="muted"] {
+  opacity: .62;
+}
+.tk-stats b {
+  color: var(--ink);
+  font-weight: 700;
+}
 
 /* answer feed */
 .feed { display: flex; flex-direction: column; gap: 14px; margin-top: 14px; }
@@ -652,6 +737,27 @@ a { color: inherit; }
   color: var(--cyan);
   font-size: 12px;
   font-style: normal;
+}
+.agent-ticker-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: auto;
+}
+.agent-ticker-stats em {
+  border: 1px solid var(--line-soft);
+  border-radius: 3px;
+  padding: 1px 5px;
+  color: var(--muted);
+  font-size: 9px;
+  font-style: normal;
+}
+.agent-ticker-stats em[data-tone="hot"] {
+  border-color: color-mix(in srgb, var(--cyan) 48%, var(--line-soft) 52%);
+  color: var(--cyan);
+}
+.agent-ticker-stats em[data-tone="muted"] {
+  opacity: .62;
 }
 .agent-matrix {
   display: flex;

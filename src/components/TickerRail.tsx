@@ -6,14 +6,24 @@ import { Sparkline } from "./charts";
 import { useIngestPulse } from "./useIngestPulse";
 
 function Card({ card }: { card: TickerCard }) {
+  const stats = card.stats?.filter((stat) => stat.value !== "0").slice(0, 6) ?? [];
   const inner = (
     <>
-      <span className="tk-kicker mono">{card.kicker}</span>
-      <span className="tk-name">{card.name}</span>
-      <span className="tk-metric mono">{card.metric}</span>
-      <span className="tk-foot">
+      <span className="tk-card-top">
+        <span className="tk-kicker mono">{card.kicker}</span>
         {card.spark && card.spark.length > 1 && <Sparkline data={card.spark} color="var(--cyan)" w={52} h={14} />}
+      </span>
+      <span className="tk-name">{card.name}</span>
+      <span className="tk-foot">
+        <span className="tk-metric mono">{card.metric}</span>
         {card.delta && <span className="tk-delta mono">{card.delta}</span>}
+      </span>
+      <span className="tk-stats mono">
+        {stats.map((stat) => (
+          <span key={`${stat.label}-${stat.value}`} data-tone={stat.tone}>
+            <b>{stat.value}</b> {stat.label}
+          </span>
+        ))}
       </span>
     </>
   );
@@ -59,6 +69,7 @@ export function TickerRail({ initial, ingestToken }: { initial: TickerLanes; ing
     <section className="ticker" aria-label="Breakout ticker">
       <div className="tk-head mono">📌 PINNED · BREAKOUT TICKER <span className="muted">{ingestToken ? "ticks with ingestion" : "refreshes 60s"}</span></div>
       <Lane title="NEW REPOS" cards={lanes.newRepos} />
+      <Lane title="TOP FORKED · 1H" cards={lanes.topForked} />
       <Lane title="SHIPPING VELOCITY" cards={lanes.shippingVelocity} />
       <Lane title="STAR BREAKOUTS" cards={lanes.starBreakouts} />
       <Lane title="RISING STORIES" cards={lanes.risingStories} />
