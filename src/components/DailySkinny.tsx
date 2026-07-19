@@ -124,8 +124,7 @@ function ClusterRow({ cluster }: { cluster: DigestCluster }) {
 }
 
 export function DailySkinny({ initial, ingestToken }: { initial: DigestPayload; ingestToken?: string }) {
-  const [digest, setDigest] = useState(initial);
-  const [noiseFloor, setNoiseFloor] = useState(initial.noiseFloor);
+  const digest = initial;
   const [fresh, setFresh] = useState("data 0s old");
   // Trigger.dev Realtime: the chip resets the moment an ingestion run lands.
   const { lastIngestAt, isIngesting } = useIngestPulse(ingestToken);
@@ -137,14 +136,6 @@ export function DailySkinny({ initial, ingestToken }: { initial: DigestPayload; 
     const tick = setInterval(() => setFresh(ageLabel(freshAt)), 1000);
     return () => clearInterval(tick);
   }, [digest.generatedAt, ingestKey]);
-
-  useEffect(() => {
-    const handle = setTimeout(async () => {
-      const res = await fetch(`/api/digest?noiseFloor=${noiseFloor.toFixed(2)}`);
-      if (res.ok) setDigest(await res.json());
-    }, 350);
-    return () => clearTimeout(handle);
-  }, [noiseFloor]);
 
   const bands = useMemo(
     () => (["shipping", "debated", "hype"] as const).map((band) => ({
@@ -166,20 +157,6 @@ export function DailySkinny({ initial, ingestToken }: { initial: DigestPayload; 
             <span className="fresh-chip">{isIngesting ? "◉ ingesting · " : ""}{fresh}</span>
           </p>
         </div>
-        <label className="noise-control mono">
-          <span>buzz</span>
-          <input
-            type="range"
-            min="0"
-            max="1"
-            step="0.05"
-            value={noiseFloor}
-            onChange={(event) => setNoiseFloor(Number(event.target.value))}
-            aria-label="Noise floor"
-          />
-          <span>confirmed</span>
-          <b>{noiseFloor.toFixed(2)}</b>
-        </label>
       </header>
 
       <section className="skinny-list" aria-label="Daily digest clusters">

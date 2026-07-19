@@ -239,22 +239,6 @@ a { color: inherit; }
   border-radius: 4px;
   padding: 1px 7px;
 }
-.noise-control {
-  display: grid;
-  grid-template-columns: auto minmax(140px, 220px) auto auto;
-  align-items: center;
-  gap: 9px;
-  color: var(--muted);
-  font-size: 10px;
-  padding-top: 10px;
-}
-.noise-control input {
-  accent-color: var(--cyan);
-}
-.noise-control b {
-  color: var(--ink);
-  font-weight: 700;
-}
 .skinny-list {
   display: flex;
   flex-direction: column;
@@ -489,10 +473,6 @@ a { color: inherit; }
   }
   .skinny-masthead {
     flex-direction: column;
-  }
-  .noise-control {
-    width: 100%;
-    grid-template-columns: auto 1fr auto auto;
   }
   .skinny-row-main {
     grid-template-columns: minmax(0, 1fr);
