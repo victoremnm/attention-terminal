@@ -1,0 +1,18 @@
+version: 2
+
+models:
+  - name: stg_hackernews_items
+    description: "Thin Hacker News item staging over the raw ReplacingMergeTree stream; may include pre-merge historical versions."
+    columns:
+      - name: hn_item_id
+        tests: [not_null]
+      - name: updated_at
+        description: "ReplacingMergeTree version column used to select the latest item state."
+
+  - name: stg_hackernews_items_current
+    description: "Current Hacker News item state, deduped by hn_item_id using the latest update_time version."
+    columns:
+      - name: hn_item_id
+        tests: [not_null, unique]
+      - name: updated_at
+        tests: [not_null]

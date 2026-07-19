@@ -1,0 +1,12 @@
+version: 2
+
+models:
+  - name: mart_attention_documents
+    description: "Search-ready document corpus for lexical or future vector/semantic retrieval."
+    columns:
+      - name: source_id
+        tests: [not_null]
+      - name: document_id
+        tests: [not_null]
+      - name: embedding_text
+        description: "Text to embed or use for semantic candidate retrieval."

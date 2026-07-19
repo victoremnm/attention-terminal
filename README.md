@@ -45,6 +45,36 @@ const handle = await tasks.trigger<typeof helloWorldTask>("hello-world", {
 });
 ```
 
+## Data Modeling
+
+Goose migrations own raw ClickHouse ingestion structures: source tables, indexes,
+watermarks, and real-time materialized views. dbt owns the analytical model:
+staging views, conformed dimensions, facts, and product/search marts.
+
+Install dbt in a virtual environment:
+
+```bash
+python3.12 -m venv .venv-dbt
+. .venv-dbt/bin/activate
+pip install -r requirements-dbt.txt
+```
+
+Use Python 3.12 or 3.13 for dbt locally. The current dbt dependency stack did
+not start cleanly under Python 3.14 during verification.
+
+Run dbt with the checked-in env-var-only profile:
+
+```bash
+export CLICKHOUSE_HOST="kmmno2h0ec.us-central1.gcp.clickhouse.cloud"
+export CLICKHOUSE_PORT="8443"
+export CLICKHOUSE_SECURE="True"
+dbt parse --profiles-dir dbt
+dbt run --profiles-dir dbt
+```
+
+See `docs/data/modeling.md` for the Kimball/Inmon-style table roles and the
+semantic-search direction.
+
 ## Docs
 
 - Writing tasks: https://trigger.dev/docs/tasks/overview
@@ -52,3 +82,4 @@ const handle = await tasks.trigger<typeof helloWorldTask>("hello-world", {
 - AI tooling / agents: https://trigger.dev/docs/building-with-ai
 - ClickHouse JS client: https://clickhouse.com/docs/integrations/javascript
 - ClickHouse MCP server: https://github.com/ClickHouse/mcp-clickhouse
+- dbt + ClickHouse: https://clickhouse.com/docs/integrations/dbt
