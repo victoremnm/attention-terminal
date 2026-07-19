@@ -196,7 +196,7 @@ export async function tickerLanes(): Promise<TickerLanes> {
     topForked: forks.rows.map((r) => ({
       kicker: "FORKED 24H",
       name: r.name,
-      metric: `+${r.forks} forks`,
+      metric: `+${r.forks} new forks`,
       delta: activityDelta([
         ["stars", r.stars],
         ["pushes", r.pushes],
@@ -204,7 +204,7 @@ export async function tickerLanes(): Promise<TickerLanes> {
         ["issues", r.issues],
       ]) ?? "latest feed day",
       stats: [
-        stat("forks", r.forks, "hot"),
+        stat("new forks", r.forks, "hot"),
         stat("stars", r.stars),
         stat("PRs", r.prs),
         stat("issues", r.issues),

@@ -41,7 +41,7 @@ verdict-plus-one-visual composition · feed-with-pinning canvas · terminal-dark
 
 ### 4. Breakout Ticker
 - **Intent:** "now" questions ("what's new right now?", "new repos today", "star breakouts")
-- **Visual:** live `/trending` card feed — new repos (CreateEvent), top forked repos in the latest feed hour (ForkEvent), shipping velocity, star breakouts (WatchEvent vs baseline), rising HN stories; each card: repo/story name, one headline metric, optional micro-sparkline, and compact activity chips
+- **Visual:** live `/trending` card feed — new repos (CreateEvent), top forked repos in the latest 24h feed window (ForkEvent), shipping velocity, star breakouts (WatchEvent vs baseline), rising HN stories; each card: repo/story name, one headline metric, optional micro-sparkline, and compact activity chips
 - **Data:** live tables; thresholds from 30-day baselines. GH Archive 2026 push rows do not expose commit lists/counts in the current source sample, so shipping cards lead with pushes unless true commit counts are available.
 - **Live:** ✅ subscribes to Trigger.dev Realtime; ticks as ingestion lands. Pinned ticker keeps ticking at the top rail — this is the demo's dogfood moment (this repo appears in its own feed)
 - **Payload sketch:** `{ type: "ticker", filter: "repos" | "stars" | "stories" | "all", items: [...] }` + stream channel id
