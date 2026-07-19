@@ -140,7 +140,6 @@ function activitySql() {
           AND deleted = 0
           AND dead = 0
           AND time >= hn_as_of - INTERVAL 30 DAY
-          AND time <= hn_as_of
           AND (${hnSubjectFilter()})
       )
       GROUP BY id
