@@ -10,5 +10,6 @@ logs/
 dbt/.user.yml
 .DS_Store
 graphify-out/
+reference-design/
 .vercel
 .next/

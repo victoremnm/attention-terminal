@@ -45,6 +45,12 @@ function ClusterRow({ cluster }: { cluster: DigestCluster }) {
   const [takes, setTakes] = useState(cluster.takes);
   const [loading, setLoading] = useState(false);
   const codeShare = 1 - cluster.talkShare;
+  const sourceParts = [
+    cluster.sources.hnThreads > 0 ? `${cluster.sources.hnThreads} HN threads` : "",
+    cluster.sources.comments > 0 ? `${cluster.sources.comments} cmts` : "",
+    cluster.sources.ghStars24h > 0 ? `${cluster.sources.ghStars24h.toLocaleString()} stars/24h` : "",
+    cluster.sources.repos > 0 ? `${cluster.sources.repos} repos` : "",
+  ].filter(Boolean);
 
   async function toggle() {
     const next = !open;
@@ -60,12 +66,14 @@ function ClusterRow({ cluster }: { cluster: DigestCluster }) {
   }
 
   return (
-    <article className="skinny-row">
+    <article className="skinny-row" data-band={cluster.band}>
       <div className="skinny-row-main">
-        <span className="skinny-verdict mono" style={{ color: VERDICT_COLOR[cluster.verdict] }}>
-          {cluster.verdict}
+        <span className="skinny-signal">
+          <span className="skinny-verdict mono" style={{ color: VERDICT_COLOR[cluster.verdict] }}>
+            {cluster.verdict}
+          </span>
+          <span className="skinny-spark"><Sparkline data={cluster.spark} color={VERDICT_COLOR[cluster.verdict]} w={86} h={24} /></span>
         </span>
-        <span className="skinny-spark"><Sparkline data={cluster.spark} color={VERDICT_COLOR[cluster.verdict]} w={86} h={24} /></span>
         <span className="skinny-copy">
           <span className="skinny-title-line">
             <button className="skinny-subject" type="button" onClick={toggle} aria-expanded={open}>
@@ -76,20 +84,23 @@ function ClusterRow({ cluster }: { cluster: DigestCluster }) {
           </span>
           <span className="skinny-text">{cluster.skinny}</span>
           <span className="skinny-sources mono">
-            {[
-              `${cluster.sources.hnThreads} HN threads`,
-              `${cluster.sources.comments} cmts`,
-              `${cluster.sources.ghStars24h.toLocaleString()} stars/24h`,
-              `${cluster.sources.repos} repos`,
-            ].filter((part) => !part.startsWith("0 ")).length} sources ·{" "}
+            {sourceParts.length} sources ·{" "}
             <a href={cluster.links.hn} target="_blank" rel="noreferrer">{cluster.sources.hnThreads} HN threads</a>
             {" · "}{cluster.sources.comments} cmts{" · "}
             <a href={cluster.links.github} target="_blank" rel="noreferrer">{cluster.sources.ghStars24h.toLocaleString()} stars/24h · {cluster.sources.repos} repos</a>
           </span>
         </span>
-        <span className="skinny-share mono">
-          <b>{Math.round(cluster.talkShare * 100)}% talk</b>
-          <i>{Math.round(codeShare * 100)}% code</i>
+        <span className="skinny-proof">
+          <span className="skinny-share mono">
+            <b>{Math.round(cluster.talkShare * 100)}% talk</b>
+            <i>{Math.round(codeShare * 100)}% code</i>
+          </span>
+          <span className="skinny-meter" aria-hidden="true">
+            <i style={{ width: `${Math.round(cluster.talkShare * 100)}%` }} />
+          </span>
+          <span className="skinny-source-chips mono">
+            {sourceParts.slice(0, 3).map((part) => <em key={part}>{part}</em>)}
+          </span>
         </span>
       </div>
       {open && (
