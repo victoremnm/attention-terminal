@@ -52,6 +52,12 @@ The first semantic-search-ready model is `mart_attention_documents`. It normaliz
 
 The next step is to add an embeddings table keyed by `(source_id, document_id, embedding_model)` and a Trigger.dev task that embeds new or changed documents. That avoids expanding the hardcoded subject dictionary and lets Daily Skinny rank candidates from both lexical and vector retrieval.
 
+## GitHub Trend Rollups
+
+`gh_repo_hourly` remains the low-latency event-family rollup. `gh_repo_daily` and `gh_repo_monthly` add trend-oriented repo measures for longer windows: events, actors, pushes, commits, distinct commits, stars, forks, PRs opened/closed/merged, issues opened/closed, repository creates, branch/tag creates, and releases published.
+
+The dbt `mart_repo_activity_timeseries` model exposes those measures with a `day` or `month` grain, so product surfaces can switch time windows without rewriting measure logic.
+
 ## ClickHouse Design Notes
 
 Per ClickHouse primary-key guidance, table materializations should declare `ORDER BY` around frequent filters before creation because sorting keys are not practically mutable later. Dimensions use low-cardinality leading keys where possible, and repeated categorical strings should use `LowCardinality` in physical migrations.
