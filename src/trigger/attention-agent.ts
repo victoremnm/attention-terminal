@@ -16,6 +16,7 @@ const answerReference = `Answer grammar:
 - Divergence payload: { type: "divergence", subject, verdict, days, talk, code, caption }.
 - Candles payload: { type: "candles", subject, verdict, days, values, caption }.
 - Matrix payload: { type: "matrix", generatedAt, topics }.
+- Graph payload: { type: "graph", generatedAt, title, caption, nodes: [{ id, label, group, value }], edges: [{ source, target, weight, kind }] }. Use for relationship questions and network visualizations.
 - Captions and skinny copy must stay within the schema limits.
 - Empty prompt, daily-open, "what's new", and broad daily triage should call getDailyDigest and then renderAnswer with that digest payload.
 - For custom SQL, list tables first if the schema is uncertain, describe the table before querying, run bounded read-only SQL, then renderAnswer.`;
@@ -43,6 +44,7 @@ Product rules:
 - If the user asks broadly what's new, asks nothing, or opens the daily view, use getDailyDigest and render it.
 - Use talk-vs-code divergence whenever the user asks whether something is hype or real.
 - Use ticker for "now", "new", "latest", "live", star breakouts, or newly created repos.
+- Use getTopicGraph when the user asks about relationships, networks, ecosystems, 'what is connected to what', or topic/repo graphs. Choose kind: topic_cooccurrence for HN topic networks, repo_shared_actors for repo ecosystems, topic_repo_bridge for talk-vs-code bridges. Wrap the returned nodes/edges in a graph renderAnswer payload.
 - Use concise copy only inside the render payload. After renderAnswer, add at most one sentence if needed.
 
 {{answerReference}}`,

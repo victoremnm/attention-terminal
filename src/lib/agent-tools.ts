@@ -2,6 +2,11 @@ import { createClient, type ClickHouseClient } from "@clickhouse/client";
 import { tool } from "ai";
 import { z } from "zod";
 import { dailyDigest } from "./digest";
+import {
+  repoSharedActorGraph,
+  topicCooccurrenceGraph,
+  topicRepoBridgeGraph,
+} from "./graph-queries";
 import { RenderPayloadSchema } from "./render-payload";
 
 let clickhouse: ClickHouseClient | undefined;
@@ -134,6 +139,58 @@ export const getDailyDigest = tool({
   execute: async ({ noiseFloor }) => dailyDigest(noiseFloor),
 });
 
+export const getTopicGraph = tool({
+  description:
+    "Build a relationship graph from ClickHouse data. Returns nodes and edges for topic co-occurrence in HN stories, shared GitHub actors between repos, or topic-repo keyword bridges. Use when the user asks about relationships, networks, ecosystems, or 'what is connected to what'.",
+  inputSchema: z.object({
+    kind: z
+      .enum(["topic_cooccurrence", "repo_shared_actors", "topic_repo_bridge"])
+      .describe("Which graph topology to mine."),
+    hours: z.number().int().min(1).max(720).default(168).describe("Lookback window in hours."),
+    minWeight: z.number().int().min(1).max(100).default(2).describe("Minimum edge weight to include."),
+  }),
+  execute: async ({ kind, hours, minWeight }) => {
+    const graph =
+      kind === "repo_shared_actors"
+        ? await repoSharedActorGraph(hours, minWeight)
+        : kind === "topic_repo_bridge"
+          ? await topicRepoBridgeGraph(hours, minWeight)
+          : await topicCooccurrenceGraph(hours, minWeight);
+
+    const titles: Record<string, string> = {
+      topic_cooccurrence: "Topic co-occurrence on Hacker News",
+      repo_shared_actors: "Repository ecosystem via shared GitHub actors",
+      topic_repo_bridge: "Topic ↔ repository keyword bridge",
+    };
+
+    const captions: Record<string, string> = {
+      topic_cooccurrence:
+        "Topics that appear together in HN story titles. Thicker edges mean more shared stories; larger nodes are mentioned more often.",
+      repo_shared_actors:
+        "Repositories linked by contributors who were active in both during the window. Edge weight is the number of shared actors.",
+      topic_repo_bridge:
+        "Bipartite links between HN topics and GitHub repos that share matching keywords.",
+    };
+
+    return {
+      title: titles[kind],
+      caption: captions[kind],
+      nodes: graph.nodes.map((n) => ({
+        id: n.id,
+        label: n.label,
+        group: n.group,
+        value: n.value,
+      })),
+      edges: graph.edges.map((e) => ({
+        source: e.source,
+        target: e.target,
+        weight: e.weight,
+        kind: e.kind,
+      })),
+    };
+  },
+});
+
 export const renderAnswer = tool({
   description:
     "Validate and render an Attention Terminal answer payload. Use this instead of markdown tables or long prose. Payloads must match the answer grammar.",
@@ -161,5 +218,6 @@ export const attentionTools = {
   describeTable,
   runReadOnlyQuery,
   getDailyDigest,
+  getTopicGraph,
   renderAnswer,
 };

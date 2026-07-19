@@ -108,12 +108,32 @@ export const MatrixSchema = z.object({
   })),
 });
 
+export const GraphSchema = z.object({
+  type: z.literal("graph"),
+  generatedAt: z.string(),
+  title: z.string().max(120),
+  caption: z.string().max(320),
+  nodes: z.array(z.object({
+    id: z.string().max(120),
+    label: z.string().max(120),
+    group: z.enum(["topic", "repo", "story", "actor", "model"]),
+    value: z.number().nonnegative(),
+  })),
+  edges: z.array(z.object({
+    source: z.string().max(120),
+    target: z.string().max(120),
+    weight: z.number().nonnegative(),
+    kind: z.enum(["cooccurrence", "shared_actor", "shared_keyword", "citation"]),
+  })),
+});
+
 export const RenderPayloadSchema = z.discriminatedUnion("type", [
   DigestSchema,
   TickerSchema,
   DivergenceSchema,
   CandlesSchema,
   MatrixSchema,
+  GraphSchema,
 ]);
 
 export type Verdict = z.infer<typeof VerdictSchema>;
@@ -125,4 +145,5 @@ export type TickerPayload = z.infer<typeof TickerSchema>;
 export type DivergencePayload = z.infer<typeof DivergenceSchema>;
 export type CandlesPayload = z.infer<typeof CandlesSchema>;
 export type MatrixPayload = z.infer<typeof MatrixSchema>;
+export type GraphPayload = z.infer<typeof GraphSchema>;
 export type RenderPayload = z.infer<typeof RenderPayloadSchema>;
