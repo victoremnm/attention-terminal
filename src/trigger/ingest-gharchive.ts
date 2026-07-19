@@ -1,4 +1,4 @@
-import { logger, schedules } from "@trigger.dev/sdk";
+import { logger, metadata, schedules, tags } from "@trigger.dev/sdk";
 import { clickhouse, logIngest, selectRows } from "../lib/clickhouse";
 
 const MAX_FILES_PER_RUN = 12;
@@ -22,6 +22,8 @@ export const ingestGhArchive = schedules.task({
   maxDuration: 1500,
   queue: { concurrencyLimit: 1 },
   run: async () => {
+    await tags.add("ingest");
+
     const done = new Set(
       (
         await selectRows<{ chunk_key: string }>(
@@ -79,9 +81,14 @@ export const ingestGhArchive = schedules.task({
       );
       await logIngest({ source: "gharchive", chunk_key: key, rows_ingested: Number(rows) });
       loaded += 1;
+      // Live progress: Realtime subscribers see each hour land as it loads.
+      metadata.set("ingest", { source: "gharchive", filesLoaded: loaded, lastHour: key, rows: Number(rows) });
       logger.log("Loaded GH Archive hour", { key, rows: Number(rows) });
     }
 
+    if (loaded === 0) {
+      metadata.set("ingest", { source: "gharchive", filesLoaded: 0 });
+    }
     return { filesLoaded: loaded };
   },
 });

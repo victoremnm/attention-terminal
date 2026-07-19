@@ -9,6 +9,15 @@ verdict-plus-one-visual composition · feed-with-pinning canvas · terminal-dark
 
 ## Answer types
 
+### 0. Daily Skinny Digest
+- **Intent:** empty prompt / daily open / "what's new" triage across both feeds
+- **Visual:** bounded daily front page with 6-8 clustered subjects, separated into SHIPPING / DEBATED / HYPE bands; each row shows verdict, 7d sparkline, skinny, source counts, and talk/code share
+- **Data:** `daily_skinny_subject_hourly` subject rollup fed by HN + GitHub materialized views; rolling buckets are anchored to each feed's own high-water mark
+- **Noise floor:** 0-1 slider persisted client-side; filters server-side on max talk/code velocity signal and debounces API re-query
+- **Drill:** row expand lazily fetches a debate map (`agree` / `dispute` / `outlier`) for that subject
+- **Payload sketch:** `{ type: "digest", generatedAt, noiseFloor, clusters: [{ id, subject, verdict, band, skinny, talkShare, spark, sources, links, takes? }] }`
+- **Validation links:** every cluster includes HN and GitHub links; drilldown takes link directly to their HN thread when available
+
 ### 1. Attention Candles
 - **Intent:** single topic/repo + trend question ("how is Bun trending?", "show me Rust this month")
 - **Visual:** OHLC-style attention candles (or area fallback under sparse data) + volume bars beneath; hourly buckets ≤7d windows, daily beyond
@@ -46,6 +55,7 @@ verdict-plus-one-visual composition · feed-with-pinning canvas · terminal-dark
 
 | Question shape | Primary type |
 |---|---|
+| empty prompt / daily-open / "what's new" | Daily Skinny Digest |
 | one subject + trend/history | Candles |
 | one subject + "real?/hype?/vs" | Divergence |
 | category / plural / "compare" (3+ subjects) | Matrix |

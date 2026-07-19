@@ -1,4 +1,5 @@
 import { defineConfig } from "@trigger.dev/sdk";
+import { syncVercelEnvVars } from "@trigger.dev/build/extensions/core";
 
 export default defineConfig({
   project: "proj_inafrgiuiixqgirbqbww",
@@ -17,6 +18,14 @@ export default defineConfig({
       factor: 2,
       randomize: true,
     },
+  },
+  build: {
+    extensions: [
+      syncVercelEnvVars({
+        projectId: "prj_iKvXQd1qKJ8sAq7RdvDtxETdjtHz",
+        vercelTeamId: "team_WHTSdbMyJgw0eLjd0OhVGlHf",
+      }),
+    ],
   },
   dirs: ["./src/trigger"],
 });

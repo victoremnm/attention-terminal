@@ -1,4 +1,4 @@
-import { logger, schedules } from "@trigger.dev/sdk";
+import { logger, metadata, schedules, tags } from "@trigger.dev/sdk";
 import { clickhouseInsert, logIngest, selectRows } from "../lib/clickhouse";
 
 const HF_API = "https://huggingface.co/api/models";
@@ -86,12 +86,15 @@ export const ingestHuggingFaceModels = schedules.task({
   maxDuration: 180,
   queue: { concurrencyLimit: 1 },
   run: async () => {
+    await tags.add("ingest");
+
     const scanAt = scanHour();
     const chunkKey = `models:${scanAt.toISOString().slice(0, 13)}`;
     const prior = await selectRows<{ c: string }>(
       `SELECT count() AS c FROM ingest_log WHERE source = 'huggingface' AND chunk_key = '${chunkKey}'`
     );
     if (Number(prior[0]?.c ?? 0) > 0) {
+      metadata.set("ingest", { source: "huggingface", inserted: 0, skipped: true, chunkKey });
       logger.log("Hugging Face scan already recorded for hour", { chunkKey });
       return { inserted: 0, skipped: true, chunkKey };
     }
@@ -107,6 +110,7 @@ export const ingestHuggingFaceModels = schedules.task({
       await logIngest({ source: "huggingface", chunk_key: chunkKey, rows_ingested: rows.length });
     }
 
+    metadata.set("ingest", { source: "huggingface", inserted: rows.length, chunkKey });
     logger.log("Ingested Hugging Face model snapshots", { chunkKey, rows: rows.length, scans: SCANS.length });
     return { inserted: rows.length, scans: SCANS.length, chunkKey };
   },
