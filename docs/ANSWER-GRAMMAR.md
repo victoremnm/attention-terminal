@@ -13,7 +13,7 @@ verdict-plus-one-visual composition · feed-with-pinning canvas · terminal-dark
 - **Intent:** empty prompt / daily open / "what's new" triage across both feeds
 - **Visual:** bounded daily front page with 6-8 clustered subjects, separated into SHIPPING / DEBATED / HYPE bands; each row shows verdict, 7d sparkline, skinny, source counts, and talk/code share
 - **Data:** `daily_skinny_subject_hourly` subject rollup fed by HN + GitHub materialized views; rolling buckets are anchored to each feed's own high-water mark
-- **Noise floor:** 0-1 slider persisted client-side; filters server-side on max talk/code velocity signal and debounces API re-query
+- **Noise floor:** fixed at `0` for v1 after removing the client-side slider; digest filtering still runs server-side on max talk/code velocity signal
 - **Drill:** row expand lazily fetches a debate map (`agree` / `dispute` / `outlier`) for that subject
 - **Payload sketch:** `{ type: "digest", generatedAt, noiseFloor, clusters: [{ id, subject, verdict, band, skinny, talkShare, spark, sources, links, takes? }] }`
 - **Validation links:** every cluster includes HN and GitHub links; drilldown takes link directly to their HN thread when available
@@ -41,8 +41,8 @@ verdict-plus-one-visual composition · feed-with-pinning canvas · terminal-dark
 
 ### 4. Breakout Ticker
 - **Intent:** "now" questions ("what's new right now?", "new repos today", "star breakouts")
-- **Visual:** live card feed — new repos (CreateEvent), star breakouts (WatchEvent vs baseline), rising HN stories; each card: name, one metric, micro-sparkline
-- **Data:** live tables; thresholds from 30-day baselines
+- **Visual:** live `/trending` card feed — new repos (CreateEvent), top forked repos in the latest 24h feed window (ForkEvent), shipping velocity, star breakouts (WatchEvent vs baseline), rising HN stories; each card: repo/story name, one headline metric, optional micro-sparkline, and compact activity chips
+- **Data:** live tables; thresholds from 30-day baselines. GH Archive 2026 push rows do not expose commit lists/counts in the current source sample, so shipping cards lead with pushes unless true commit counts are available.
 - **Live:** ✅ subscribes to Trigger.dev Realtime; ticks as ingestion lands. Pinned ticker keeps ticking at the top rail — this is the demo's dogfood moment (this repo appears in its own feed)
 - **Payload sketch:** `{ type: "ticker", filter: "repos" | "stars" | "stories" | "all", items: [...] }` + stream channel id
 
@@ -55,11 +55,11 @@ verdict-plus-one-visual composition · feed-with-pinning canvas · terminal-dark
 
 | Question shape | Primary type |
 |---|---|
-| empty prompt / daily-open / "what's new" | Daily Skinny Digest |
+| empty prompt / daily-open / "what's new" | Daily Skinny Digest (`/skinny`) |
 | one subject + trend/history | Candles |
 | one subject + "real?/hype?/vs" | Divergence |
 | category / plural / "compare" (3+ subjects) | Matrix |
-| "now / new / latest / live" | Ticker |
+| "now / new / latest / live" | Ticker (`/` and `/trending`) |
 | entity lookup ("tell me about X") | Candles (Entity Card is v2) |
 | lifecycle/hype-cycle asked explicitly | Matrix + DIVERGENT/PEAKING verdict (Lifecycle curve is v2) |
 | unanswerable from data | verdict tile `DORMANT`/no-data + caption explaining what we *can* answer — never a prose essay |
