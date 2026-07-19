@@ -241,10 +241,10 @@ export async function tickerLanes(): Promise<TickerLanes> {
       kicker: "STARS 24H",
       name: r.name,
       metric: `+${r.stars} stars`,
-      delta: `x${r.surge} vs 30d`,
+      delta: `x${r.surge} vs 30d avg`,
       stats: [
         stat("stars", r.stars, "hot"),
-        stat("surge", `x${r.surge}`),
+        stat("vs 30d avg", `x${r.surge}`),
       ],
       spark: r.spark,
       href: `https://github.com/${r.name}`,
