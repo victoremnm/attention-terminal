@@ -15,5 +15,9 @@ sources:
         description: "Incremental ClickHouse rollup of Hacker News activity."
       - name: gh_repo_hourly
         description: "Incremental ClickHouse rollup of GitHub repo activity."
+      - name: gh_repo_daily
+        description: "Incremental ClickHouse daily rollup of GitHub repo activity measures."
+      - name: gh_repo_monthly
+        description: "Incremental ClickHouse monthly rollup of GitHub repo activity measures."
       - name: ingest_log
         description: "Ingestion watermarks and freshness metadata."

@@ -43,6 +43,22 @@ models:
       - name: repo_key
         tests: [not_null]
 
+  - name: fact_repo_activity_daily
+    description: "Daily GitHub repository trend facts for stars, forks, commits, PRs, issues, releases, and repo/ref creates."
+    columns:
+      - name: activity_date
+        tests: [not_null]
+      - name: repo_key
+        tests: [not_null]
+
+  - name: fact_repo_activity_monthly
+    description: "Monthly GitHub repository trend facts for longer-range ranking and time-series views."
+    columns:
+      - name: activity_month
+        tests: [not_null]
+      - name: repo_key
+        tests: [not_null]
+
   - name: fact_model_activity_daily
     description: "Daily Hugging Face model attention facts from hourly scans."
     columns:
@@ -60,3 +76,13 @@ models:
         tests: [not_null]
       - name: comment_count
         description: "HN comment count for talk rows; zero for non-comment-counted sources."
+
+  - name: mart_repo_activity_timeseries
+    description: "Unified daily/monthly GitHub repo activity time series with comparable trend measures."
+    columns:
+      - name: grain
+        tests: [not_null]
+      - name: period_start
+        tests: [not_null]
+      - name: repo_key
+        tests: [not_null]
