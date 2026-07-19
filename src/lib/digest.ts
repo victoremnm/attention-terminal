@@ -191,7 +191,7 @@ export async function debateTakes(subjectId: string) {
      WHERE type = 'story'
        AND deleted = 0
        AND dead = 0
-       AND time >= now() - INTERVAL 7 DAY
+       AND time >= (SELECT max(time) FROM hackernews) - INTERVAL 7 DAY
        AND (${tokenWhere(topic)})
      ORDER BY score DESC
      LIMIT 10`,
