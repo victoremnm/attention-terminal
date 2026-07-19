@@ -8,6 +8,7 @@ select
   event_family,
   item_count as activity_count,
   actor_count,
+  comment_count,
   toInt64(attention_score) as attention_score
 from {{ ref('fact_talk_activity_hourly') }}
 
@@ -21,5 +22,6 @@ select
   event_family,
   event_count as activity_count,
   actor_count,
+  toInt64(0) as comment_count,
   toInt64(event_count) as attention_score
 from {{ ref('fact_code_activity_hourly') }}

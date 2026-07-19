@@ -5,6 +5,7 @@ select
   type as hn_item_type,
   by as author,
   time as created_at,
+  update_time as updated_at,
   toDate(time) as activity_date,
   title,
   text,
@@ -15,4 +16,4 @@ select
   deleted as is_deleted,
   dead as is_dead,
   if(deleted = 1 or dead = 1, 1, 0) as is_removed
-from {{ source('raw', 'hackernews') }} FINAL
+from {{ source('raw', 'hackernews') }}

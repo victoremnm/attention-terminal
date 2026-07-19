@@ -26,12 +26,14 @@ models:
         tests: [not_null]
 
   - name: fact_talk_activity_hourly
-    description: "Hourly Hacker News activity facts from the ClickHouse rollup."
+    description: "Hourly Hacker News activity facts deduped to current item state before aggregation."
     columns:
       - name: activity_hour
         tests: [not_null]
       - name: source_id
         tests: [not_null]
+      - name: comment_count
+        description: "Latest known descendants summed once per HN item; avoids ReplacingMergeTree reinsertion double-counting."
 
   - name: fact_code_activity_hourly
     description: "Hourly GitHub repository activity facts from the ClickHouse rollup."
@@ -56,3 +58,5 @@ models:
         tests: [not_null]
       - name: source_id
         tests: [not_null]
+      - name: comment_count
+        description: "HN comment count for talk rows; zero for non-comment-counted sources."

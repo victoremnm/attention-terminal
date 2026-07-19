@@ -1,14 +1,15 @@
 {{ config(materialized='view') }}
 
 select
-  hour as activity_hour,
-  toDate(hour) as activity_date,
+  toStartOfHour(created_at) as activity_hour,
+  toDate(created_at) as activity_date,
   'hackernews' as source_id,
-  type as event_family,
-  countMerge(items) as item_count,
-  uniqMerge(authors) as actor_count,
+  hn_item_type as event_family,
+  uniqExact(hn_item_id) as item_count,
+  uniqExact(author) as actor_count,
+  sum(comment_count) as comment_count,
   sum(score) as attention_score
-from {{ source('raw', 'hn_hourly') }}
+from {{ ref('stg_hackernews_items_current') }}
 group by
   activity_hour,
   activity_date,

@@ -9,7 +9,7 @@ select
   url,
   concat(title, '\n\n', text) as embedding_text,
   score + comment_count as popularity_score
-from {{ ref('stg_hackernews_items') }}
+from {{ ref('stg_hackernews_items_current') }}
 where hn_item_type = 'story'
   and is_removed = 0
   and length(title) > 0
