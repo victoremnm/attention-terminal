@@ -55,11 +55,11 @@ verdict-plus-one-visual composition · feed-with-pinning canvas · terminal-dark
 
 | Question shape | Primary type |
 |---|---|
-| empty prompt / daily-open / "what's new" | Daily Skinny Digest (`/`) |
+| empty prompt / daily-open / "what's new" | Daily Skinny Digest (`/skinny`) |
 | one subject + trend/history | Candles |
 | one subject + "real?/hype?/vs" | Divergence |
 | category / plural / "compare" (3+ subjects) | Matrix |
-| "now / new / latest / live" | Ticker (`/trending`) |
+| "now / new / latest / live" | Ticker (`/` and `/trending`) |
 | entity lookup ("tell me about X") | Candles (Entity Card is v2) |
 | lifecycle/hype-cycle asked explicitly | Matrix + DIVERGENT/PEAKING verdict (Lifecycle curve is v2) |
 | unanswerable from data | verdict tile `DORMANT`/no-data + caption explaining what we *can* answer — never a prose essay |
