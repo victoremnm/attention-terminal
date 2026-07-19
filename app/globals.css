@@ -450,6 +450,16 @@ a { color: inherit; }
   color: var(--muted);
   font-size: 10px;
 }
+.agent-fault {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  border: 1px dashed var(--amber);
+  padding: 6px 8px;
+  color: var(--amber);
+  font-size: 10px;
+}
 .agent-query {
   border-top: 1px dashed var(--line-soft);
   padding-top: 8px;

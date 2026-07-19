@@ -3,7 +3,7 @@
 import { useChat } from "@ai-sdk/react";
 import { useTriggerChatTransport } from "@trigger.dev/sdk/chat/react";
 import type { UIMessage } from "ai";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { mintChatAccessToken, startChatSession } from "@/lib/chat-actions";
 import { RenderPayloadSchema } from "@/lib/render-payload";
 import type { attentionAgent } from "@/trigger/attention-agent";
@@ -15,23 +15,75 @@ const SUGGESTIONS = [
   "what data do I have?",
 ];
 
+const STALL_TIMEOUT_MS = 20_000;
+
 export function AttentionChat() {
+  const [fault, setFault] = useState<string | null>(null);
+  const watchdog = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  function disarmWatchdog() {
+    if (watchdog.current) {
+      clearTimeout(watchdog.current);
+      watchdog.current = null;
+    }
+  }
+
+  // A send that never produces a first chunk is the failure mode the direct
+  // transport can't report on its own — surface it instead of spinning.
+  function armWatchdog() {
+    disarmWatchdog();
+    watchdog.current = setTimeout(() => {
+      setFault("no response from the agent — the run may not be executing");
+    }, STALL_TIMEOUT_MS);
+  }
+
+  useEffect(() => disarmWatchdog, []);
+
   const transport = useTriggerChatTransport<typeof attentionAgent>({
     task: "attention-agent",
     baseURL: process.env.NEXT_PUBLIC_TRIGGER_API_URL,
+    headStart: "/api/chat",
     accessToken: ({ chatId }) => mintChatAccessToken(chatId),
     startSession: ({ chatId, clientData }) => startChatSession({ chatId, clientData }),
+    onEvent: (event) => {
+      switch (event.type) {
+        case "message-sent":
+          armWatchdog();
+          break;
+        case "first-chunk":
+        case "turn-completed":
+          disarmWatchdog();
+          setFault(null);
+          break;
+        case "message-send-failed":
+          disarmWatchdog();
+          setFault(`send failed: ${event.error.message}`);
+          break;
+        case "stream-error":
+          disarmWatchdog();
+          setFault(`stream error: ${event.error.message}`);
+          break;
+      }
+    },
   });
 
-  const { messages, sendMessage, stop, status } = useChat({ transport });
+  const { messages, sendMessage, stop, status, error, regenerate } = useChat({ transport });
   const [input, setInput] = useState("");
   const busy = status === "submitted" || status === "streaming";
+  const faultText = fault ?? (status === "error" ? (error?.message ?? "chat request failed") : null);
 
   function submit(text: string) {
     const trimmed = text.trim();
     if (!trimmed || busy) return;
+    setFault(null);
     sendMessage({ text: trimmed });
     setInput("");
+  }
+
+  async function retry() {
+    setFault(null);
+    await stop();
+    await regenerate();
   }
 
   return (
@@ -41,7 +93,7 @@ export function AttentionChat() {
           <p className="mono">CHAT.AGENT</p>
           <h2>Ask the terminal</h2>
         </div>
-        <span className="mono">{busy ? "streaming" : "ready"}</span>
+        <span className="mono">{faultText ? "fault" : busy ? "streaming" : "ready"}</span>
       </header>
 
       <div className="agent-messages">
@@ -56,6 +108,13 @@ export function AttentionChat() {
         )}
         {messages.map((message) => <Message key={message.id} message={message} />)}
       </div>
+
+      {faultText && (
+        <div className="agent-fault mono" role="alert">
+          <span>! {faultText}</span>
+          <button type="button" className="chip" onClick={() => void retry()}>retry</button>
+        </div>
+      )}
 
       <form
         className="agent-form"

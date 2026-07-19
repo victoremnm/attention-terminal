@@ -1,6 +1,12 @@
 import { createClient, type ClickHouseClient } from "@clickhouse/client";
 import { tool } from "ai";
-import { z } from "zod";
+import {
+  describeTableDef,
+  getDailyDigestDef,
+  listTablesDef,
+  renderAnswerDef,
+  runReadOnlyQueryDef,
+} from "./agent-tool-schemas";
 import { dailyDigest } from "./digest";
 import { RenderPayloadSchema } from "./render-payload";
 
@@ -46,8 +52,7 @@ function capOutput(rows: unknown[]) {
 }
 
 export const listTables = tool({
-  description: "List Attention Terminal ClickHouse tables with engine, rows, and size. Use before querying unknown data.",
-  inputSchema: z.object({}),
+  ...listTablesDef,
   execute: async () => {
     const result = await getClickHouse().query({
       query: `
@@ -67,10 +72,7 @@ export const listTables = tool({
 });
 
 export const describeTable = tool({
-  description: "Describe one ClickHouse table. The table can be unqualified or database-qualified.",
-  inputSchema: z.object({
-    table: z.string().min(1).max(160),
-  }),
+  ...describeTableDef,
   execute: async ({ table }) => {
     const [database, name] = table.includes(".") ? table.split(".", 2) : [undefined, table];
     const result = await getClickHouse().query({
@@ -89,11 +91,7 @@ export const describeTable = tool({
 });
 
 export const runReadOnlyQuery = tool({
-  description:
-    "Run a bounded read-only ClickHouse SQL query. Only SELECT-style statements are allowed. Prefer aggregations and include LIMIT on raw row queries.",
-  inputSchema: z.object({
-    query: z.string().min(1).max(12_000),
-  }),
+  ...runReadOnlyQueryDef,
   execute: async ({ query }) => {
     if (!READ_ONLY_STATEMENTS.test(query) || hasMultipleStatements(query)) {
       return {
@@ -126,20 +124,12 @@ export const runReadOnlyQuery = tool({
 });
 
 export const getDailyDigest = tool({
-  description:
-    "Compute the Daily Skinny digest payload from the existing HN and GitHub feeds. Use for empty prompt, daily-open, 'what's new', and broad daily triage.",
-  inputSchema: z.object({
-    noiseFloor: z.number().min(0).max(1).default(0.2),
-  }),
+  ...getDailyDigestDef,
   execute: async ({ noiseFloor }) => dailyDigest(noiseFloor),
 });
 
 export const renderAnswer = tool({
-  description:
-    "Validate and render an Attention Terminal answer payload. Use this instead of markdown tables or long prose. Payloads must match the answer grammar.",
-  inputSchema: z.object({
-    payload: RenderPayloadSchema,
-  }),
+  ...renderAnswerDef,
   execute: async ({ payload }) => {
     const parsed = RenderPayloadSchema.safeParse(payload);
     if (!parsed.success) {
