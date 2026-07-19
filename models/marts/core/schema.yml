@@ -1,0 +1,58 @@
+version: 2
+
+models:
+  - name: dim_source
+    description: "Conformed source dimension for talk, code, and model feeds."
+    columns:
+      - name: source_id
+        tests: [not_null, unique]
+      - name: source_family
+        description: "Analytical family: talk, code, or model."
+
+  - name: dim_repo
+    description: "Repository dimension conformed from GH Archive events."
+    columns:
+      - name: repo_key
+        tests: [not_null, unique]
+      - name: repo_name
+        tests: [not_null]
+
+  - name: dim_huggingface_model
+    description: "Latest known Hugging Face model attributes by model_id."
+    columns:
+      - name: model_key
+        tests: [not_null, unique]
+      - name: model_id
+        tests: [not_null]
+
+  - name: fact_talk_activity_hourly
+    description: "Hourly Hacker News activity facts from the ClickHouse rollup."
+    columns:
+      - name: activity_hour
+        tests: [not_null]
+      - name: source_id
+        tests: [not_null]
+
+  - name: fact_code_activity_hourly
+    description: "Hourly GitHub repository activity facts from the ClickHouse rollup."
+    columns:
+      - name: activity_hour
+        tests: [not_null]
+      - name: repo_key
+        tests: [not_null]
+
+  - name: fact_model_activity_daily
+    description: "Daily Hugging Face model attention facts from hourly scans."
+    columns:
+      - name: activity_date
+        tests: [not_null]
+      - name: model_key
+        tests: [not_null]
+
+  - name: mart_attention_source_hourly
+    description: "Unified hourly attention mart for source-level comparisons."
+    columns:
+      - name: activity_hour
+        tests: [not_null]
+      - name: source_id
+        tests: [not_null]

@@ -1,0 +1,19 @@
+version: 2
+
+sources:
+  - name: raw
+    schema: "{{ target.schema }}"
+    description: "Append-only or engine-managed source tables owned by Goose migrations and Trigger.dev ingestion tasks."
+    tables:
+      - name: hackernews
+        description: "Raw Hacker News item records, reinserted as scores/comments change."
+      - name: github_events
+        description: "Raw GH Archive events with extracted activity measures."
+      - name: hf_model_snapshots
+        description: "Hourly Hugging Face model scan snapshots."
+      - name: hn_hourly
+        description: "Incremental ClickHouse rollup of Hacker News activity."
+      - name: gh_repo_hourly
+        description: "Incremental ClickHouse rollup of GitHub repo activity."
+      - name: ingest_log
+        description: "Ingestion watermarks and freshness metadata."
