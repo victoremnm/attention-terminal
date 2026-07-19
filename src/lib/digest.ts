@@ -50,6 +50,17 @@ function tokenWhere(topic: Topic) {
   return topic.tokens.map((token) => `hasToken(lower(title), ${sqlString(token)})`).join(" OR ");
 }
 
+// Subject mapping for HN titles, generated from TOPICS so it stays in lockstep
+// with the rollup migration (same tokens, same first-match order).
+function hnSubjectExpr() {
+  const branches = TOPICS.map((topic) => `${tokenWhere(topic)}, ${sqlString(topic.subject)}`).join(",\n          ");
+  return `multiIf(\n          ${branches},\n          '')`;
+}
+
+function hnSubjectFilter() {
+  return TOPICS.map((topic) => `(${tokenWhere(topic)})`).join(" OR ");
+}
+
 function verdictFor(talkZ: number, codeZ: number, spark: number[]): Verdict {
   const spread = talkZ / Math.max(codeZ, 0.01);
   if (spread >= 2 || spread <= 0.5) return "DIVERGENT";
@@ -88,7 +99,7 @@ function skinnyFor(cluster: {
 
 function activitySql() {
   return `WITH
-    (SELECT maxIf(hour, source = 'hn') FROM daily_skinny_subject_hourly) AS hn_as_of,
+    toStartOfHour((SELECT max(time) FROM hackernews)) AS hn_as_of,
     (SELECT maxIf(hour, source = 'gh') FROM daily_skinny_subject_hourly) AS gh_as_of
   SELECT
     subject,
@@ -99,17 +110,56 @@ function activitySql() {
     sum(gh_stars) AS gh_stars,
     sum(repos) AS repos
   FROM (
+    -- HN threads/comments are read live from the deduped hackernews table
+    -- (ReplacingMergeTree, resolved with argMax(update_time)). The daily_skinny
+    -- HN materialized view counts every re-inserted score/comment update, so its
+    -- talk_threads/comments drift upward; sourcing them here keeps counts honest.
     SELECT
       subject,
-      toUInt8(intDiv(dateDiff('hour', hour, if(source = 'hn', hn_as_of, gh_as_of)), 24)) AS age,
-      sum(talk_threads) AS talk_threads,
+      toUInt8(intDiv(dateDiff('hour', hour, hn_as_of), 24)) AS age,
+      uniqExact(id) AS talk_threads,
       sum(comments) AS comments,
+      0 AS code_score,
+      0 AS gh_stars,
+      0 AS repos
+    FROM (
+      SELECT
+        id,
+        any(hour) AS hour,
+        any(subject) AS subject,
+        greatest(argMax(descendants, update_time), 0) AS comments
+      FROM (
+        SELECT
+          id,
+          toStartOfHour(time) AS hour,
+          update_time,
+          descendants,
+          ${hnSubjectExpr()} AS subject
+        FROM hackernews
+        WHERE type = 'story'
+          AND deleted = 0
+          AND dead = 0
+          AND time >= hn_as_of - INTERVAL 30 DAY
+          AND time <= hn_as_of
+          AND (${hnSubjectFilter()})
+      )
+      GROUP BY id
+    )
+    GROUP BY subject, age
+
+    UNION ALL
+
+    -- GH activity is insert-once (idempotent hourly load), so the rollup is accurate.
+    SELECT
+      subject,
+      toUInt8(intDiv(dateDiff('hour', hour, gh_as_of), 24)) AS age,
+      0 AS talk_threads,
+      0 AS comments,
       sum(code_score) AS code_score,
       sum(gh_stars) AS gh_stars,
-      uniqMergeIf(repos, source = 'gh') AS repos
+      uniqMerge(repos) AS repos
     FROM daily_skinny_subject_hourly
-    WHERE (source = 'hn' AND hour >= hn_as_of - INTERVAL 30 DAY AND hour <= hn_as_of)
-       OR (source = 'gh' AND hour >= gh_as_of - INTERVAL 30 DAY AND hour <= gh_as_of)
+    WHERE source = 'gh' AND hour >= gh_as_of - INTERVAL 30 DAY AND hour <= gh_as_of
     GROUP BY subject, age
   )
   WHERE subject != ''
@@ -119,7 +169,7 @@ function activitySql() {
 
 export async function dailyDigest(noiseFloor = 0.2): Promise<DigestPayload> {
   const safeFloor = clamp01(noiseFloor);
-  const { rows } = await q<ActivityRow>(activitySql(), ["daily_skinny_subject_hourly"]);
+  const { rows } = await q<ActivityRow>(activitySql(), ["daily_skinny_subject_hourly", "hackernews"]);
   const bySubject = new Map<string, ActivityRow[]>();
   for (const row of rows) {
     const current = bySubject.get(row.subject) ?? [];
