@@ -130,6 +130,11 @@ function MessagePart({ part }: { part: UIMessage["parts"][number] }) {
     return <ToolStatus label="computing daily skinny" done={part.state === "output-available"} />;
   }
 
+  if (part.type === "tool-getTopicGraph") {
+    const input = part.input as { kind?: string } | undefined;
+    return <ToolStatus label={`building ${input?.kind ?? "topic"} graph`} done={part.state === "output-available"} />;
+  }
+
   return null;
 }
 
