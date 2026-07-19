@@ -15,4 +15,4 @@ select
   deleted as is_deleted,
   dead as is_dead,
   if(deleted = 1 or dead = 1, 1, 0) as is_removed
-from {{ source('raw', 'hackernews') }}
+from {{ source('raw', 'hackernews') }} FINAL

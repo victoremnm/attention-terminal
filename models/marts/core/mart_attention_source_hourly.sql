@@ -8,7 +8,7 @@ select
   event_family,
   item_count as activity_count,
   actor_count,
-  attention_score
+  toInt64(attention_score) as attention_score
 from {{ ref('fact_talk_activity_hourly') }}
 
 union all
@@ -21,5 +21,5 @@ select
   event_family,
   event_count as activity_count,
   actor_count,
-  event_count as attention_score
+  toInt64(event_count) as attention_score
 from {{ ref('fact_code_activity_hourly') }}
