@@ -69,7 +69,7 @@ export function TickerRail({ initial, ingestToken }: { initial: TickerLanes; ing
     <section className="ticker" aria-label="Breakout ticker">
       <div className="tk-head mono">📌 PINNED · BREAKOUT TICKER <span className="muted">{ingestToken ? "ticks with ingestion" : "refreshes 60s"}</span></div>
       <Lane title="NEW REPOS" cards={lanes.newRepos} />
-      <Lane title="TOP FORKED · 1H" cards={lanes.topForked} />
+      <Lane title="TOP FORKED · 24H" cards={lanes.topForked} />
       <Lane title="SHIPPING VELOCITY · 24H" cards={lanes.shippingVelocity} />
       <Lane title="STAR BREAKOUTS" cards={lanes.starBreakouts} />
       <Lane title="RISING STORIES" cards={lanes.risingStories} />

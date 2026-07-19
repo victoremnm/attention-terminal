@@ -84,17 +84,17 @@ export async function tickerLanes(): Promise<TickerLanes> {
       `WITH
          (SELECT max(created_at) FROM github_events) AS high_water,
          top_forks AS (
-           SELECT repo_name, count() AS forks_1h
+           SELECT repo_name, count() AS forks_24h
            FROM github_events
            WHERE event_type = 'ForkEvent'
-             AND created_at > high_water - INTERVAL 1 HOUR
+             AND created_at > high_water - INTERVAL 24 HOUR
            GROUP BY repo_name
-           ORDER BY forks_1h DESC
+           ORDER BY forks_24h DESC
            LIMIT 8
          )
        SELECT
          f.repo_name AS name,
-         toString(f.forks_1h) AS forks,
+         toString(f.forks_24h) AS forks,
          toString(coalesce(any(m.stars_24h), 0)) AS stars,
          toString(coalesce(any(m.pushes_24h), 0)) AS pushes,
          toString(coalesce(any(m.prs_24h), 0)) AS prs,
@@ -194,7 +194,7 @@ export async function tickerLanes(): Promise<TickerLanes> {
       href: `https://github.com/${r.name}`,
     })),
     topForked: forks.rows.map((r) => ({
-      kicker: "FORKED 1H",
+      kicker: "FORKED 24H",
       name: r.name,
       metric: `+${r.forks} forks`,
       delta: activityDelta([
@@ -202,7 +202,7 @@ export async function tickerLanes(): Promise<TickerLanes> {
         ["pushes", r.pushes],
         ["PRs", r.prs],
         ["issues", r.issues],
-      ]) ?? "latest feed hour",
+      ]) ?? "latest feed day",
       stats: [
         stat("forks", r.forks, "hot"),
         stat("stars", r.stars),
