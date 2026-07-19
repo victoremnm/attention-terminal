@@ -129,7 +129,7 @@ export const getDailyDigest = tool({
   description:
     "Compute the Daily Skinny digest payload from the existing HN and GitHub feeds. Use for empty prompt, daily-open, 'what's new', and broad daily triage.",
   inputSchema: z.object({
-    noiseFloor: z.number().min(0).max(1).default(0.2),
+    noiseFloor: z.number().min(0).max(1).default(0),
   }),
   execute: async ({ noiseFloor }) => dailyDigest(noiseFloor),
 });
