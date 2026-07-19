@@ -9,10 +9,11 @@ function Card({ card }: { card: TickerCard }) {
   const stats = card.stats?.filter((stat) => stat.value !== "0").slice(0, 6) ?? [];
   const inner = (
     <>
-      <span className="tk-card-top">
-        <span className="tk-kicker mono">{card.kicker}</span>
-        {card.spark && card.spark.length > 1 && <Sparkline data={card.spark} color="var(--cyan)" w={52} h={14} />}
-      </span>
+      {card.spark && card.spark.length > 1 && (
+        <span className="tk-card-top">
+          <Sparkline data={card.spark} color="var(--cyan)" w={52} h={14} />
+        </span>
+      )}
       <span className="tk-name">{card.name}</span>
       <span className="tk-foot">
         <span className="tk-metric mono">{card.metric}</span>

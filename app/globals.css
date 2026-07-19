@@ -124,10 +124,8 @@ a { color: inherit; }
   display: flex;
   min-height: 16px;
   align-items: center;
-  justify-content: space-between;
-  gap: 8px;
+  justify-content: flex-end;
 }
-.tk-kicker { font-size: 8.5px; letter-spacing: .16em; color: var(--muted); }
 .tk-name { font-size: 12px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tk-metric { font-size: 12px; color: var(--cyan); }
 .tk-foot { display: flex; align-items: center; gap: 8px; min-height: 16px; flex-wrap: wrap; }
