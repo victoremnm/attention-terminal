@@ -21,8 +21,7 @@ select
   repos_created,
   branches_created,
   tags_created,
-  releases_published,
-  commits + prs_opened * 3 + prs_merged * 5 + issues_opened * 2 + stars * 2 + forks * 2 as trend_score
+  releases_published
 from {{ ref('fact_repo_activity_daily') }}
 
 union all
@@ -48,6 +47,5 @@ select
   repos_created,
   branches_created,
   tags_created,
-  releases_published,
-  commits + prs_opened * 3 + prs_merged * 5 + issues_opened * 2 + stars * 2 + forks * 2 as trend_score
+  releases_published
 from {{ ref('fact_repo_activity_monthly') }}

@@ -1,6 +1,9 @@
 -- +goose Up
 -- Repo-level trend rollups for longer-range charts and rankings.
 -- Query pattern: recent day/month windows across many repos, then rank or drill.
+-- No historical backfill is run here: CD does not pause GH ingestion, so a
+-- backfill-before-MV sequence can miss live rows. Backfill separately only when
+-- ingestion is paused or a bounded catch-up procedure exists.
 CREATE TABLE IF NOT EXISTS gh_repo_daily
 (
     day Date,
@@ -24,30 +27,6 @@ CREATE TABLE IF NOT EXISTS gh_repo_daily
 )
 ENGINE = AggregatingMergeTree
 ORDER BY (day, repo_name);
-
-INSERT INTO gh_repo_daily
-SELECT
-    toDate(created_at) AS day,
-    repo_name,
-    countState() AS events,
-    uniqState(actor_login) AS actors,
-    sumSimpleState(toUInt64(event_type = 'PushEvent')) AS pushes,
-    sumSimpleState(toUInt64(commit_count)) AS commits,
-    sumSimpleState(toUInt64(distinct_commit_count)) AS distinct_commits,
-    sumSimpleState(toUInt64(event_type = 'WatchEvent')) AS stars,
-    sumSimpleState(toUInt64(event_type = 'ForkEvent')) AS forks,
-    sumSimpleState(toUInt64(event_type = 'PullRequestEvent' AND action = 'opened')) AS prs_opened,
-    sumSimpleState(toUInt64(event_type = 'PullRequestEvent' AND action = 'closed')) AS prs_closed,
-    sumSimpleState(toUInt64(event_type = 'PullRequestEvent' AND action = 'closed' AND pr_merged = 1)) AS prs_merged,
-    sumSimpleState(toUInt64(event_type = 'IssuesEvent' AND action = 'opened')) AS issues_opened,
-    sumSimpleState(toUInt64(event_type = 'IssuesEvent' AND action = 'closed')) AS issues_closed,
-    sumSimpleState(toUInt64(event_type = 'CreateEvent' AND ref_type = 'repository')) AS repos_created,
-    sumSimpleState(toUInt64(event_type = 'CreateEvent' AND ref_type = 'branch')) AS branches_created,
-    sumSimpleState(toUInt64(event_type = 'CreateEvent' AND ref_type = 'tag')) AS tags_created,
-    sumSimpleState(toUInt64(event_type = 'ReleaseEvent' AND action = 'published')) AS releases_published
-FROM github_events
-WHERE repo_name != ''
-GROUP BY day, repo_name;
 
 CREATE MATERIALIZED VIEW IF NOT EXISTS gh_repo_daily_mv TO gh_repo_daily AS
 SELECT
@@ -96,30 +75,6 @@ CREATE TABLE IF NOT EXISTS gh_repo_monthly
 )
 ENGINE = AggregatingMergeTree
 ORDER BY (month, repo_name);
-
-INSERT INTO gh_repo_monthly
-SELECT
-    toStartOfMonth(created_at) AS month,
-    repo_name,
-    countState() AS events,
-    uniqState(actor_login) AS actors,
-    sumSimpleState(toUInt64(event_type = 'PushEvent')) AS pushes,
-    sumSimpleState(toUInt64(commit_count)) AS commits,
-    sumSimpleState(toUInt64(distinct_commit_count)) AS distinct_commits,
-    sumSimpleState(toUInt64(event_type = 'WatchEvent')) AS stars,
-    sumSimpleState(toUInt64(event_type = 'ForkEvent')) AS forks,
-    sumSimpleState(toUInt64(event_type = 'PullRequestEvent' AND action = 'opened')) AS prs_opened,
-    sumSimpleState(toUInt64(event_type = 'PullRequestEvent' AND action = 'closed')) AS prs_closed,
-    sumSimpleState(toUInt64(event_type = 'PullRequestEvent' AND action = 'closed' AND pr_merged = 1)) AS prs_merged,
-    sumSimpleState(toUInt64(event_type = 'IssuesEvent' AND action = 'opened')) AS issues_opened,
-    sumSimpleState(toUInt64(event_type = 'IssuesEvent' AND action = 'closed')) AS issues_closed,
-    sumSimpleState(toUInt64(event_type = 'CreateEvent' AND ref_type = 'repository')) AS repos_created,
-    sumSimpleState(toUInt64(event_type = 'CreateEvent' AND ref_type = 'branch')) AS branches_created,
-    sumSimpleState(toUInt64(event_type = 'CreateEvent' AND ref_type = 'tag')) AS tags_created,
-    sumSimpleState(toUInt64(event_type = 'ReleaseEvent' AND action = 'published')) AS releases_published
-FROM github_events
-WHERE repo_name != ''
-GROUP BY month, repo_name;
 
 CREATE MATERIALIZED VIEW IF NOT EXISTS gh_repo_monthly_mv TO gh_repo_monthly AS
 SELECT

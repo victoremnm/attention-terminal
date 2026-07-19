@@ -78,7 +78,7 @@ models:
         description: "HN comment count for talk rows; zero for non-comment-counted sources."
 
   - name: mart_repo_activity_timeseries
-    description: "Unified daily/monthly GitHub repo activity time series with comparable trend measures."
+    description: "Unified daily/monthly GitHub repo activity time series with raw trend measures."
     columns:
       - name: grain
         tests: [not_null]

@@ -56,7 +56,7 @@ The next step is to add an embeddings table keyed by `(source_id, document_id, e
 
 `gh_repo_hourly` remains the low-latency event-family rollup. `gh_repo_daily` and `gh_repo_monthly` add trend-oriented repo measures for longer windows: events, actors, pushes, commits, distinct commits, stars, forks, PRs opened/closed/merged, issues opened/closed, repository creates, branch/tag creates, and releases published.
 
-The dbt `mart_repo_activity_timeseries` model exposes those measures with a `day` or `month` grain plus a shared `trend_score`, so product surfaces can switch time windows without rewriting measure logic.
+The dbt `mart_repo_activity_timeseries` model exposes those measures with a `day` or `month` grain, so product surfaces can switch time windows without rewriting measure logic.
 
 ## ClickHouse Design Notes
 
