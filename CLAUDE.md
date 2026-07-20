@@ -63,7 +63,10 @@ demo video. All code must be written during July 17-23.
 ## Conventions
 
 - Secrets: 1Password Personal vault → `.env` (gitignored). ClickHouse creds in item
-  `4innzk6cud7bz5v562i7tpgpki`, Trigger.dev in `2pgjlwxybaqvtrxjvlor5dkrsm`. Never inline.
+  `4innzk6cud7bz5v562i7tpgpki`, Trigger.dev in `2pgjlwxybaqvtrxjvlor5dkrsm`, OpenAI in
+  `mfxzvdmx24qw74iue377jcflte`. Never inline. OPENAI_API_KEY must exist in BOTH the
+  Next.js env (head-start route) and each Trigger.dev environment (agent runs) — prod
+  missing it was the original silent-chat-hang root cause.
 - Git: feature branches + PRs only, never push to main. Commits: `feat:`/`fix:`/`docs:`.
 - Issues: #2 tracking checklist, #3 migrations/aggregates registry (update when adding
   DDL), #4 design record (append decisions there).
