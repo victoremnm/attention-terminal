@@ -64,6 +64,15 @@ function TickerAnswer({ payload }: { payload: TickerPayload }) {
             <b>{item.name}</b>
             <i className="mono">{item.metric}</i>
             {item.delta && <small className="mono">{item.delta}</small>}
+            {item.stats && (
+              <span className="agent-ticker-stats mono">
+                {item.stats.filter((stat) => stat.value !== "0").slice(0, 4).map((stat) => (
+                  <em key={`${stat.label}-${stat.value}`} data-tone={stat.tone}>
+                    {stat.value} {stat.label}
+                  </em>
+                ))}
+              </span>
+            )}
           </a>
         ))}
       </div>

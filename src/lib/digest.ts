@@ -117,7 +117,7 @@ function activitySql() {
   ORDER BY subject, age`;
 }
 
-export async function dailyDigest(noiseFloor = 0.2): Promise<DigestPayload> {
+export async function dailyDigest(noiseFloor = 0): Promise<DigestPayload> {
   const safeFloor = clamp01(noiseFloor);
   const { rows } = await q<ActivityRow>(activitySql(), ["daily_skinny_subject_hourly"]);
   const bySubject = new Map<string, ActivityRow[]>();

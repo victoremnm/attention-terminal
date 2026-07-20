@@ -64,6 +64,11 @@ const TickerCardSchema = z.object({
   name: z.string().max(160),
   metric: z.string().max(80),
   delta: z.string().max(120).optional(),
+  stats: z.array(z.object({
+    label: z.string().max(32),
+    value: z.string().max(32),
+    tone: z.enum(["hot", "muted"]).optional(),
+  })).optional(),
   spark: z.array(z.number()).optional(),
   href: z.string().url().optional(),
 });
