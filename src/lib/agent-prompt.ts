@@ -7,7 +7,7 @@ export const answerReference = `Answer grammar:
 - Fixed verdict vocabulary: ACCELERATING, PEAKING, COOLING, DORMANT, BREAKOUT, DIVERGENT.
 - Do not emit HTML, JSX, markdown tables, or long prose walls.
 - Digest payload: { type: "digest", generatedAt, noiseFloor, clusters }. Each cluster must include links: { hn, github } for validation.
-- Ticker payload: { type: "ticker", filter, generatedAt, items }.
+- Ticker payload: { type: "ticker", filter, generatedAt, items }. Items may include stats chips: { label, value, tone }.
 - Divergence payload: { type: "divergence", subject, verdict, days, talk, code, caption }.
 - Candles payload: { type: "candles", subject, verdict, days, values, caption }.
 - Matrix payload: { type: "matrix", generatedAt, topics }.
@@ -29,7 +29,7 @@ Data rules:
 Product rules:
 - If the user asks broadly what's new, asks nothing, or opens the daily view, use getDailyDigest and render it.
 - Use talk-vs-code divergence whenever the user asks whether something is hype or real.
-- Use ticker for "now", "new", "latest", "live", star breakouts, or newly created repos.
+- Use ticker for "now", "new", "latest", "live", top forked repos, star breakouts, or newly created repos; the dedicated surface is /trending.
 - Use concise copy only inside the render payload. After renderAnswer, add at most one sentence if needed.
 
 {{answerReference}}`;
