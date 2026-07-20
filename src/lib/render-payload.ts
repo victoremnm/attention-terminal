@@ -113,12 +113,70 @@ export const MatrixSchema = z.object({
   })),
 });
 
+const BriefingTileSchema = z.object({
+  kicker: z.string().max(32),
+  value: z.string().max(80),
+  detail: z.string().max(160),
+  tone: z.enum(["accel", "break", "neutral"]).optional(),
+});
+
+const BriefingBuzzTokenSchema = z.object({
+  token: z.string().max(40),
+  surge: z.number(),
+  mentions: z.number().int().nonnegative(),
+  baselineNote: z.string().max(80),
+});
+
+const BriefingFrontPageRowSchema = z.object({
+  rank: z.number().int().positive(),
+  id: z.number().int(),
+  title: z.string().max(240),
+  site: z.string().max(160),
+  score: z.number().int().nonnegative(),
+  comments: z.number().int().nonnegative(),
+  perHour: z.number(),
+  verdict: VerdictSchema,
+});
+
+const BriefingRisingRowSchema = z.object({
+  id: z.number().int(),
+  title: z.string().max(240),
+  perHour: z.number(),
+  ageLabel: z.string().max(32),
+});
+
+const BriefingDomainSchema = z.object({
+  domain: z.string().max(160),
+  score: z.number().nonnegative(),
+  stories: z.number().int().nonnegative(),
+  note: z.string().max(160).optional(),
+});
+
+export const BriefingSchema = z.object({
+  type: z.literal("briefing"),
+  generatedAt: z.string(),
+  question: z.string().max(240),
+  freshness: z.string().max(160),
+  tiles: z.array(BriefingTileSchema).length(3),
+  pulse: z.object({
+    hours: z.array(z.string()),
+    stories: z.array(z.number()),
+    comments: z.array(z.number()),
+  }),
+  buzz: z.array(BriefingBuzzTokenSchema),
+  frontPage: z.array(BriefingFrontPageRowSchema),
+  rising: z.array(BriefingRisingRowSchema),
+  domains: z.array(BriefingDomainSchema),
+  sql: z.string().max(4000),
+});
+
 export const RenderPayloadSchema = z.discriminatedUnion("type", [
   DigestSchema,
   TickerSchema,
   DivergenceSchema,
   CandlesSchema,
   MatrixSchema,
+  BriefingSchema,
 ]);
 
 export type Verdict = z.infer<typeof VerdictSchema>;
@@ -130,4 +188,10 @@ export type TickerPayload = z.infer<typeof TickerSchema>;
 export type DivergencePayload = z.infer<typeof DivergenceSchema>;
 export type CandlesPayload = z.infer<typeof CandlesSchema>;
 export type MatrixPayload = z.infer<typeof MatrixSchema>;
+export type BriefingTile = z.infer<typeof BriefingTileSchema>;
+export type BriefingBuzzToken = z.infer<typeof BriefingBuzzTokenSchema>;
+export type BriefingFrontPageRow = z.infer<typeof BriefingFrontPageRowSchema>;
+export type BriefingRisingRow = z.infer<typeof BriefingRisingRowSchema>;
+export type BriefingDomain = z.infer<typeof BriefingDomainSchema>;
+export type BriefingPayload = z.infer<typeof BriefingSchema>;
 export type RenderPayload = z.infer<typeof RenderPayloadSchema>;
