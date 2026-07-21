@@ -1069,6 +1069,41 @@ a { color: inherit; }
   flex-direction: column;
   width: 100%;
 }
+.rankings-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.rankings-summary-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  border: 1px solid var(--line-soft);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--panel) 78%, transparent 22%);
+  padding: 10px 12px;
+}
+.rankings-summary-card span {
+  color: var(--muted);
+  font-size: 9.5px;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+}
+.rankings-summary-card b {
+  min-width: 0;
+  color: var(--ink);
+  font-size: 18px;
+  line-height: 1.1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rankings-summary-card em {
+  color: var(--muted);
+  font-size: 10px;
+  font-style: normal;
+}
 .rankings-search {
   width: 100%;
   border: 0;
@@ -1085,10 +1120,30 @@ a { color: inherit; }
 .rankings-search:focus {
   border-bottom-color: color-mix(in srgb, var(--cyan) 62%, var(--line) 38%);
 }
+.rankings-hint {
+  margin: 7px 0 0;
+  color: var(--muted);
+  font-size: 10px;
+}
 .rankings-tabs {
   display: flex;
   gap: 6px;
   margin: 14px 0 4px;
+}
+.rankings-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 10px 0 4px;
+  color: var(--muted);
+  font-size: 10px;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+.rankings-meta span {
+  border: 1px solid var(--line-soft);
+  border-radius: 999px;
+  padding: 3px 8px;
 }
 .rankings-tab {
   border: 1px solid var(--line-soft);
@@ -1223,6 +1278,12 @@ a { color: inherit; }
   }
 }
 
+@media (max-width: 960px) {
+  .rankings-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 /* skills.sh hides the sparkline column on small screens */
 @media (max-width: 640px) {
   .rank-head,
@@ -1234,6 +1295,9 @@ a { color: inherit; }
   }
   .rank-stats {
     display: none;
+  }
+  .rankings-summary {
+    grid-template-columns: 1fr;
   }
 }
 .repo-sql {
