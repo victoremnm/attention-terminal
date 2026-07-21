@@ -6,10 +6,10 @@
   "type": "module",
   "dependencies": {
     "@ai-sdk/openai": "^4.0.16",
-    "@ai-sdk/react": "^4.0.34",
+    "@ai-sdk/react": "^4.0.35",
     "@clickhouse/client": "^1.23.1",
-    "@trigger.dev/react-hooks": "^4.5.4",
-    "@trigger.dev/sdk": "^4.5.4",
+    "@trigger.dev/react-hooks": "^4.5.5",
+    "@trigger.dev/sdk": "^4.5.5",
     "ai": "^7.0.31",
     "framer-motion": "^12.42.2",
     "next": "^16.2.10",
