@@ -13,6 +13,8 @@
 -- still prune well before grouping by contributor.
 --
 -- Required manual backfill (MVs only see post-creation inserts - CLAUDE.md):
+-- Note: You MUST bound these backfills to events before MV creation to avoid double-counting.
+-- Substitute <MV_CREATION_TIME> with the exact time the migration ran.
 --
 --   INSERT INTO gh_repo_drilldown_hourly
 --   SELECT
@@ -31,6 +33,7 @@
 --       sumSimpleState(toUInt64(event_type = 'PullRequestEvent' AND action = 'closed' AND pr_merged = 1)) AS prs_merged
 --   FROM github_events
 --   WHERE repo_name != ''
+--     AND created_at < '<MV_CREATION_TIME>'
 --     AND event_type IN ('PushEvent', 'ForkEvent', 'WatchEvent', 'IssuesEvent', 'PullRequestEvent')
 --   GROUP BY hour, repo_name;
 --
@@ -48,6 +51,7 @@
 --   FROM github_events
 --   WHERE repo_name != ''
 --     AND actor_login != ''
+--     AND created_at < '<MV_CREATION_TIME>'
 --     AND event_type IN ('PushEvent', 'PullRequestEvent')
 --   GROUP BY hour, repo_name, actor_login;
 --
@@ -63,6 +67,7 @@
 --       pr_merged
 --   FROM github_events
 --   WHERE repo_name != ''
+--     AND created_at < '<MV_CREATION_TIME>'
 --     AND event_type IN ('PushEvent', 'PullRequestEvent');
 CREATE TABLE IF NOT EXISTS gh_repo_drilldown_hourly
 (
