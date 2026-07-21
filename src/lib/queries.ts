@@ -1,6 +1,7 @@
 // Server-side only: imported exclusively from server components and route
 // handlers. ClickHouse credentials never reach the client bundle.
-import { clickhouse } from "./clickhouse";
+import { clickhouse, clickhouseInsert } from "./clickhouse";
+import { fetchRepoRow } from "./github-repo";
 import type { DevPoint, RepoDrilldownPayload } from "./render-payload";
 
 // Every query returns its provenance so the SQL-flip card back can show the
@@ -453,9 +454,51 @@ export async function repoDrilldown(repoName: string): Promise<RepoDrilldownPayl
     ),
   ]);
 
-  const meta = metadata.rows[0];
+  let meta = metadata.rows[0];
   const totals = kpis.rows[0];
   const provenances = [metadata.provenance, kpis.provenance, velocity.provenance, feed.provenance];
+
+  // On-demand enrichment (issue #56): gh_repo_metadata only covers ~160 repos, so
+  // prolific repos routinely have no row here and the drilldown shows no
+  // description. When that happens, fetch the repo live via the shared
+  // fetch/mapping helper (same logic the refresh-repo-metadata Trigger.dev task
+  // uses) and persist it so future drilldowns and the stale-refresh bucket both
+  // see it. This must never block or fail the drilldown: no GITHUB_TOKEN, a
+  // fetch error, or an insert error all fall back to the pre-existing
+  // empty-description behavior.
+  if (!meta && process.env.GITHUB_TOKEN) {
+    try {
+      const fetched = await fetchRepoRow(repoName);
+      if (fetched) {
+        meta = {
+          description: fetched.description,
+          language: fetched.language,
+          topics: fetched.topics,
+          github_stars: String(fetched.github_stars),
+          github_forks: String(fetched.github_forks),
+          open_issues: String(fetched.open_issues),
+        };
+
+        // Best-effort persistence via the batching insert client (CLAUDE.md
+        // gotcha #2 - never a plain HTTP bulk insert). An insert failure must
+        // not block returning the payload we already fetched.
+        try {
+          await clickhouseInsert.insert({
+            table: "gh_repo_metadata",
+            values: [fetched],
+            format: "JSONEachRow",
+          });
+        } catch (insertError) {
+          console.error("[repoDrilldown] on-demand gh_repo_metadata insert failed", {
+            repoName,
+            error: insertError,
+          });
+        }
+      }
+    } catch (fetchError) {
+      console.error("[repoDrilldown] on-demand GitHub fetch failed", { repoName, error: fetchError });
+    }
+  }
 
   return {
     type: "repo-drilldown",
