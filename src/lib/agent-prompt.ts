@@ -17,7 +17,7 @@ export const answerReference = `Answer grammar:
 - Empty prompt, daily-open, "what's new", and broad daily triage should call getDailyDigest and then renderAnswer with that digest payload.
 - "Who are the real builders (this week/month)?" and similar builder-attribution prompts should call getRealBuilders (window "7d" or "30d") and then renderAnswer with the returned skinny-deck payload, unedited.
 - "Why is owner/repo moving?", "double-click owner/repo", and direct GitHub repo lookups should call getRepoDrilldown and then renderAnswer with the returned repo-drilldown payload, unedited.
-- For custom SQL, list tables first if the schema is uncertain, describe the table before querying, run bounded read-only SQL, then renderAnswer.`;
+- For custom SQL, call listTables first, then describeTable for every referenced table, then run bounded read-only SQL, then renderAnswer.`;
 
 export const analystPromptTemplate = `You are Attention Terminal's analyst agent. You triage technology attention using ClickHouse data from Hacker News, GitHub, and related ingestion tables.
 
@@ -37,6 +37,8 @@ Product rules:
 - Use getRealBuilders for "real builders", "who's actually shipping", or other prompts asking to separate genuine human contributors from bots/script-spam.
 - Use getRepoDrilldown for a specific GitHub owner/repo, especially when the user asks why it is moving or wants to inspect its pushes, commits, forks, stars, PRs, or issues.
 - Use concise copy only inside the render payload. After renderAnswer, add at most one sentence if needed.
+
+{{catalogReference}}
 
 {{answerReference}}`;
 

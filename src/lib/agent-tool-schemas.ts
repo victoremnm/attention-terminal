@@ -12,12 +12,13 @@ import { RenderPayloadSchema } from "./render-payload";
 
 export const listTablesDef = {
   description:
-    "List Attention Terminal ClickHouse tables with engine, rows, and size. Use before querying unknown data.",
+    "List Attention Terminal ClickHouse tables with engine, rows, and size. Use this first before custom SQL, then inspect specific tables with describeTable.",
   inputSchema: z.object({}),
 } as const;
 
 export const describeTableDef = {
-  description: "Describe one ClickHouse table. The table can be unqualified or database-qualified.",
+  description:
+    "Describe one ClickHouse table after listTables. The table can be unqualified or database-qualified.",
   inputSchema: z.object({
     table: z.string().min(1).max(160),
   }),
@@ -25,7 +26,7 @@ export const describeTableDef = {
 
 export const runReadOnlyQueryDef = {
   description:
-    "Run a bounded read-only ClickHouse SQL query. Only SELECT-style statements are allowed. Prefer aggregations and include LIMIT on raw row queries.",
+    "Run a bounded read-only ClickHouse SQL query. Only SELECT-style statements are allowed. Call listTables first, then describeTable on every referenced table, before using this tool.",
   inputSchema: z.object({
     query: z.string().min(1).max(12_000),
   }),

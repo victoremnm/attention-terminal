@@ -4,7 +4,8 @@ import { openai } from "@ai-sdk/openai";
 import { createProviderRegistry, stepCountIs, streamText } from "ai";
 import { z } from "zod";
 import { analystPromptTemplate, answerReference } from "../lib/agent-prompt";
-import { attentionTools } from "../lib/agent-tools";
+import { attentionTools, resetCatalogState } from "../lib/agent-tools";
+import { catalogPromptSection } from "../lib/catalog";
 
 const registry = createProviderRegistry({ openai });
 
@@ -15,6 +16,7 @@ const systemPrompt = prompts.define({
   config: { temperature: 0.2 },
   variables: z.object({
     answerReference: z.string(),
+    catalogReference: z.string(),
   }),
   content: analystPromptTemplate,
 });
@@ -27,11 +29,15 @@ export const attentionAgent = chat.agent({
   tools: attentionTools,
 
   onBoot: async () => {
+    resetCatalogState();
     agentLocal.init({});
   },
 
   onChatStart: async () => {
-    const resolved = await systemPrompt.resolve({ answerReference });
+    const resolved = await systemPrompt.resolve({
+      answerReference,
+      catalogReference: catalogPromptSection(),
+    });
     chat.prompt.set(resolved);
   },
 

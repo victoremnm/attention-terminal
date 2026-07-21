@@ -46,9 +46,27 @@ function getClickHouse(): ClickHouseClient {
 
 const READ_ONLY_STATEMENTS = /^\s*(select|with|show|describe|desc|explain|exists)\b/i;
 const MAX_OUTPUT_CHARS = 50_000;
+const knownTables = new Set<string>();
+const knownSchemas = new Map<string, string[]>();
+
+export function resetCatalogState() {
+  knownTables.clear();
+  knownSchemas.clear();
+}
 
 function hasMultipleStatements(query: string) {
   return query.replace(/;+\s*$/, "").includes(";");
+}
+
+function normalizeTableName(table: string) {
+  return table.trim().replace(/`/g, "").replace(/"/g, "");
+}
+
+function registerCatalogTables(tables: Array<{ database: string; name: string }>) {
+  for (const table of tables) {
+    knownTables.add(`${table.database}.${table.name}`);
+    knownTables.add(table.name);
+  }
 }
 
 function capOutput(rows: unknown[]) {
@@ -57,6 +75,29 @@ function capOutput(rows: unknown[]) {
     out = out.slice(0, Math.ceil(out.length / 2));
   }
   return { rows: out, truncated: out.length < rows.length };
+}
+
+function extractTableCandidates(query: string) {
+  const cteNames = new Set<string>();
+  for (const match of query.matchAll(/\b([A-Za-z_][\w$]*)\s+AS\s*\(/gi)) {
+    cteNames.add(match[1]);
+  }
+
+  const refs = new Set<string>();
+  for (const match of query.matchAll(/\b(?:from|join)\s+([`"]?)([A-Za-z_][\w$]*)\1(?:\.([`"]?)([A-Za-z_][\w$]*)\3)?/gi)) {
+    const table = match[4] ? `${match[2]}.${match[4]}` : match[2];
+    if (!cteNames.has(match[2])) refs.add(normalizeTableName(table));
+  }
+
+  return [...refs];
+}
+
+function requireCatalogedTables(query: string) {
+  return extractTableCandidates(query).filter((table) => !knownTables.has(table));
+}
+
+function requireDescribedTables(query: string) {
+  return extractTableCandidates(query).filter((table) => !knownSchemas.has(table));
 }
 
 export const listTables = tool({
@@ -75,14 +116,29 @@ export const listTables = tool({
         max_execution_time: 10,
       },
     });
-    return { tables: await result.json() };
+    const tables = (await result.json()) as Array<{
+      database: string;
+      name: string;
+      engine: string;
+      total_rows: string;
+      size: string;
+    }>;
+    registerCatalogTables(tables);
+    return { tables };
   },
 });
 
 export const describeTable = tool({
   ...describeTableDef,
   execute: async ({ table }) => {
-    const [database, name] = table.includes(".") ? table.split(".", 2) : [undefined, table];
+    const normalized = normalizeTableName(table);
+    const [database, name] = normalized.includes(".") ? normalized.split(".", 2) : [undefined, normalized];
+    const catalogKey = database ? `${database}.${name}` : name;
+    if (!knownTables.has(catalogKey) && !knownTables.has(name)) {
+      return {
+        error: `Unknown table ${normalized}. Call listTables first, then describe a table that listTables returned.`,
+      };
+    }
     const result = await getClickHouse().query({
       query: database
         ? "DESCRIBE TABLE {database: Identifier}.{name: Identifier}"
@@ -94,7 +150,15 @@ export const describeTable = tool({
         max_execution_time: 10,
       },
     });
-    return { columns: await result.json() };
+    const columns = (await result.json()) as Array<{
+      name: string;
+      type: string;
+      default_type?: string;
+      default_expression?: string;
+      comment?: string;
+    }>;
+    knownSchemas.set(catalogKey, columns.map((column) => `${column.name}:${column.type}`));
+    return { columns };
   },
 });
 
@@ -108,6 +172,18 @@ export const runReadOnlyQuery = tool({
     }
 
     try {
+      const missingTables = requireCatalogedTables(query);
+      if (missingTables.length > 0) {
+        return {
+          error: `Unknown table reference(s): ${missingTables.join(", ")}. Call listTables first, then describe the table(s) before writing SQL.`,
+        };
+      }
+      const missingSchemas = requireDescribedTables(query);
+      if (missingSchemas.length > 0) {
+        return {
+          error: `Undescribed table reference(s): ${missingSchemas.join(", ")}. Call describeTable on each table before writing SQL.`,
+        };
+      }
       const result = await getClickHouse().query({
         query,
         format: "JSONEachRow",
