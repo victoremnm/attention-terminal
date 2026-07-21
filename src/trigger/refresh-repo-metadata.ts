@@ -1,7 +1,6 @@
 import { logger, metadata, schedules, tags } from "@trigger.dev/sdk";
 import { clickhouseInsert, selectRows } from "../lib/clickhouse";
-
-const GITHUB_API = "https://api.github.com";
+import { fetchRepo, fetchTopics, toRow } from "../lib/github-repo";
 
 // --- Budget (issue #48) -----------------------------------------------------
 // Every repo costs 2 sequential REST calls (fetchRepo + fetchTopics). At the
@@ -45,109 +44,6 @@ const ACTIVITY_LIMIT = 150;
 const STALE_LIMIT = 120;
 const ACTIVITY_WINDOW_DAYS = 7;
 
-interface GitHubRepo {
-  name?: string;
-  full_name?: string;
-  owner?: { login?: string; type?: string };
-  description?: string | null;
-  language?: string | null;
-  homepage?: string | null;
-  license?: { spdx_id?: string | null } | null;
-  created_at?: string;
-  pushed_at?: string;
-  archived?: boolean;
-  fork?: boolean;
-  stargazers_count?: number;
-  forks_count?: number;
-  open_issues_count?: number;
-  message?: string; // present on error responses (e.g. "Not Found")
-}
-
-interface GitHubTopics {
-  names?: string[];
-}
-
-function chDateTime(value?: string) {
-  const date = value ? new Date(value) : null;
-  if (!date || !Number.isFinite(date.getTime())) return "1970-01-01 00:00:00";
-  return date.toISOString().slice(0, 19).replace("T", " ");
-}
-
-function authHeaders(): HeadersInit {
-  const token = process.env.GITHUB_TOKEN;
-  const headers: Record<string, string> = {
-    accept: "application/vnd.github+json",
-    "x-github-api-version": "2022-11-28",
-  };
-  if (token) headers.authorization = `Bearer ${token}`;
-  return headers;
-}
-
-// Sleeps until the rate-limit window resets when GitHub reports we're out of
-// requests (secondary or primary rate limit), rather than hammering the API.
-async function respectRateLimit(res: Response) {
-  const remaining = res.headers.get("x-ratelimit-remaining");
-  if (res.status === 403 || res.status === 429 || remaining === "0") {
-    const retryAfter = res.headers.get("retry-after");
-    const resetAt = res.headers.get("x-ratelimit-reset");
-    let waitMs = 30_000;
-    if (retryAfter) waitMs = Number(retryAfter) * 1000;
-    else if (resetAt) waitMs = Math.max(0, Number(resetAt) * 1000 - Date.now()) + 1000;
-    waitMs = Math.min(waitMs, 60_000);
-    logger.log("GitHub rate limit hit, backing off", { waitMs, status: res.status });
-    await new Promise((resolve) => setTimeout(resolve, waitMs));
-    return true;
-  }
-  return false;
-}
-
-async function fetchRepo(repoName: string): Promise<GitHubRepo | null> {
-  for (let attempt = 0; attempt < 2; attempt++) {
-    const res = await fetch(`${GITHUB_API}/repos/${repoName}`, { headers: authHeaders() });
-    if (res.status === 404 || res.status === 451) return null; // deleted, renamed, or DMCA-taken-down
-    if (await respectRateLimit(res)) continue;
-    if (!res.ok) {
-      logger.log("GitHub repo fetch failed", { repoName, status: res.status });
-      return null;
-    }
-    return (await res.json()) as GitHubRepo;
-  }
-  return null;
-}
-
-async function fetchTopics(repoName: string): Promise<string[]> {
-  for (let attempt = 0; attempt < 2; attempt++) {
-    const res = await fetch(`${GITHUB_API}/repos/${repoName}/topics`, { headers: authHeaders() });
-    if (res.status === 404 || res.status === 451) return [];
-    if (await respectRateLimit(res)) continue;
-    if (!res.ok) return [];
-    const body = (await res.json()) as GitHubTopics;
-    return body.names ?? [];
-  }
-  return [];
-}
-
-function toRow(repoName: string, repo: GitHubRepo, topics: string[], fetchedAt: Date) {
-  return {
-    repo_name: repoName,
-    owner: repo.owner?.login ?? repoName.split("/")[0] ?? "",
-    owner_type: repo.owner?.type ?? "",
-    description: repo.description ?? "",
-    language: repo.language ?? "",
-    topics: topics.slice(0, 40),
-    homepage: repo.homepage ?? "",
-    license: repo.license?.spdx_id ?? "",
-    created_at: chDateTime(repo.created_at),
-    pushed_at: chDateTime(repo.pushed_at),
-    archived: repo.archived ? 1 : 0,
-    fork: repo.fork ? 1 : 0,
-    github_stars: Math.max(0, Math.trunc(repo.stargazers_count ?? 0)),
-    github_forks: Math.max(0, Math.trunc(repo.forks_count ?? 0)),
-    open_issues: Math.max(0, Math.trunc(repo.open_issues_count ?? 0)),
-    fetched_at: chDateTime(fetchedAt.toISOString()),
-  };
-}
-
 async function pickRepos(): Promise<string[]> {
   const [newToday, topByStars, activity, stale] = await Promise.all([
     // New-today: repos that had a repository-creation event today per GH Archive.
@@ -170,22 +66,30 @@ async function pickRepos(): Promise<string[]> {
        ORDER BY total_stars DESC
        LIMIT ${TOP_STARS_LIMIT}`
     ),
-    // Activity (issue #48): top repos by recent push volume (commit-shipping
-    // signal) with actor-count as a tiebreaker, read from the gh_repo_daily
-    // AggregatingMergeTree rollup (migrations/20260718000008_github_repo_period_rollups.sql).
-    // `pushes` is a SimpleAggregateFunction(sum, UInt64) so a plain sum() merges
-    // it correctly; `actors` is AggregateFunction(uniq, String) and needs
-    // uniqMerge - same -Merge combinator pattern as repoActivityWindow() in
-    // src/lib/queries.ts. This is what actually surfaces prolific repos like
-    // PostHog/posthog, llvm/llvm-project, elastic/kibana that top-by-stars misses.
+    // Activity (issue #48, fixed in #56): rank by non-bot distinct actors
+    // (collaboration signal), not push volume - ordering by sum(pushes) surfaces
+    // push-spam/data-dump repos, not genuinely prolific ones. This reads
+    // github_events directly rather than the gh_repo_daily rollup: that
+    // rollup's `actors` (migrations/20260718000008_github_repo_period_rollups.sql,
+    // gh_repo_daily_mv) is built as `uniqState(actor_login)` with no [bot]
+    // predicate, and once merged into an AggregateFunction state there's no way
+    // to exclude bots after the fact - the underlying per-actor rows are gone.
+    // A scoped 7-day scan over github_events is acceptable cost here since this
+    // is the occasional candidate-picker (runs hourly), not the hot /deck read
+    // path. uniqExactIf(...) counts only actors whose login doesn't look like a
+    // bot account; countIf(PushEvent) stays as a secondary tiebreaker. Verified
+    // (issue #56) to surface PostHog/posthog, llvm/llvm-project, elastic/kibana
+    // instead of push-spam/data-dump repos.
     selectRows<{ repo_name: string }>(
       `SELECT repo_name,
-              sum(pushes) AS push_count,
-              uniqMerge(actors) AS actor_count
-       FROM gh_repo_daily
-       WHERE day >= today() - ${ACTIVITY_WINDOW_DAYS} AND repo_name != ''
+              uniqExactIf(actor_login, NOT actor_login ILIKE '%[bot]%') AS human_actors,
+              countIf(event_type = 'PushEvent') AS push_count
+       FROM github_events
+       WHERE created_at > (SELECT max(created_at) FROM github_events) - INTERVAL ${ACTIVITY_WINDOW_DAYS} DAY
+         AND event_type IN ('PushEvent', 'PullRequestEvent', 'IssuesEvent')
+         AND repo_name != ''
        GROUP BY repo_name
-       ORDER BY push_count DESC, actor_count DESC
+       ORDER BY human_actors DESC, push_count DESC
        LIMIT ${ACTIVITY_LIMIT}`
     ),
     // Stale: repos whose LATEST metadata version is over a week old. Group by
