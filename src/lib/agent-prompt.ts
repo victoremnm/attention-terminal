@@ -44,6 +44,9 @@ Product rules:
 {{answerReference}}`;
 
 export const analystSystemPrompt = analystPromptTemplate.replace(
+  "{{catalogReference}}",
+  "",
+).replace(
   "{{answerReference}}",
   answerReference,
 );
