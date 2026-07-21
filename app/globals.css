@@ -129,6 +129,10 @@ a { color: inherit; }
   border-color: color-mix(in srgb, var(--cyan) 56%, var(--line) 44%);
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--cyan) 18%, transparent 82%);
 }
+.tk-card-shell.is-loading {
+  border-color: color-mix(in srgb, var(--amber) 62%, var(--line) 38%);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--amber) 18%, transparent 82%);
+}
 .tk-card-button {
   display: flex;
   flex: 1;
@@ -141,6 +145,11 @@ a { color: inherit; }
   padding: 9px 10px;
   text-align: left;
   cursor: pointer;
+}
+.tk-card-button:hover .tk-action,
+.tk-card-button:focus-visible .tk-action {
+  border-color: color-mix(in srgb, var(--cyan) 62%, var(--line-soft) 38%);
+  color: var(--cyan);
 }
 .tk-card-button:focus-visible {
   outline: 1px solid var(--cyan);
@@ -197,6 +206,28 @@ a { color: inherit; }
 .tk-stats b {
   color: var(--ink);
   font-weight: 700;
+}
+.tk-action {
+  display: block;
+  width: fit-content;
+  max-width: calc(100% - 34px);
+  margin-top: 2px;
+  border: 1px solid color-mix(in srgb, var(--cyan) 34%, var(--line-soft) 66%);
+  border-radius: 3px;
+  color: color-mix(in srgb, var(--cyan) 82%, var(--ink) 18%);
+  font-size: 8.5px;
+  letter-spacing: .08em;
+  line-height: 1.1;
+  padding: 3px 5px;
+  text-transform: uppercase;
+}
+.tk-card-shell.is-loading .tk-action {
+  border-color: color-mix(in srgb, var(--amber) 50%, var(--line-soft) 50%);
+  color: var(--amber);
+}
+.tk-card-shell.is-selected .tk-action {
+  border-color: color-mix(in srgb, var(--cyan) 44%, var(--line-soft) 56%);
+  color: var(--muted);
 }
 .ticker-drilldown {
   margin-top: 14px;

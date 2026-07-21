@@ -9,14 +9,15 @@ import { useIngestPulse } from "./useIngestPulse";
 
 function Card({
   card,
-  isSelected,
+  state,
   onOpenRepo,
 }: {
   card: TickerCard;
-  isSelected?: boolean;
+  state?: "loading" | "selected";
   onOpenRepo: (repoName: string) => void;
 }) {
   const stats = card.stats?.filter((stat) => stat.value !== "0").slice(0, 6) ?? [];
+  const actionLabel = state === "loading" ? "rendering..." : state === "selected" ? "rendered below" : "click to render data";
   const inner = (
     <>
       {card.spark && card.spark.length > 1 && (
@@ -40,17 +41,16 @@ function Card({
   );
   if (card.repoName) {
     return (
-      <div className={`tk-card tk-card-shell${isSelected ? " is-selected" : ""}`}>
+      <div className={`tk-card tk-card-shell${state ? ` is-${state}` : ""}`}>
         <button
           type="button"
           className="tk-card-button"
-          title="Double-click to inspect this repo"
-          onClick={(event) => {
-            if (event.detail === 0) onOpenRepo(card.repoName!);
-          }}
-          onDoubleClick={() => onOpenRepo(card.repoName!)}
+          aria-label={`Render live ClickHouse data for ${card.repoName}`}
+          title="Click to render this repo's live data"
+          onClick={() => onOpenRepo(card.repoName!)}
         >
           {inner}
+          <span className="tk-action mono">{actionLabel}</span>
         </button>
         {card.href && (
           <a className="tk-card-external mono" href={card.href} target="_blank" rel="noreferrer" onClick={(event) => event.stopPropagation()}>
@@ -71,11 +71,13 @@ function Lane({
   title,
   cards,
   selectedRepo,
+  loadingRepo,
   onOpenRepo,
 }: {
   title: string;
   cards: TickerCard[];
   selectedRepo?: string;
+  loadingRepo?: string;
   onOpenRepo: (repoName: string) => void;
 }) {
   return (
@@ -83,7 +85,12 @@ function Lane({
       <div className="tk-lane-title mono">{title}</div>
       <div className="tk-scroll">
         {cards.map((c, i) => (
-          <Card key={`${c.name}-${i}`} card={c} isSelected={c.repoName === selectedRepo} onOpenRepo={onOpenRepo} />
+          <Card
+            key={`${c.name}-${i}`}
+            card={c}
+            state={c.repoName === loadingRepo ? "loading" : c.repoName === selectedRepo ? "selected" : undefined}
+            onOpenRepo={onOpenRepo}
+          />
         ))}
       </div>
     </div>
@@ -146,14 +153,14 @@ export function TickerRail({ initial, ingestToken }: { initial: TickerLanes; ing
   return (
     <section className="ticker" aria-label="Breakout ticker">
       <div className="tk-head mono">📌 PINNED · BREAKOUT TICKER <span className="muted">{ingestToken ? "ticks with ingestion" : "refreshes 60s"}</span></div>
-      <Lane title="NEW REPOS" cards={lanes.newRepos} selectedRepo={selectedRepo} onOpenRepo={openRepo} />
-      <Lane title="TOP FORKED · 24H" cards={lanes.topForked} selectedRepo={selectedRepo} onOpenRepo={openRepo} />
-      <Lane title="SHIPPING VELOCITY · 24H" cards={lanes.shippingVelocity} selectedRepo={selectedRepo} onOpenRepo={openRepo} />
-      <Lane title="STAR BREAKOUTS" cards={lanes.starBreakouts} selectedRepo={selectedRepo} onOpenRepo={openRepo} />
-      <Lane title="RISING STORIES" cards={lanes.risingStories} selectedRepo={selectedRepo} onOpenRepo={openRepo} />
+      <Lane title="NEW REPOS" cards={lanes.newRepos} selectedRepo={selectedRepo} loadingRepo={loadingRepo} onOpenRepo={openRepo} />
+      <Lane title="TOP FORKED · 24H" cards={lanes.topForked} selectedRepo={selectedRepo} loadingRepo={loadingRepo} onOpenRepo={openRepo} />
+      <Lane title="SHIPPING VELOCITY · 24H" cards={lanes.shippingVelocity} selectedRepo={selectedRepo} loadingRepo={loadingRepo} onOpenRepo={openRepo} />
+      <Lane title="STAR BREAKOUTS" cards={lanes.starBreakouts} selectedRepo={selectedRepo} loadingRepo={loadingRepo} onOpenRepo={openRepo} />
+      <Lane title="RISING STORIES" cards={lanes.risingStories} selectedRepo={selectedRepo} loadingRepo={loadingRepo} onOpenRepo={openRepo} />
       {(loadingRepo || drilldownError || drilldown) && (
-        <div className="ticker-drilldown">
-          {loadingRepo && <div className="agent-tool mono">querying {loadingRepo}...</div>}
+        <div className="ticker-drilldown" aria-live="polite">
+          {loadingRepo && <div className="agent-tool mono">rendering {loadingRepo} in background...</div>}
           {drilldownError && <div className="agent-fault mono" role="alert">! {drilldownError}</div>}
           {drilldown && <RenderedAnswer payload={drilldown} />}
         </div>
