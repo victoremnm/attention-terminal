@@ -10,12 +10,24 @@ export function Sparkline({ data, color = "var(--cyan)", w = 64, h = 18 }: {
 }) {
   if (!data || data.length < 2) return null;
   const max = Math.max(...data, 1);
+  const x = (i: number) => ((i / (data.length - 1)) * (w - 2) + 1).toFixed(1);
+  const y = (v: number) => (h - 2 - (v / max) * (h - 4)).toFixed(1);
   const pts = data
-    .map((v, i) => `${((i / (data.length - 1)) * (w - 2) + 1).toFixed(1)},${(h - 2 - (v / max) * (h - 4)).toFixed(1)}`)
+    .map((v, i) => `${x(i)},${y(v)}`)
     .join(" ");
   return (
     <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} aria-hidden="true">
       <polyline points={pts} fill="none" stroke={color} strokeWidth="1.5" strokeLinejoin="round" />
+      {data.map((v, i) => (
+        <circle
+          key={`${i}-${v}`}
+          cx={x(i)}
+          cy={y(v)}
+          r={i === data.length - 1 ? 1.8 : 1.5}
+          fill={color}
+          opacity={i === data.length - 1 ? 1 : 0.75}
+        />
+      ))}
     </svg>
   );
 }

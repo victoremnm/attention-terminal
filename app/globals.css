@@ -55,7 +55,8 @@ a { color: inherit; }
 .main { padding: 16px 20px 60px; min-width: 0; }
 
 .surface-nav {
-  width: min(1060px, 100%);
+  width: 100%;
+  max-width: none;
   display: flex;
   gap: 6px;
   padding: 18px 24px 0;
@@ -80,7 +81,8 @@ a { color: inherit; }
 
 /* ticker */
 .trending-shell {
-  width: min(1060px, 100%);
+  width: 100%;
+  max-width: none;
   padding: 28px 24px 72px;
 }
 .trending-head {
@@ -101,7 +103,13 @@ a { color: inherit; }
   margin: 0;
   color: var(--muted);
 }
-.ticker { border: 1px solid var(--line); border-radius: 8px; background: var(--panel); padding: 10px 12px 12px; }
+.ticker {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  padding: 10px 12px 12px;
+}
 .tk-head { font-size: 10.5px; letter-spacing: .14em; color: var(--ink); margin-bottom: 8px; display: flex; gap: 10px; flex-wrap: wrap; }
 .tk-lane {
   margin-top: 10px;
@@ -1123,6 +1131,42 @@ a { color: inherit; }
 .rankings {
   display: flex;
   flex-direction: column;
+  width: 100%;
+}
+.rankings-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.rankings-summary-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  border: 1px solid var(--line-soft);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--panel) 78%, transparent 22%);
+  padding: 10px 12px;
+}
+.rankings-summary-card span {
+  color: var(--muted);
+  font-size: 9.5px;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+}
+.rankings-summary-card b {
+  min-width: 0;
+  color: var(--ink);
+  font-size: 18px;
+  line-height: 1.1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rankings-summary-card em {
+  color: var(--muted);
+  font-size: 10px;
+  font-style: normal;
 }
 .rankings-search {
   width: 100%;
@@ -1140,10 +1184,30 @@ a { color: inherit; }
 .rankings-search:focus {
   border-bottom-color: color-mix(in srgb, var(--cyan) 62%, var(--line) 38%);
 }
+.rankings-hint {
+  margin: 7px 0 0;
+  color: var(--muted);
+  font-size: 10px;
+}
 .rankings-tabs {
   display: flex;
   gap: 6px;
   margin: 14px 0 4px;
+}
+.rankings-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 10px 0 4px;
+  color: var(--muted);
+  font-size: 10px;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+.rankings-meta span {
+  border: 1px solid var(--line-soft);
+  border-radius: 999px;
+  padding: 3px 8px;
 }
 .rankings-tab {
   border: 1px solid var(--line-soft);
@@ -1165,7 +1229,7 @@ a { color: inherit; }
 }
 .rank-head {
   display: grid;
-  grid-template-columns: 40px minmax(0, 1fr) 120px 90px;
+  grid-template-columns: 40px minmax(0, 1fr) 156px minmax(180px, 1fr) 90px;
   gap: 12px;
   align-items: center;
   padding: 10px 6px 8px;
@@ -1177,7 +1241,7 @@ a { color: inherit; }
 }
 .rank-row {
   display: grid;
-  grid-template-columns: 40px minmax(0, 1fr) 120px 90px;
+  grid-template-columns: 40px minmax(0, 1fr) 156px minmax(180px, 1fr) 90px;
   gap: 12px;
   align-items: center;
   width: 100%;
@@ -1237,12 +1301,53 @@ a { color: inherit; }
   align-items: center;
   color: var(--cyan);
 }
+.rank-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  align-items: center;
+  justify-content: flex-start;
+}
+.rank-stats span {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  border: 1px solid var(--line-soft);
+  border-radius: 3px;
+  padding: 2px 6px;
+  color: var(--muted);
+  font-size: 9px;
+  line-height: 1.35;
+  white-space: nowrap;
+}
+.rank-stats b {
+  color: var(--ink);
+  font-weight: 700;
+}
 .rank-events {
   text-align: right;
   color: var(--ink);
   font-size: 13px;
   font-variant-numeric: tabular-nums;
 }
+@media (min-width: 960px) {
+  .tk-scroll {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    overflow: visible;
+  }
+
+  .tk-card {
+    width: 100%;
+  }
+}
+
+@media (max-width: 960px) {
+  .rankings-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 /* skills.sh hides the sparkline column on small screens */
 @media (max-width: 640px) {
   .rank-head,
@@ -1251,6 +1356,12 @@ a { color: inherit; }
   }
   .rank-spark {
     display: none;
+  }
+  .rank-stats {
+    display: none;
+  }
+  .rankings-summary {
+    grid-template-columns: 1fr;
   }
 }
 .repo-sql {

@@ -56,9 +56,9 @@ function splitTableName(table: string) {
   return { database: base.database, name: trimmed };
 }
 
-export async function ensureTablesExist(tables: string[]) {
+export async function missingTables(tables: string[]) {
   const uniqueTables = [...new Set(tables.map((table) => table.trim()).filter(Boolean))];
-  if (uniqueTables.length === 0) return;
+  if (uniqueTables.length === 0) return [];
 
   const missing: string[] = [];
   for (const table of uniqueTables) {
@@ -81,6 +81,12 @@ export async function ensureTablesExist(tables: string[]) {
     const rows = await result.json<{ present: number }>();
     if (rows.length === 0) missing.push(table);
   }
+
+  return missing;
+}
+
+export async function ensureTablesExist(tables: string[]) {
+  const missing = await missingTables(tables);
 
   if (missing.length > 0) {
     throw new Error(`Missing ClickHouse table(s): ${missing.join(", ")}. Run the migration or update the query to a known table.`);
