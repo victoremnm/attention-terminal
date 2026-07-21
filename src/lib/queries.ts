@@ -481,6 +481,7 @@ const MEGA_PUSHER_THRESHOLD: Record<DevScatterWindow, number> = { "7d": 150, "30
 
 export interface DevScatterResult extends QueryResult<DevPoint[]> {
   note?: string; // discloses dropped bot/spam rows - no silent caps
+  keptCount: number; // total actors that cleared the filter (data is the top-N slice of this)
 }
 
 interface DevScatterSqlRow {
@@ -492,6 +493,7 @@ interface DevScatterSqlRow {
   mergedPrs: string;
   bot_count: string;
   mega_pusher_count: string;
+  kept_count: string;
 }
 
 function devScatterSql() {
@@ -517,7 +519,8 @@ function devScatterSql() {
     meta AS (
       SELECT
         countIf(is_bot) AS bot_count,
-        countIf(NOT is_bot AND repos = 1 AND pushes >= {megaPushThreshold: UInt32}) AS mega_pusher_count
+        countIf(NOT is_bot AND repos = 1 AND pushes >= {megaPushThreshold: UInt32}) AS mega_pusher_count,
+        countIf(NOT is_bot AND NOT (repos = 1 AND pushes >= {megaPushThreshold: UInt32})) AS kept_count
       FROM per_actor
     )
     SELECT
@@ -528,12 +531,16 @@ function devScatterSql() {
       p.prs AS prs,
       p.mergedPrs AS mergedPrs,
       m.bot_count AS bot_count,
-      m.mega_pusher_count AS mega_pusher_count
+      m.mega_pusher_count AS mega_pusher_count,
+      m.kept_count AS kept_count
     FROM per_actor AS p
     CROSS JOIN meta AS m
     WHERE NOT p.is_bot
       AND NOT (p.repos = 1 AND p.pushes >= {megaPushThreshold: UInt32})
-    ORDER BY (p.mergedPrs + 1.0) / (p.prs + 1.0) DESC, p.repos DESC, p.commits DESC
+    -- Rank by merged-PR signal. Zero-PR actors would score a spurious 1.0 from
+    -- (mergedPrs+1)/(prs+1), so gate them below anyone with real PR activity
+    -- rather than letting push-only accounts tie a 100% merge-rate contributor.
+    ORDER BY (p.prs > 0) DESC, (p.mergedPrs + 1.0) / (p.prs + 1.0) DESC, p.repos DESC, p.commits DESC
     LIMIT {limit: UInt32}
   `.trim();
 }
@@ -567,6 +574,7 @@ export async function devScatter(window: DevScatterWindow, limit = 40): Promise<
     );
   }
   const note = dropped.length ? `Excluded ${dropped.join(" and ")} from the ${window} window.` : undefined;
+  const keptCount = Number(rows[0]?.kept_count ?? data.length);
 
-  return { ...toQueryResult(data, provenance), note };
+  return { ...toQueryResult(data, provenance), note, keptCount };
 }

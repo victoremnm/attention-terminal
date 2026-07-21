@@ -134,21 +134,47 @@ async function pickRepos(): Promise<string[]> {
        ORDER BY total_stars DESC
        LIMIT ${TOP_STARS_LIMIT}`
     ),
-    // Stale: rows we already enriched but haven't refreshed in over a week.
+    // Stale: repos whose LATEST metadata version is over a week old. Group by
+    // repo_name and test max(fetched_at) so a just-refreshed repo's older
+    // ReplacingMergeTree versions (visible pre-merge) don't re-qualify it as stale.
     selectRows<{ repo_name: string }>(
       `SELECT repo_name
        FROM gh_repo_metadata
-       WHERE fetched_at < now() - INTERVAL ${STALE_DAYS} DAY
-       ORDER BY fetched_at ASC
+       GROUP BY repo_name
+       HAVING max(fetched_at) < now() - INTERVAL ${STALE_DAYS} DAY
+       ORDER BY max(fetched_at) ASC
        LIMIT ${STALE_LIMIT}`
     ),
   ]);
 
-  const repos = new Set<string>();
-  for (const row of [...newToday, ...topByStars, ...stale]) {
-    if (row.repo_name && row.repo_name.includes("/")) repos.add(row.repo_name);
+  const valid = (name?: string) => !!name && name.includes("/");
+
+  // Reserve capacity for the stale bucket so a full new-today + top-by-stars set
+  // can't fill MAX_REPOS_PER_RUN and starve stale refreshes entirely.
+  const staleReserve = Math.min(STALE_LIMIT, Math.floor(MAX_REPOS_PER_RUN / 3));
+  const freshBudget = MAX_REPOS_PER_RUN - staleReserve;
+
+  const fresh = [...newToday, ...topByStars].map((r) => r.repo_name).filter(valid);
+  const staleNames = stale.map((r) => r.repo_name).filter(valid);
+
+  const picked = new Set<string>();
+  // 1. Fresh up to the reserved fresh budget.
+  for (const name of fresh) {
+    if (picked.size >= freshBudget) break;
+    picked.add(name);
   }
-  return Array.from(repos).slice(0, MAX_REPOS_PER_RUN);
+  // 2. Stale up to the overall cap.
+  for (const name of staleNames) {
+    if (picked.size >= MAX_REPOS_PER_RUN) break;
+    picked.add(name);
+  }
+  // 3. Backfill any capacity the stale bucket didn't use with the remaining fresh
+  //    candidates, so a small stale set never leaves GitHub/Trigger capacity idle.
+  for (const name of fresh) {
+    if (picked.size >= MAX_REPOS_PER_RUN) break;
+    picked.add(name);
+  }
+  return Array.from(picked);
 }
 
 export const refreshRepoMetadata = schedules.task({

@@ -29,10 +29,15 @@ function verdictForBuilders(points: DevPoint[], mergeRate: number): Verdict {
 export async function realBuildersDeck(window: DevScatterWindow = "7d"): Promise<SkinnyDeckPayload> {
   const result = await devScatter(window);
   const mergeRate = mergeRateOf(result.data);
+  const shown = result.data.length;
+  const kept = result.keptCount; // total that cleared the filter; `shown` is the plotted top-N
   const spreadCount = result.data.filter((p) => p.repos >= 2).length;
   const metricPct = Math.round(mergeRate * 100);
+  // `shown` is a top-N slice of `kept` (devScatter LIMITs the scatter). Say so, so the
+  // card never presents a truncated sample as the whole population.
+  const showingSuffix = kept > shown ? ` (showing top ${shown} by merged-PR signal)` : "";
 
-  const caption = `${result.data.length} accounts cleared the bot/script-spam filter in the ${window} window; ${spreadCount} of them shipped across 2+ repos.${
+  const caption = `${kept} account${kept === 1 ? "" : "s"} cleared the bot/script-spam filter in the ${window} window${showingSuffix}; ${spreadCount} of the shown builders ship across 2+ repos.${
     result.note ? ` ${result.note}` : ""
   }`;
 
@@ -41,9 +46,9 @@ export async function realBuildersDeck(window: DevScatterWindow = "7d"): Promise
     subject: "The Real Builders",
     verdict: verdictForBuilders(result.data, mergeRate),
     metric: `${metricPct}%`,
-    metricLabel: "merged-PR rate, kept builders",
+    metricLabel: "merged-PR rate, shown builders",
     caption,
-    sources: `${result.data.length} actors · ${window} window`,
+    sources: `${kept} kept · showing ${shown} · ${window}`,
     visual: {
       kind: "dev-scatter" as const,
       window,
