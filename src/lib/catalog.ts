@@ -16,6 +16,21 @@ type DescribeRow = {
   comment?: string;
 };
 
+const RELEVANT_TABLES = new Set([
+  "hackernews",
+  "github_events",
+  "hn_hourly",
+  "gh_repo_hourly",
+  "daily_skinny_subject_hourly",
+  "gh_repo_daily",
+  "gh_repo_monthly",
+  "gh_repo_metadata",
+  "gh_repo_activity_feed",
+  "gh_actor_daily",
+  "gh_actor_pr_stats",
+  "ingest_log",
+]);
+
 function compactSchema(columns: DescribeRow[], maxChars = 500) {
   const rendered: string[] = [];
   let length = 0;
@@ -57,7 +72,7 @@ export async function catalogPromptSection() {
   }).then((result) => result.json<TableRow>());
 
   const lines = await Promise.all(
-    tables.map(async (table) => {
+    tables.filter((table) => RELEVANT_TABLES.has(table.name)).map(async (table) => {
       const rows = await clickhouse.query({
         query: "DESCRIBE TABLE {database: Identifier}.{name: Identifier}",
         query_params: { database: table.database, name: table.name },
@@ -75,7 +90,7 @@ export async function catalogPromptSection() {
 
   return `ClickHouse catalog:
 
-This catalog is generated live from ClickHouse at chat start. If a table is missing here, call listTables and describeTable before writing SQL.
+This catalog is generated live from ClickHouse at chat start and narrowed to the agent-relevant tables. If a table is missing here, call listTables and describeTable before writing SQL.
 
 ${lines.join("\n")}`;
 }
