@@ -1,14 +1,13 @@
 import { SkinnyDeck } from "@/components/SkinnyDeck";
 import { SurfaceNav } from "@/components/SurfaceNav";
-import { SkinnyDeckSchema } from "@/lib/render-payload";
-import fixture from "../../fixtures/skinny-deck.json";
+import { liveSkinnyDeck } from "@/lib/live-deck";
 
-// Renderer demo surface for issue #27 — binds the tactile deck to the FROZEN
-// fixture deck (fixtures/skinny-deck.json). Wiring this to live reads is #28.
-export const dynamic = "force-static";
+// The tactile Daily Skinny deck on LIVE ClickHouse data (issue #28). Each card's
+// flip-to-view-SQL shows the exact query behind it (q() provenance), not a mock.
+export const dynamic = "force-dynamic";
 
-export default function DeckPage() {
-  const payload = SkinnyDeckSchema.parse(fixture);
+export default async function DeckPage() {
+  const payload = await liveSkinnyDeck();
 
   return (
     <>
