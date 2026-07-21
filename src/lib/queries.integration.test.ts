@@ -38,8 +38,11 @@ describe.skipIf(!hasCH)("query layer (integration)", () => {
 
   it("repoDrilldown executes for a live repo", async () => {
     const { data } = await repoActivityWindow("30d", 1);
-    if (data.length === 0) return;
-    await expect(repoDrilldown(data[0].repo_name)).resolves.toBeTruthy();
+    const repoName = data.length > 0 ? data[0].repo_name : "clickhouse/clickhouse";
+    const payload = await repoDrilldown(repoName);
+    expect(payload.type).toBe("repo-drilldown");
+    expect(payload.repoName).toBe(repoName);
+    expect(payload.query.sql).toContain("gh_repo_analysis");
   });
 
   it("freshness executes", async () => {

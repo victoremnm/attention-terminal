@@ -928,6 +928,64 @@ a { color: inherit; }
   color: var(--muted);
   font-size: 9px;
 }
+.repo-analysis {
+  margin-top: 14px;
+  border: 1px solid var(--line-soft);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--panel-2) 90%, transparent 10%);
+  padding: 12px;
+}
+.repo-analysis-overview {
+  margin: 4px 0 10px;
+  color: rgba(255, 255, 255, 0.88);
+  font-size: 11.5px;
+  line-height: 1.45;
+}
+.repo-analysis-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px;
+  margin-bottom: 10px;
+}
+.repo-analysis-grid b {
+  display: block;
+  color: var(--cyan);
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  margin-bottom: 3px;
+}
+.repo-analysis-grid p,
+.repo-analysis-grid ul {
+  margin: 0;
+  padding: 0;
+  color: var(--ink);
+  font-size: 11px;
+  list-style: none;
+}
+.repo-analysis-grid li {
+  margin-bottom: 2px;
+  color: var(--muted);
+}
+.repo-analysis-stack {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--line-soft);
+  font-size: 9.5px;
+}
+.repo-analysis-stack .label {
+  color: var(--muted);
+}
+.repo-analysis-stack .tech-badge {
+  border: 1px solid var(--cyan);
+  border-radius: 3px;
+  color: var(--cyan);
+  padding: 1px 5px;
+  font-size: 9px;
+}
 .repo-feed {
   margin-top: 12px;
 }

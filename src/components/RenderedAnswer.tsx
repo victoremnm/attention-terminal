@@ -221,6 +221,36 @@ function RepoDrilldownAnswer({ payload }: { payload: RepoDrilldownPayload }) {
         ))}
       </div>
       <RepoVelocityChart payload={payload} />
+      {payload.analysis && (
+        <div className="repo-analysis">
+          <div className="repo-section-title mono">CODEBASE INTELLIGENCE</div>
+          <p className="repo-analysis-overview">{payload.analysis.overview}</p>
+          <div className="repo-analysis-grid">
+            <div>
+              <b className="mono">ARCHITECTURE</b>
+              <p>{payload.analysis.architectureSummary}</p>
+            </div>
+            {payload.analysis.keyFiles.length > 0 && (
+              <div>
+                <b className="mono">KEY FILES</b>
+                <ul className="mono">
+                  {payload.analysis.keyFiles.map((file) => (
+                    <li key={file}>{file}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+          {payload.analysis.techStack.length > 0 && (
+            <div className="repo-analysis-stack mono">
+              <span className="label">DETECTED STACK:</span>
+              {payload.analysis.techStack.map((tech) => (
+                <span key={tech} className="tech-badge">{tech}</span>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
       <div className="repo-feed">
         <div className="repo-section-title mono">LATEST PUSH / PR EVENTS</div>
         {payload.feed.length ? payload.feed.map((item) => (
