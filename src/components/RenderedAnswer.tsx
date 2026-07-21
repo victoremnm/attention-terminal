@@ -203,7 +203,15 @@ function RepoTrendChart({ trends }: { trends: RepoDrilldownTrend[] }) {
           </g>
         ))}
         {trends.map((row, i) => i % labelStep === 0 || i === trends.length - 1 ? (
-          <text key={row.date} x={x(i)} y={H - 6} fontSize="9.5" fill="var(--muted)" textAnchor="middle" className="mono">
+          <text
+            key={row.date}
+            x={Math.min(Math.max(x(i), padL + 14), W - padR - 14)}
+            y={H - 6}
+            fontSize="9.5"
+            fill="var(--muted)"
+            textAnchor="middle"
+            className="mono"
+          >
             {row.date.slice(5)}
           </text>
         ) : null)}
@@ -226,7 +234,7 @@ function RepoTrendChart({ trends }: { trends: RepoDrilldownTrend[] }) {
       <figcaption className="legend">
         <span><i className="swatch" style={{ background: "var(--amber)" }} /> stars</span>
         <span><i className="swatch" style={{ background: "var(--cyan)" }} /> forks</span>
-        <span className="muted">▲ release · ● PR merged · ◆ issue opened</span>
+        <span className="legend-events">▲ release · ● PR merged · ◆ issue opened</span>
       </figcaption>
     </figure>
   );

@@ -1070,6 +1070,14 @@ a { color: inherit; }
 .repo-trend {
   margin: 0;
 }
+.legend-events {
+  color: var(--ink);
+  opacity: 0.7;
+}
+.legend-events::before {
+  content: "";
+  margin-left: 8px;
+}
 .repo-activity {
   margin-top: 12px;
 }
