@@ -49,9 +49,9 @@ verdict-plus-one-visual composition · feed-with-pinning canvas · terminal-dark
 ### 5. Repo Drill-Down
 - **Intent:** double-click from the live ticker or ask about a specific `owner/repo`
 - **Visual:** repo context header, 24h KPI strip, hourly velocity chart for pushes/commits/stars, and a bounded latest push/PR event feed
-- **Data:** `github_events` for the latest 24h window, anchored to the feed high-water mark; `gh_repo_metadata` for description/language/topics/stars/forks/issues
+- **Data:** `gh_repo_drilldown_hourly` for 24h KPIs and the hourly velocity chart, `gh_repo_actor_hourly` for the contributor strip, `gh_repo_activity_feed` for latest push/PR rows, and `gh_repo_metadata` for description/language/topics/stars/forks/issues. Windows are anchored to the aggregate high-water mark.
 - **Constraint:** v1 only surfaces fields the current ingestion keeps. It does not show branch refs, LOC churn, author association, commit messages, or commit text.
-- **Payload sketch:** `{ type: "repo-drilldown", repoName, generatedAt, metadata, kpis24h, velocity, feed, query }`
+- **Payload sketch:** `{ type: "repo-drilldown", repoName, generatedAt, metadata, kpis24h, velocity, topActors24h, feed, query }`
 
 ### Verdict Tile (composes with every answer)
 - One glanceable state + evidence sparkline + the single load-bearing number

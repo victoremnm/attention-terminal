@@ -989,6 +989,35 @@ a { color: inherit; }
 .repo-feed {
   margin-top: 12px;
 }
+.repo-actors {
+  margin-top: 12px;
+}
+.repo-actor-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 6px;
+}
+.repo-actor-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto auto;
+  gap: 8px;
+  align-items: center;
+  border-top: 1px solid var(--line-soft);
+  padding: 7px 0;
+}
+.repo-actor-row b {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ink);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.repo-actor-row span {
+  color: var(--muted);
+  font-size: 9.5px;
+  white-space: nowrap;
+}
 .repo-section-title {
   color: var(--muted);
   font-size: 9.5px;
@@ -1170,6 +1199,9 @@ a { color: inherit; }
   }
   .repo-feed-row {
     grid-template-columns: 46px minmax(0, 1fr);
+  }
+  .repo-actor-row {
+    grid-template-columns: minmax(0, 1fr) auto;
   }
 }
 /* Tactile Daily Skinny deck (issue #27). The ONLY place motion physics live —

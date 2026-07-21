@@ -251,6 +251,14 @@ export const RepoDrilldownSchema = z.object({
     issuesOpened: z.number().int().nonnegative(),
     prsOpened: z.number().int().nonnegative(),
   })),
+  topActors24h: z.array(z.object({
+    actor: z.string().max(120),
+    pushes: z.number().int().nonnegative(),
+    commits: z.number().int().nonnegative(),
+    distinctCommits: z.number().int().nonnegative(),
+    prsOpened: z.number().int().nonnegative(),
+    prsMerged: z.number().int().nonnegative(),
+  })).default([]),
   feed: z.array(z.object({
     at: z.string(),
     actor: z.string().max(120),

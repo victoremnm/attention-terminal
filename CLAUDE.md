@@ -21,6 +21,9 @@ demo video. All code must be written during July 17-23.
     event_type/repo_name/actor_login/created_at/action/number.
   - `hn_hourly`, `gh_repo_hourly` — AggregatingMergeTree rollups fed by MVs; read with
     `-Merge` combinators (`countMerge(events)` etc.).
+  - `gh_repo_drilldown_hourly`, `gh_repo_actor_hourly`, `gh_repo_activity_feed` —
+    repo-specific drilldown surfaces for 24h KPIs/charts, contributor summaries, and
+    latest PushEvent/PullRequestEvent rows without rescanning the full firehose.
   - `ingest_log` — ingestion idempotency + data-freshness ("data is 49s old" UI).
   - `places` — 75.6M Overture POIs (includes Foursquare data), Morton-encoded geo table.
     Stretch goal only.

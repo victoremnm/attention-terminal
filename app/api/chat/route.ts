@@ -2,6 +2,7 @@ import { openai } from "@ai-sdk/openai";
 import { chat } from "@trigger.dev/sdk/chat-server";
 import { streamText } from "ai";
 import { analystSystemPrompt } from "@/lib/agent-prompt";
+import { attentionTelemetry } from "@/lib/ai-telemetry";
 import { attentionToolSchemas } from "@/lib/agent-tool-schemas";
 
 // Head-start route for the attention-agent chat. The first message of a new
@@ -13,11 +14,19 @@ import { attentionToolSchemas } from "@/lib/agent-tool-schemas";
 // imported here — no ClickHouse client, no trigger task runtime.
 export const POST = chat.headStart({
   agentId: "attention-agent",
-  run: async ({ chat: helper }) =>
-    streamText({
-      ...helper.toStreamTextOptions({ tools: attentionToolSchemas }),
+  run: async ({ chat: helper }) => {
+    const headStartOptions = helper.toStreamTextOptions({
+      tools: attentionToolSchemas,
+    });
+    const { telemetry, runtimeContext } = attentionTelemetry("head-start");
+
+    return streamText({
+      ...headStartOptions,
+      telemetry,
+      runtimeContext,
       model: openai("gpt-5.1"),
       system: analystSystemPrompt,
       temperature: 0.2,
-    }),
+    });
+  },
 });

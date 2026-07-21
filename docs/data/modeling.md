@@ -60,6 +60,16 @@ The next step is to add an embeddings table keyed by `(source_id, document_id, e
 
 The dbt `mart_repo_activity_timeseries` model exposes those measures with a `day` or `month` grain, so product surfaces can switch time windows without rewriting measure logic.
 
+## Repo Drill-Down Aggregates
+
+The repo drill-down card reads from product-grain ClickHouse objects instead of re-scanning `github_events` for every click:
+
+- `gh_repo_drilldown_hourly` stores repo/hour KPI states and sums for pushes, commits, stars, forks, opened issues, opened PRs, and merged PRs.
+- `gh_repo_actor_hourly` stores repo/actor/hour contribution slices for contributor summaries without grouping the full firehose.
+- `gh_repo_activity_feed` is a narrow repo-sorted PushEvent/PullRequestEvent feed table. It is not an aggregate because the UI needs exact latest event rows, but it avoids scanning unrelated event types and wide source columns.
+
+The sort keys lead with `repo_name` because the interactive drill-down path always point-filters one repo before applying a 24h time window.
+
 ## ClickHouse Design Notes
 
 Per ClickHouse primary-key guidance, table materializations should declare `ORDER BY` around frequent filters before creation because sorting keys are not practically mutable later. Dimensions use low-cardinality leading keys where possible, and repeated categorical strings should use `LowCardinality` in physical migrations.

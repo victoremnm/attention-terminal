@@ -11,6 +11,7 @@ import {
   runDataRetrievalDef,
   runVisualizationMappingDef,
 } from "./agent-tool-schemas";
+import { ensureTablesExist } from "./clickhouse";
 import { dailyDigest } from "./digest";
 import { realBuildersDeck } from "./real-builders";
 import { RenderPayloadSchema } from "./render-payload";
@@ -184,6 +185,8 @@ export const runReadOnlyQuery = tool({
           error: `Undescribed table reference(s): ${missingSchemas.join(", ")}. Call describeTable on each table before writing SQL.`,
         };
       }
+      const tables = extractTableCandidates(query);
+      await ensureTablesExist(tables);
       const result = await getClickHouse().query({
         query,
         format: "JSONEachRow",
