@@ -159,6 +159,7 @@ export const describeTable = tool({
       comment?: string;
     }>;
     knownSchemas.set(catalogKey, columns.map((column) => `${column.name}:${column.type}`));
+    knownSchemas.set(name, columns.map((column) => `${column.name}:${column.type}`));
     return { columns };
   },
 });
