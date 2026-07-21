@@ -96,41 +96,65 @@ export async function tickerLanes(): Promise<TickerLanes> {
        GROUP BY repo_name ORDER BY at DESC LIMIT 20`,
       ["github_events"]
     ),
+    // Issue #49: raw ForkEvent counts are gameable (spray-fork bot networks -
+    // see Polytutor-Dao/Polymarket-Trading-Bot-Strategies, mykqs41o/repo-aa4f4e
+    // in the issue). Filtered/ranked in a single statement, modeled on
+    // devScatterSql()'s bot-exclusion + composite-score approach. Heuristic
+    // only - no gh_repo_metadata dependency (that table is currently empty).
     q<{ name: string; forks: string; stars: string; pushes: string; prs: string; issues: string }>(
       `WITH
          (SELECT max(created_at) FROM github_events) AS high_water,
-         top_forks AS (
-           SELECT repo_name, count() AS forks_24h
+         window_events AS (
+           SELECT repo_name, event_type, action, actor_login
            FROM github_events
-           WHERE event_type = 'ForkEvent'
-             AND created_at > high_water - INTERVAL 24 HOUR
+           WHERE created_at > high_water - INTERVAL 24 HOUR
+             AND event_type IN ('ForkEvent', 'WatchEvent', 'PushEvent', 'PullRequestEvent', 'IssuesEvent')
+         ),
+         per_repo AS (
+           SELECT
+             repo_name,
+             -- Bot forks stripped from the numerator outright - same
+             -- actor_login ILIKE '%[bot]%' pattern devScatterSql uses to
+             -- drop bot accounts wholesale.
+             countIf(event_type = 'ForkEvent' AND NOT actor_login ILIKE '%[bot]%') AS forks_24h,
+             countIf(event_type = 'WatchEvent') AS stars_24h,
+             -- Substance counters exclude [bot] actors (Codex P2): these feed
+             -- the fork-farm gate AND the score below, so a bot-only push/PR/
+             -- issue must not let a farm repo pass. Same bot predicate as
+             -- engaged_actors_24h / forks_24h - no bot signal counts as "real".
+             countIf(event_type = 'PushEvent' AND NOT actor_login ILIKE '%[bot]%') AS pushes_24h,
+             countIf(event_type = 'PullRequestEvent' AND action = 'opened' AND NOT actor_login ILIKE '%[bot]%') AS prs_24h,
+             countIf(event_type = 'IssuesEvent' AND action = 'opened' AND NOT actor_login ILIKE '%[bot]%') AS issues_24h,
+             uniqExactIf(
+               actor_login,
+               event_type IN ('PushEvent', 'PullRequestEvent', 'IssuesEvent') AND NOT actor_login ILIKE '%[bot]%'
+             ) AS engaged_actors_24h
+           FROM window_events
            GROUP BY repo_name
-           ORDER BY forks_24h DESC
-           LIMIT 20
+           HAVING forks_24h > 0
          )
        SELECT
-         f.repo_name AS name,
-         toString(f.forks_24h) AS forks,
-         toString(coalesce(any(m.stars_24h), 0)) AS stars,
-         toString(coalesce(any(m.pushes_24h), 0)) AS pushes,
-         toString(coalesce(any(m.prs_24h), 0)) AS prs,
-         toString(coalesce(any(m.issues_24h), 0)) AS issues
-       FROM top_forks f
-       LEFT ANY JOIN (
-         SELECT
-           repo_name,
-           countIf(event_type = 'WatchEvent') AS stars_24h,
-           countIf(event_type = 'PushEvent') AS pushes_24h,
-           countIf(event_type = 'PullRequestEvent' AND action = 'opened') AS prs_24h,
-           countIf(event_type = 'IssuesEvent' AND action = 'opened') AS issues_24h
-         FROM github_events
-         WHERE event_type IN ('WatchEvent', 'PushEvent', 'PullRequestEvent', 'IssuesEvent')
-           AND created_at > high_water - INTERVAL 24 HOUR
-           AND repo_name IN (SELECT repo_name FROM top_forks)
-         GROUP BY repo_name
-       ) m ON f.repo_name = m.repo_name
-       GROUP BY name, forks
-       ORDER BY toUInt64(forks) DESC`,
+         repo_name AS name,
+         toString(forks_24h) AS forks,
+         toString(stars_24h) AS stars,
+         toString(pushes_24h) AS pushes,
+         toString(prs_24h) AS prs,
+         toString(issues_24h) AS issues
+       FROM per_repo
+       -- Fork-farm gate: a repo whose ONLY window activity is forks/stars -
+       -- zero pushes, PRs, or issues, i.e. nobody actually engaged the code -
+       -- is exactly the spray-fork pattern from issue #49 (a template repo
+       -- gets forked by throwaway accounts and nothing else ever happens).
+       WHERE pushes_24h + prs_24h + issues_24h > 0
+       ORDER BY
+         -- Genuine engagement outranks raw fork count, so a repo can't buy
+         -- its way to the top of "TOP FORKED" purely by being spray-forked:
+         -- PRs/issues/pushes/distinct engaged humans dominate the score;
+         -- forks is capped rather than summed unbounded (same "cap the
+         -- gameable term" idea as shippingVelocity's least(pushes, 10)).
+         prs_24h * 5 + issues_24h * 3 + pushes_24h * 2 + engaged_actors_24h * 2 + least(forks_24h, 20) DESC,
+         forks_24h DESC
+       LIMIT 20`,
       ["github_events"]
     ),
     q<{
@@ -144,6 +168,11 @@ export async function tickerLanes(): Promise<TickerLanes> {
       actors: string;
       events: string;
     }>(
+      // Issue #49: same fork-farm/bot suppression as topForked - forks alone
+      // don't count as "shipping", and bot-authored events (dependabot/CI
+      // pushes, throwaway-account forks) are excluded outright rather than
+      // just down-weighted, matching devScatterSql's `actor_login ILIKE
+      // '%[bot]%'` exclusion.
       `SELECT repo_name AS name,
               sum(commit_count) AS commits,
               countIf(event_type = 'PushEvent') AS pushes,
@@ -151,18 +180,37 @@ export async function tickerLanes(): Promise<TickerLanes> {
               countIf(event_type = 'PullRequestEvent' AND action = 'closed') AS closed_prs,
               countIf(event_type = 'IssuesEvent' AND action = 'opened') AS issues,
               countIf(event_type = 'ForkEvent') AS forks,
-              uniqExact(actor_login) AS actors,
-              count() AS events
+              -- Count only engagement actors, not fork actors (Codex P2): the
+              -- ORDER BY weights actors * 2 unbounded, so a spray-fork burst of
+              -- throwaway accounts must not inflate the shipping score via the
+              -- actor count. Bots are already excluded by the WHERE below.
+              uniqExactIf(actor_login, event_type IN ('PushEvent', 'PullRequestEvent', 'IssuesEvent')) AS actors,
+              sum(commit_count) + countIf(event_type = 'PushEvent')
+                + countIf(event_type = 'PullRequestEvent' AND action = 'opened')
+                + countIf(event_type = 'PullRequestEvent' AND action = 'closed')
+                + countIf(event_type = 'IssuesEvent' AND action = 'opened') AS events
        FROM github_events
        WHERE created_at > (SELECT max(created_at) FROM github_events) - INTERVAL 24 HOUR
          AND event_type IN ('PushEvent', 'PullRequestEvent', 'IssuesEvent', 'ForkEvent')
+         AND NOT actor_login ILIKE '%[bot]%'
        GROUP BY repo_name
-       HAVING pushes + commits + prs + closed_prs + issues + forks > 0
-       ORDER BY prs * 4 + closed_prs * 3 + issues * 2 + forks * 3 + least(pushes, 10) + actors * 2 DESC,
+       -- Fork-farm gate: require at least one push/commit/PR/issue - the same
+       -- substance requirement as topForked, so a spray-forked repo with zero
+       -- real activity can't land in this lane either.
+       HAVING pushes + commits + prs + closed_prs + issues > 0
+       ORDER BY prs * 4 + closed_prs * 3 + issues * 2 + least(forks, 10) + least(pushes, 10) + actors * 2 DESC,
                 events DESC
        LIMIT 20`,
       ["github_events"]
     ),
+    // Issue #49: star (WatchEvent) surges are a leading indicator that can
+    // legitimately precede any push/PR/issue activity (e.g. a fresh HN
+    // front-page hit), so - unlike topForked/shippingVelocity - this lane
+    // does NOT gate on push/PR/issue substance; that would defeat its
+    // purpose. It still drops the one gameable signal that's cheap to fake:
+    // bot-account stars, same `actor_login ILIKE '%[bot]%'` exclusion as
+    // devScatterSql, applied to both the surge window and its 30d baseline
+    // so the ratio stays apples-to-apples.
     q<{ name: string; stars: string; surge: number; spark: number[] }>(
       `WITH recent AS (
          SELECT repo_name, sum(cnt) AS stars,
@@ -171,6 +219,7 @@ export async function tickerLanes(): Promise<TickerLanes> {
            SELECT repo_name, toStartOfHour(created_at) AS h, count() AS cnt
            FROM github_events
            WHERE event_type = 'WatchEvent'
+             AND NOT actor_login ILIKE '%[bot]%'
              AND created_at > (SELECT max(created_at) FROM github_events) - INTERVAL 24 HOUR
            GROUP BY repo_name, h ORDER BY repo_name, h
          ) GROUP BY repo_name
@@ -179,6 +228,7 @@ export async function tickerLanes(): Promise<TickerLanes> {
          SELECT repo_name, count() / 29 AS daily_avg
          FROM github_events
          WHERE event_type = 'WatchEvent'
+           AND NOT actor_login ILIKE '%[bot]%'
            AND created_at > (SELECT max(created_at) FROM github_events) - INTERVAL 30 DAY
            AND created_at <= (SELECT max(created_at) FROM github_events) - INTERVAL 24 HOUR
          GROUP BY repo_name
