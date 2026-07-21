@@ -1,7 +1,7 @@
 // Server-side only: imported exclusively from server components and route
 // handlers. ClickHouse credentials never reach the client bundle.
 import { clickhouse } from "./clickhouse";
-import type { DevPoint } from "./render-payload";
+import type { DevPoint, RepoDrilldownPayload } from "./render-payload";
 
 // Every query returns its provenance so the SQL-flip card back can show the
 // exact statement, timing, and rows read - no black boxes.
@@ -55,6 +55,7 @@ export interface TickerCard {
   stats?: Array<{ label: string; value: string; tone?: "hot" | "muted" }>;
   spark?: number[];
   href?: string;
+  repoName?: string;
 }
 
 export interface TickerLanes {
@@ -258,6 +259,7 @@ export async function tickerLanes(): Promise<TickerLanes> {
       name: r.name,
       metric: "born " + r.at.slice(11, 16) + " UTC",
       href: `https://github.com/${r.name}`,
+      repoName: r.name,
     })),
     topForked: forks.rows.map((r) => ({
       kicker: "FORKED 24H",
@@ -274,6 +276,7 @@ export async function tickerLanes(): Promise<TickerLanes> {
         stat("issues", r.issues),
       ],
       href: `https://github.com/${r.name}`,
+      repoName: r.name,
     })),
     shippingVelocity: shipping.rows.map((r) => {
       const commits = valueOf(r.commits);
@@ -299,6 +302,7 @@ export async function tickerLanes(): Promise<TickerLanes> {
           stat("actors", r.actors, "hot"),
         ],
         href: `https://github.com/${r.name}`,
+        repoName: r.name,
       };
     }),
     starBreakouts: stars.rows.map((r) => ({
@@ -312,6 +316,7 @@ export async function tickerLanes(): Promise<TickerLanes> {
       // same line twice ("+14 stars" then "14 stars").
       spark: r.spark,
       href: `https://github.com/${r.name}`,
+      repoName: r.name,
     })),
     risingStories: stories.rows.map((r) => ({
       kicker: "RISING",
@@ -322,6 +327,182 @@ export async function tickerLanes(): Promise<TickerLanes> {
     })),
     provenance: [repos.provenance, forks.provenance, shipping.provenance, stars.provenance, stories.provenance],
     fetchedAt: new Date().toISOString(),
+  };
+}
+
+interface RepoDrilldownMetadataSqlRow {
+  description: string;
+  language: string;
+  topics: string[];
+  github_stars: string;
+  github_forks: string;
+  open_issues: string;
+}
+
+interface RepoDrilldownKpiSqlRow {
+  pushes: string;
+  commits: string;
+  distinct_commits: string;
+  forks: string;
+  stars: string;
+  issues_opened: string;
+  prs_opened: string;
+  prs_merged: string;
+  actors: string;
+}
+
+interface RepoDrilldownVelocitySqlRow {
+  hour: string;
+  pushes: string;
+  commits: string;
+  forks: string;
+  stars: string;
+  issues_opened: string;
+  prs_opened: string;
+}
+
+interface RepoDrilldownFeedSqlRow {
+  at: string;
+  actor: string;
+  event_type: string;
+  action: string;
+  commits: string;
+  distinct_commits: string;
+  merged: number | string;
+}
+
+function repoQuerySql(...parts: Provenance[]) {
+  return parts
+    .map((part, index) => `-- repo drill-down query ${index + 1}\n${part.sql}`)
+    .join("\n\n");
+}
+
+export async function repoDrilldown(repoName: string): Promise<RepoDrilldownPayload> {
+  const queryParams = { repoName };
+  const [metadata, kpis, velocity, feed] = await Promise.all([
+    q<RepoDrilldownMetadataSqlRow>(
+      `SELECT
+         description,
+         language,
+         topics,
+         toString(github_stars) AS github_stars,
+         toString(github_forks) AS github_forks,
+         toString(open_issues) AS open_issues
+       FROM gh_repo_metadata FINAL
+       WHERE repo_name = {repoName: String}
+       LIMIT 1`,
+      ["gh_repo_metadata"],
+      queryParams
+    ),
+    q<RepoDrilldownKpiSqlRow>(
+      `WITH (SELECT max(created_at) FROM github_events) AS high_water
+       SELECT
+         toString(countIf(event_type = 'PushEvent')) AS pushes,
+         toString(sum(commit_count)) AS commits,
+         toString(sum(distinct_commit_count)) AS distinct_commits,
+         toString(countIf(event_type = 'ForkEvent')) AS forks,
+         toString(countIf(event_type = 'WatchEvent')) AS stars,
+         toString(countIf(event_type = 'IssuesEvent' AND action = 'opened')) AS issues_opened,
+         toString(countIf(event_type = 'PullRequestEvent' AND action = 'opened')) AS prs_opened,
+         toString(countIf(event_type = 'PullRequestEvent' AND action = 'closed' AND pr_merged = 1)) AS prs_merged,
+         toString(uniqExact(actor_login)) AS actors
+       FROM github_events
+       WHERE repo_name = {repoName: String}
+         AND created_at > high_water - INTERVAL 24 HOUR
+         AND event_type IN ('PushEvent', 'ForkEvent', 'WatchEvent', 'IssuesEvent', 'PullRequestEvent')`,
+      ["github_events"],
+      queryParams
+    ),
+    q<RepoDrilldownVelocitySqlRow>(
+      `WITH (SELECT max(created_at) FROM github_events) AS high_water
+       SELECT
+         toString(toStartOfHour(created_at)) AS hour,
+         toString(countIf(event_type = 'PushEvent')) AS pushes,
+         toString(sum(commit_count)) AS commits,
+         toString(countIf(event_type = 'ForkEvent')) AS forks,
+         toString(countIf(event_type = 'WatchEvent')) AS stars,
+         toString(countIf(event_type = 'IssuesEvent' AND action = 'opened')) AS issues_opened,
+         toString(countIf(event_type = 'PullRequestEvent' AND action = 'opened')) AS prs_opened
+       FROM github_events
+       WHERE repo_name = {repoName: String}
+         AND created_at > high_water - INTERVAL 24 HOUR
+         AND event_type IN ('PushEvent', 'ForkEvent', 'WatchEvent', 'IssuesEvent', 'PullRequestEvent')
+       GROUP BY hour
+       ORDER BY hour`,
+      ["github_events"],
+      queryParams
+    ),
+    q<RepoDrilldownFeedSqlRow>(
+      `WITH (SELECT max(created_at) FROM github_events) AS high_water
+       SELECT
+         toString(created_at) AS at,
+         actor_login AS actor,
+         event_type,
+         action,
+         toString(commit_count) AS commits,
+         toString(distinct_commit_count) AS distinct_commits,
+         pr_merged AS merged
+       FROM github_events
+       WHERE repo_name = {repoName: String}
+         AND created_at > high_water - INTERVAL 24 HOUR
+         AND event_type IN ('PushEvent', 'PullRequestEvent')
+       ORDER BY created_at DESC
+       LIMIT 12`,
+      ["github_events"],
+      queryParams
+    ),
+  ]);
+
+  const meta = metadata.rows[0];
+  const totals = kpis.rows[0];
+  const provenances = [metadata.provenance, kpis.provenance, velocity.provenance, feed.provenance];
+
+  return {
+    type: "repo-drilldown",
+    repoName,
+    generatedAt: new Date().toISOString(),
+    metadata: {
+      description: meta?.description ?? "",
+      language: meta?.language ?? "",
+      topics: meta?.topics ?? [],
+      githubStars: Number(meta?.github_stars ?? 0),
+      githubForks: Number(meta?.github_forks ?? 0),
+      openIssues: Number(meta?.open_issues ?? 0),
+    },
+    kpis24h: {
+      pushes: Number(totals?.pushes ?? 0),
+      commits: Number(totals?.commits ?? 0),
+      distinctCommits: Number(totals?.distinct_commits ?? 0),
+      forks: Number(totals?.forks ?? 0),
+      stars: Number(totals?.stars ?? 0),
+      issuesOpened: Number(totals?.issues_opened ?? 0),
+      prsOpened: Number(totals?.prs_opened ?? 0),
+      prsMerged: Number(totals?.prs_merged ?? 0),
+      actors: Number(totals?.actors ?? 0),
+    },
+    velocity: velocity.rows.map((row) => ({
+      hour: row.hour,
+      pushes: Number(row.pushes),
+      commits: Number(row.commits),
+      forks: Number(row.forks),
+      stars: Number(row.stars),
+      issuesOpened: Number(row.issues_opened),
+      prsOpened: Number(row.prs_opened),
+    })),
+    feed: feed.rows.map((row) => ({
+      at: row.at,
+      actor: row.actor,
+      eventType: row.event_type === "PullRequestEvent" ? "PullRequestEvent" : "PushEvent",
+      action: row.action || (row.event_type === "PushEvent" ? "pushed" : "updated"),
+      commits: Number(row.commits),
+      distinctCommits: Number(row.distinct_commits),
+      merged: Number(row.merged) === 1,
+    })),
+    query: {
+      sql: repoQuerySql(...provenances),
+      rowsRead: provenances.reduce((sum, provenance) => sum + (provenance.rowsRead ?? 0), 0),
+      elapsedMs: provenances.reduce((sum, provenance) => sum + provenance.elapsedMs, 0),
+    },
   };
 }
 

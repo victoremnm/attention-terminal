@@ -187,6 +187,50 @@ export const SkinnyDeckSchema = z.object({
   cards: z.array(SkinnyCardSchema), // finite — the deck runs out (no refill)
 });
 
+export const RepoDrilldownSchema = z.object({
+  type: z.literal("repo-drilldown"),
+  repoName: z.string().max(160),
+  generatedAt: z.string(),
+  metadata: z.object({
+    description: z.string().max(500),
+    language: z.string().max(80),
+    topics: z.array(z.string().max(80)),
+    githubStars: z.number().int().nonnegative(),
+    githubForks: z.number().int().nonnegative(),
+    openIssues: z.number().int().nonnegative(),
+  }),
+  kpis24h: z.object({
+    pushes: z.number().int().nonnegative(),
+    commits: z.number().int().nonnegative(),
+    distinctCommits: z.number().int().nonnegative(),
+    forks: z.number().int().nonnegative(),
+    stars: z.number().int().nonnegative(),
+    issuesOpened: z.number().int().nonnegative(),
+    prsOpened: z.number().int().nonnegative(),
+    prsMerged: z.number().int().nonnegative(),
+    actors: z.number().int().nonnegative(),
+  }),
+  velocity: z.array(z.object({
+    hour: z.string(),
+    pushes: z.number().int().nonnegative(),
+    commits: z.number().int().nonnegative(),
+    forks: z.number().int().nonnegative(),
+    stars: z.number().int().nonnegative(),
+    issuesOpened: z.number().int().nonnegative(),
+    prsOpened: z.number().int().nonnegative(),
+  })),
+  feed: z.array(z.object({
+    at: z.string(),
+    actor: z.string().max(120),
+    eventType: z.enum(["PushEvent", "PullRequestEvent"]),
+    action: z.string().max(80),
+    commits: z.number().int().nonnegative(),
+    distinctCommits: z.number().int().nonnegative(),
+    merged: z.boolean(),
+  })),
+  query: CardQuerySchema,
+});
+
 export const RenderPayloadSchema = z.discriminatedUnion("type", [
   DigestSchema,
   TickerSchema,
@@ -194,6 +238,7 @@ export const RenderPayloadSchema = z.discriminatedUnion("type", [
   CandlesSchema,
   MatrixSchema,
   SkinnyDeckSchema,
+  RepoDrilldownSchema,
 ]);
 
 export type Verdict = z.infer<typeof VerdictSchema>;
@@ -210,4 +255,5 @@ export type SkinnyVisual = z.infer<typeof SkinnyVisualSchema>;
 export type CardQuery = z.infer<typeof CardQuerySchema>;
 export type SkinnyCard = z.infer<typeof SkinnyCardSchema>;
 export type SkinnyDeckPayload = z.infer<typeof SkinnyDeckSchema>;
+export type RepoDrilldownPayload = z.infer<typeof RepoDrilldownSchema>;
 export type RenderPayload = z.infer<typeof RenderPayloadSchema>;

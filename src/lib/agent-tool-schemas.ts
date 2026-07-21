@@ -47,6 +47,14 @@ export const getRealBuildersDef = {
   }),
 } as const;
 
+export const getRepoDrilldownDef = {
+  description:
+    "Compute a repo drill-down answer for a GitHub owner/repo name: metadata, 24h KPIs, hourly velocity, latest push/PR feed, and ClickHouse query provenance. Use when the user asks why a specific repo is moving, asks to double-click a repo, or names a GitHub repo directly.",
+  inputSchema: z.object({
+    repoName: z.string().regex(/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/).max(160),
+  }),
+} as const;
+
 export const renderAnswerDef = {
   description:
     "Validate and render an Attention Terminal answer payload. Use this instead of markdown tables or long prose. Payloads must match the answer grammar.",
@@ -64,5 +72,6 @@ export const attentionToolSchemas = {
   runReadOnlyQuery: tool(runReadOnlyQueryDef),
   getDailyDigest: tool(getDailyDigestDef),
   getRealBuilders: tool(getRealBuildersDef),
+  getRepoDrilldown: tool(getRepoDrilldownDef),
   renderAnswer: tool(renderAnswerDef),
 };

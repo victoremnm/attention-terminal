@@ -4,6 +4,7 @@ import {
   describeTableDef,
   getDailyDigestDef,
   getRealBuildersDef,
+  getRepoDrilldownDef,
   listTablesDef,
   renderAnswerDef,
   runReadOnlyQueryDef,
@@ -11,6 +12,7 @@ import {
 import { dailyDigest } from "./digest";
 import { realBuildersDeck } from "./real-builders";
 import { RenderPayloadSchema } from "./render-payload";
+import { repoDrilldown } from "./queries";
 
 let clickhouse: ClickHouseClient | undefined;
 
@@ -135,6 +137,11 @@ export const getRealBuilders = tool({
   execute: async ({ window }) => realBuildersDeck(window),
 });
 
+export const getRepoDrilldown = tool({
+  ...getRepoDrilldownDef,
+  execute: async ({ repoName }) => repoDrilldown(repoName),
+});
+
 export const renderAnswer = tool({
   ...renderAnswerDef,
   execute: async ({ payload }) => {
@@ -159,5 +166,6 @@ export const attentionTools = {
   runReadOnlyQuery,
   getDailyDigest,
   getRealBuilders,
+  getRepoDrilldown,
   renderAnswer,
 };

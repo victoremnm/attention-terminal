@@ -46,6 +46,13 @@ verdict-plus-one-visual composition · feed-with-pinning canvas · terminal-dark
 - **Live:** ✅ subscribes to Trigger.dev Realtime; ticks as ingestion lands. Pinned ticker keeps ticking at the top rail — this is the demo's dogfood moment (this repo appears in its own feed)
 - **Payload sketch:** `{ type: "ticker", filter: "repos" | "stars" | "stories" | "all", items: [...] }` + stream channel id
 
+### 5. Repo Drill-Down
+- **Intent:** double-click from the live ticker or ask about a specific `owner/repo`
+- **Visual:** repo context header, 24h KPI strip, hourly velocity chart for pushes/commits/stars, and a bounded latest push/PR event feed
+- **Data:** `github_events` for the latest 24h window, anchored to the feed high-water mark; `gh_repo_metadata` for description/language/topics/stars/forks/issues
+- **Constraint:** v1 only surfaces fields the current ingestion keeps. It does not show branch refs, LOC churn, author association, commit messages, or commit text.
+- **Payload sketch:** `{ type: "repo-drilldown", repoName, generatedAt, metadata, kpis24h, velocity, feed, query }`
+
 ### Verdict Tile (composes with every answer)
 - One glanceable state + evidence sparkline + the single load-bearing number
 - **Vocabulary (fixed):** `ACCELERATING` · `PEAKING` · `COOLING` · `DORMANT` · `BREAKOUT` · `DIVERGENT`
@@ -60,6 +67,7 @@ verdict-plus-one-visual composition · feed-with-pinning canvas · terminal-dark
 | one subject + "real?/hype?/vs" | Divergence |
 | category / plural / "compare" (3+ subjects) | Matrix |
 | "now / new / latest / live" | Ticker (`/` and `/trending`) |
+| one GitHub `owner/repo` / "why is this repo moving?" / ticker double-click | Repo Drill-Down |
 | entity lookup ("tell me about X") | Candles (Entity Card is v2) |
 | lifecycle/hype-cycle asked explicitly | Matrix + DIVERGENT/PEAKING verdict (Lifecycle curve is v2) |
 | unanswerable from data | verdict tile `DORMANT`/no-data + caption explaining what we *can* answer — never a prose essay |

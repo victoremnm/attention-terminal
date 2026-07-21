@@ -1,12 +1,23 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { TickerCard, TickerLanes } from "@/lib/queries";
+import type { RepoDrilldownPayload } from "@/lib/render-payload";
+import { RenderedAnswer } from "./RenderedAnswer";
 import { Sparkline } from "./charts";
 import { useIngestPulse } from "./useIngestPulse";
 
-function Card({ card }: { card: TickerCard }) {
+function Card({
+  card,
+  state,
+  onOpenRepo,
+}: {
+  card: TickerCard;
+  state?: "loading" | "selected";
+  onOpenRepo: (repoName: string) => void;
+}) {
   const stats = card.stats?.filter((stat) => stat.value !== "0").slice(0, 6) ?? [];
+  const actionLabel = state === "loading" ? "rendering..." : state === "selected" ? "rendered below" : "click to render data";
   const inner = (
     <>
       {card.spark && card.spark.length > 1 && (
@@ -28,6 +39,27 @@ function Card({ card }: { card: TickerCard }) {
       </span>
     </>
   );
+  if (card.repoName) {
+    return (
+      <div className={`tk-card tk-card-shell${state ? ` is-${state}` : ""}`}>
+        <button
+          type="button"
+          className="tk-card-button"
+          aria-label={`Render live ClickHouse data for ${card.repoName}`}
+          title="Click to render this repo's live data"
+          onClick={() => onOpenRepo(card.repoName!)}
+        >
+          {inner}
+          <span className="tk-action mono">{actionLabel}</span>
+        </button>
+        {card.href && (
+          <a className="tk-card-external mono" href={card.href} target="_blank" rel="noreferrer" onClick={(event) => event.stopPropagation()}>
+            GH
+          </a>
+        )}
+      </div>
+    );
+  }
   return card.href ? (
     <a className="tk-card" href={card.href} target="_blank" rel="noreferrer">{inner}</a>
   ) : (
@@ -35,12 +67,31 @@ function Card({ card }: { card: TickerCard }) {
   );
 }
 
-function Lane({ title, cards }: { title: string; cards: TickerCard[] }) {
+function Lane({
+  title,
+  cards,
+  selectedRepo,
+  loadingRepo,
+  onOpenRepo,
+}: {
+  title: string;
+  cards: TickerCard[];
+  selectedRepo?: string;
+  loadingRepo?: string;
+  onOpenRepo: (repoName: string) => void;
+}) {
   return (
     <div className="tk-lane">
       <div className="tk-lane-title mono">{title}</div>
       <div className="tk-scroll">
-        {cards.map((c, i) => <Card key={`${c.name}-${i}`} card={c} />)}
+        {cards.map((c, i) => (
+          <Card
+            key={`${c.name}-${i}`}
+            card={c}
+            state={c.repoName === loadingRepo ? "loading" : c.repoName === selectedRepo ? "selected" : undefined}
+            onOpenRepo={onOpenRepo}
+          />
+        ))}
       </div>
     </div>
   );
@@ -48,6 +99,12 @@ function Lane({ title, cards }: { title: string; cards: TickerCard[] }) {
 
 export function TickerRail({ initial, ingestToken }: { initial: TickerLanes; ingestToken?: string }) {
   const [lanes, setLanes] = useState(initial);
+  const [selectedRepo, setSelectedRepo] = useState<string | undefined>();
+  const [drilldown, setDrilldown] = useState<RepoDrilldownPayload | undefined>();
+  const [loadingRepo, setLoadingRepo] = useState<string | undefined>();
+  const [drilldownError, setDrilldownError] = useState<string | undefined>();
+  const drilldownRequest = useRef(0);
+  const drilldownAbort = useRef<AbortController | undefined>(undefined);
   // Ticks as ingestion lands (Trigger.dev Realtime); 0 while no run completed yet.
   const { lastIngestAt } = useIngestPulse(ingestToken);
   const ingestKey = lastIngestAt?.getTime() ?? 0;
@@ -66,14 +123,48 @@ export function TickerRail({ initial, ingestToken }: { initial: TickerLanes; ing
     const t = setInterval(refetch, 60_000);
     return () => clearInterval(t);
   }, [ingestKey]);
+
+  useEffect(() => () => drilldownAbort.current?.abort(), []);
+
+  async function openRepo(repoName: string) {
+    const requestId = drilldownRequest.current + 1;
+    drilldownRequest.current = requestId;
+    drilldownAbort.current?.abort();
+    const controller = new AbortController();
+    drilldownAbort.current = controller;
+    setSelectedRepo(repoName);
+    setLoadingRepo(repoName);
+    setDrilldownError(undefined);
+    try {
+      const res = await fetch(`/api/repo-drilldown?repo=${encodeURIComponent(repoName)}`, { signal: controller.signal });
+      const body = await res.json();
+      if (!res.ok) throw new Error(body.error ?? "repo drill-down failed");
+      if (drilldownRequest.current !== requestId) return;
+      setDrilldown(body as RepoDrilldownPayload);
+    } catch (error) {
+      if (controller.signal.aborted || drilldownRequest.current !== requestId) return;
+      setDrilldown(undefined);
+      setDrilldownError(error instanceof Error ? error.message : "repo drill-down failed");
+    } finally {
+      if (drilldownRequest.current === requestId) setLoadingRepo(undefined);
+    }
+  }
+
   return (
     <section className="ticker" aria-label="Breakout ticker">
       <div className="tk-head mono">📌 PINNED · BREAKOUT TICKER <span className="muted">{ingestToken ? "ticks with ingestion" : "refreshes 60s"}</span></div>
-      <Lane title="NEW REPOS" cards={lanes.newRepos} />
-      <Lane title="TOP FORKED · 24H" cards={lanes.topForked} />
-      <Lane title="SHIPPING VELOCITY · 24H" cards={lanes.shippingVelocity} />
-      <Lane title="STAR BREAKOUTS" cards={lanes.starBreakouts} />
-      <Lane title="RISING STORIES" cards={lanes.risingStories} />
+      <Lane title="NEW REPOS" cards={lanes.newRepos} selectedRepo={selectedRepo} loadingRepo={loadingRepo} onOpenRepo={openRepo} />
+      <Lane title="TOP FORKED · 24H" cards={lanes.topForked} selectedRepo={selectedRepo} loadingRepo={loadingRepo} onOpenRepo={openRepo} />
+      <Lane title="SHIPPING VELOCITY · 24H" cards={lanes.shippingVelocity} selectedRepo={selectedRepo} loadingRepo={loadingRepo} onOpenRepo={openRepo} />
+      <Lane title="STAR BREAKOUTS" cards={lanes.starBreakouts} selectedRepo={selectedRepo} loadingRepo={loadingRepo} onOpenRepo={openRepo} />
+      <Lane title="RISING STORIES" cards={lanes.risingStories} selectedRepo={selectedRepo} loadingRepo={loadingRepo} onOpenRepo={openRepo} />
+      {(loadingRepo || drilldownError || drilldown) && (
+        <div className="ticker-drilldown" aria-live="polite">
+          {loadingRepo && <div className="agent-tool mono">rendering {loadingRepo} in background...</div>}
+          {drilldownError && <div className="agent-fault mono" role="alert">! {drilldownError}</div>}
+          {drilldown && <RenderedAnswer payload={drilldown} />}
+        </div>
+      )}
     </section>
   );
 }

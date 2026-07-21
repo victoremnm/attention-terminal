@@ -189,6 +189,11 @@ function MessagePart({ part }: { part: UIMessage["parts"][number] }) {
     return <ToolStatus label="computing daily skinny" done={part.state === "output-available"} />;
   }
 
+  if (part.type === "tool-getRepoDrilldown") {
+    const input = part.input as { repoName?: string } | undefined;
+    return <ToolStatus label={`drilling into ${input?.repoName ?? "repo"}`} done={part.state === "output-available"} />;
+  }
+
   return null;
 }
 
