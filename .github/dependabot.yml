@@ -1,0 +1,49 @@
+# Dependabot version updates.
+# Docs: https://docs.github.com/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml-file
+version: 2
+
+updates:
+  # --- App dependencies (npm, root) ---
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+    commit-message:
+      prefix: "chore"
+      include: "scope"
+    groups:
+      # Batch dev tooling (types, typescript, semantic-release) into one PR.
+      dev-dependencies:
+        dependency-type: "development"
+        update-types: ["minor", "patch"]
+      # Batch non-breaking production bumps together.
+      production-minor-patch:
+        dependency-type: "production"
+        update-types: ["minor", "patch"]
+    ignore:
+      # High-blast-radius majors — review individually, not via grouped bumps.
+      - dependency-name: "next"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@trigger.dev/sdk"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@trigger.dev/build"
+        update-types: ["version-update:semver-major"]
+
+  # --- GitHub Actions ---
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+    commit-message:
+      prefix: "ci"
+    groups:
+      github-actions:
+        patterns: ["*"]
