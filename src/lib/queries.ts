@@ -469,6 +469,12 @@ export const repoActivityLtd = (limit?: number) => repoActivityWindow("td", limi
 //   - ranks by merged-PR rate + repo spread, not raw push volume
 // Both exclusion counts are computed inside the single SQL statement returned
 // as `sql`, so the disclosed `note` is never a JS-side reconstruction.
+//
+// Issue #40: LEFT JOINs `gh_actor_pr_stats` (GitHub-REST-enriched merged-PR
+// counts, populated by the refreshActorPrStats Trigger.dev job) so the
+// merge-rate ranking has real signal instead of the ~empty firehose
+// sum(pr_merged) (CLAUDE.md gotcha #4). See devScatterSql()'s "issue #40"
+// marked block for the exact JOIN/ranking edit.
 
 export type DevScatterWindow = "7d" | "30d";
 
@@ -517,7 +523,10 @@ interface DevScatterSqlRow {
 // `per_actor`/`meta` CTEs below - the CTE names and output columns are
 // unchanged so a JOIN onto `per_actor` should still apply cleanly.
 // ---------------------------------------------------------------------------
-function devScatterSql() {
+// `mergedCol` selects the window-scoped enriched merged-PR count
+// (gh_actor_pr_stats.merged_prs_7d | merged_prs_30d) matching the scatter's own
+// p.prs denominator window - see the enriched CTE below and issue #40 / PR #43.
+function devScatterSql(mergedCol: "merged_prs_7d" | "merged_prs_30d") {
   return `
     WITH actor_days AS (
       SELECT
@@ -552,6 +561,16 @@ function devScatterSql() {
         countIf(NOT is_bot AND repos = 1 AND pushes >= {megaPushThreshold: UInt32}) AS mega_pusher_count,
         countIf(NOT is_bot AND NOT (repos = 1 AND pushes >= {megaPushThreshold: UInt32})) AS kept_count
       FROM per_actor
+    ),
+    -- Issue #40: GitHub-REST-enriched merged-PR counts (gh_actor_pr_stats,
+    -- migration 20260721000012), fed by the refreshActorPrStats Trigger.dev job.
+    -- ReplacingMergeTree(fetched_at) ORDER BY actor_login, so FINAL already
+    -- collapses to one row per actor. ${mergedCol} is the count merged within
+    -- THIS scatter's window, so dividing it by the window's p.prs (below) yields
+    -- a bounded merge rate instead of a lifetime-count-over-window blowup.
+    enriched AS (
+      SELECT actor_login, ${mergedCol} AS merged_prs, 1 AS has_stats
+      FROM gh_actor_pr_stats FINAL
     )
     SELECT
       p.actor AS actor,
@@ -559,18 +578,34 @@ function devScatterSql() {
       p.repos AS repos,
       p.commits AS commits,
       p.prs AS prs,
-      p.mergedPrs AS mergedPrs,
+      -- BEGIN issue #40 JOIN/ranking change (reconcile with issue #41 if it
+      -- also touches this SELECT/ORDER BY): prefer the enriched merged-PR
+      -- count over the firehose-derived sum(pr_merged), which is push-dominated
+      -- and sparse (CLAUDE.md gotcha #4). en.has_stats = 1 is how we detect a
+      -- real join match, since ClickHouse defaults unmatched LEFT JOIN columns
+      -- to 0/empty rather than NULL.
+      if(en.has_stats = 1, en.merged_prs, p.mergedPrs) AS mergedPrs,
       m.bot_count AS bot_count,
       m.mega_pusher_count AS mega_pusher_count,
       m.kept_count AS kept_count
     FROM per_actor AS p
     CROSS JOIN meta AS m
+    LEFT JOIN enriched AS en ON en.actor_login = p.actor
     WHERE NOT p.is_bot
       AND NOT (p.repos = 1 AND p.pushes >= {megaPushThreshold: UInt32})
-    -- Rank by merged-PR signal. Zero-PR actors would score a spurious 1.0 from
-    -- (mergedPrs+1)/(prs+1), so gate them below anyone with real PR activity
-    -- rather than letting push-only accounts tie a 100% merge-rate contributor.
-    ORDER BY (p.prs > 0) DESC, (p.mergedPrs + 1.0) / (p.prs + 1.0) DESC, p.repos DESC, p.commits DESC
+    -- Rank by merged-PR signal, real GitHub-REST data first. Zero-PR actors
+    -- would score a spurious 1.0 from (mergedPrs+1)/(prs+1), so gate them below
+    -- anyone with real PR activity rather than letting push-only accounts tie
+    -- a 100% merge-rate contributor. Enriched actors (en.has_stats = 1) rank
+    -- ahead of firehose-only actors since their merged-PR count is real, not a
+    -- push-dominated proxy.
+    ORDER BY
+      (en.has_stats = 1) DESC,
+      (p.prs > 0 OR en.has_stats = 1) DESC,
+      (if(en.has_stats = 1, en.merged_prs, p.mergedPrs) + 1.0) / (p.prs + 1.0) DESC,
+      p.repos DESC,
+      p.commits DESC
+    -- END issue #40 JOIN/ranking change
     LIMIT {limit: UInt32}
   `.trim();
 }
@@ -578,14 +613,19 @@ function devScatterSql() {
 export async function devScatter(window: DevScatterWindow, limit = 40): Promise<DevScatterResult> {
   const days = DEV_SCATTER_WINDOW_DAYS[window];
   const megaPushThreshold = MEGA_PUSHER_THRESHOLD[window];
+  // Read the enriched merged-PR count scoped to this window, so it matches the
+  // p.prs denominator the ranking divides it by (issue #40 / PR #43 review).
+  const mergedCol = window === "7d" ? "merged_prs_7d" : "merged_prs_30d";
 
-  // ISSUE #41 CHANGE: table provenance now points at the rollup, not the raw
-  // firehose table - the view-SQL flip should show what was actually queried.
-  const { rows, provenance } = await q<DevScatterSqlRow>(devScatterSql(), ["gh_actor_daily"], {
-    days,
-    megaPushThreshold,
-    limit,
-  });
+  // Provenance reconciles issue #41 + #40: the query no longer scans the raw
+  // github_events firehose at all. It reads the gh_actor_daily rollup (#41's
+  // FROM-source swap, via the actor_days CTE) and LEFT JOINs gh_actor_pr_stats
+  // for the GitHub-REST-enriched merged-PR counts (#40, via the enriched CTE).
+  const { rows, provenance } = await q<DevScatterSqlRow>(
+    devScatterSql(mergedCol),
+    ["gh_actor_daily", "gh_actor_pr_stats"],
+    { days, megaPushThreshold, limit }
+  );
 
   const data: DevPoint[] = rows.map((r) => ({
     actor: r.actor,
