@@ -4,10 +4,19 @@
 // Cards: real-builders (dev-scatter) + a talk-vs-code divergence for today's loudest
 // subject + a star-breakout candles for today's top repo.
 
+import { unstable_cache } from "next/cache";
 import { q } from "./queries";
 import { realBuildersDeck } from "./real-builders";
 import { SkinnyDeckSchema, type SkinnyCard, type SkinnyDeckPayload } from "./render-payload";
 import { divergenceVerdict, seriesVerdict } from "./verdicts";
+
+// Issue #41: /deck is force-dynamic (app/deck/page.tsx), so this whole deck was
+// recomputed - DevScatter, divergence, and candles all re-hit ClickHouse - on
+// every single request. Wrapping the assembly in unstable_cache means the deck
+// is only recomputed once per CACHE_TTL_SECONDS window; the page itself stays
+// force-dynamic so the flip-to-view-SQL affordance still reflects a real,
+// recently-run statement, just not a brand-new one on every render.
+const CACHE_TTL_SECONDS = 300;
 
 const sum = (xs: number[]) => xs.reduce((a, b) => a + b, 0);
 
@@ -99,7 +108,7 @@ async function candlesCard(): Promise<SkinnyCard | null> {
   };
 }
 
-export async function liveSkinnyDeck(): Promise<SkinnyDeckPayload> {
+async function assembleLiveSkinnyDeck(): Promise<SkinnyDeckPayload> {
   const cards = (await Promise.all([realBuildersCard(), divergenceCard(), candlesCard()])).filter(
     (c): c is SkinnyCard => c !== null
   );
@@ -110,4 +119,14 @@ export async function liveSkinnyDeck(): Promise<SkinnyDeckPayload> {
     generatedAt: new Date().toISOString(),
     cards,
   });
+}
+
+// Cached at the data layer (not just page-level ISR) so any other caller of
+// liveSkinnyDeck() - not just /deck - shares the same cached result.
+const cachedLiveSkinnyDeck = unstable_cache(assembleLiveSkinnyDeck, ["live-skinny-deck"], {
+  revalidate: CACHE_TTL_SECONDS,
+});
+
+export async function liveSkinnyDeck(): Promise<SkinnyDeckPayload> {
+  return cachedLiveSkinnyDeck();
 }
