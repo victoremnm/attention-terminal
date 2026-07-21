@@ -3,11 +3,13 @@ import { tool } from "ai";
 import {
   describeTableDef,
   getDailyDigestDef,
+  getRealBuildersDef,
   listTablesDef,
   renderAnswerDef,
   runReadOnlyQueryDef,
 } from "./agent-tool-schemas";
 import { dailyDigest } from "./digest";
+import { realBuildersDeck } from "./real-builders";
 import { RenderPayloadSchema } from "./render-payload";
 
 let clickhouse: ClickHouseClient | undefined;
@@ -128,6 +130,11 @@ export const getDailyDigest = tool({
   execute: async ({ noiseFloor }) => dailyDigest(noiseFloor),
 });
 
+export const getRealBuilders = tool({
+  ...getRealBuildersDef,
+  execute: async ({ window }) => realBuildersDeck(window),
+});
+
 export const renderAnswer = tool({
   ...renderAnswerDef,
   execute: async ({ payload }) => {
@@ -151,5 +158,6 @@ export const attentionTools = {
   describeTable,
   runReadOnlyQuery,
   getDailyDigest,
+  getRealBuilders,
   renderAnswer,
 };

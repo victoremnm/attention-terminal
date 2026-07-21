@@ -1,6 +1,7 @@
 // Server-side only: imported exclusively from server components and route
 // handlers. ClickHouse credentials never reach the client bundle.
 import { clickhouse } from "./clickhouse";
+import type { DevPoint } from "./render-payload";
 
 // Every query returns its provenance so the SQL-flip card back can show the
 // exact statement, timing, and rows read - no black boxes.
@@ -29,6 +30,21 @@ export async function q<T>(
     // provenance stays partial; never block the answer on it
   }
   return { rows, provenance: { sql: sql.trim(), elapsedMs, rowsRead, tables } };
+}
+
+// Flat read-stats contract for card-producing read fns (issue #25, AGENT-FLEET-PLAN.md
+// §4.3): `sql` is the exact statement issued (from `q`'s provenance, never a
+// reconstruction), `rowsRead`/`elapsedMs` come straight off the ClickHouse response
+// summary. This is what powers the Daily Skinny card's flip-to-view-SQL affordance.
+export interface QueryResult<T> {
+  data: T;
+  sql: string;
+  rowsRead: number;
+  elapsedMs: number;
+}
+
+function toQueryResult<T>(data: T, provenance: Provenance): QueryResult<T> {
+  return { data, sql: provenance.sql, rowsRead: provenance.rowsRead ?? 0, elapsedMs: provenance.elapsedMs };
 }
 
 export interface TickerCard {
@@ -329,4 +345,228 @@ export async function freshness() {
     ["hackernews", "ingest_log"]
   );
   return rows[0] ?? { hn_lag_s: -1, gh_chunk: "unknown" };
+}
+
+// --- gh_repo_metadata read layer (issue #25, AGENT-FLEET-PLAN.md §4.1/§4.4) ---
+//
+// `_l1d/_l7d/_l30d/_ltd` are time filters over `gh_repo_daily` JOIN'd to
+// `gh_repo_metadata USING (repo_name)` - plain WHERE clauses over the existing
+// tables, never new DB objects (goose owns all DDL; see migrations/20260720000009).
+
+export type RepoWindow = "1d" | "7d" | "30d" | "td";
+
+const REPO_WINDOW_DAYS: Record<RepoWindow, number> = {
+  "1d": 1,
+  "7d": 7,
+  "30d": 30,
+  // github_events (and therefore gh_repo_daily) only retains ~30 days of history
+  // (CLAUDE.md); "life to date" is expressed as a generous day count so every
+  // window keeps the same `day >= today() - N` shape rather than special-casing
+  // an unbounded filter.
+  td: 36_500,
+};
+
+function repoWindowClause(window: RepoWindow) {
+  return `day >= today() - ${REPO_WINDOW_DAYS[window]}`;
+}
+
+export interface RepoWindowRow {
+  repo_name: string;
+  owner: string;
+  description: string;
+  language: string;
+  topics: string[];
+  github_stars: number;
+  events: number;
+  actors: number;
+  pushes: number;
+  commits: number;
+  stars: number;
+  forks: number;
+  prsOpened: number;
+  prsMerged: number;
+}
+
+interface RepoWindowSqlRow {
+  repo_name: string;
+  owner: string;
+  description: string;
+  language: string;
+  topics: string[];
+  github_stars: string;
+  events: string;
+  actors: string;
+  pushes: string;
+  commits: string;
+  stars: string;
+  forks: string;
+  prs_opened: string;
+  prs_merged: string;
+}
+
+// Repo activity + metadata for one of the fixed windows, ranked by event volume.
+// `gh_repo_metadata` is joined FINAL (ReplacingMergeTree - ungrouped parts can
+// hold stale duplicate rows pre-merge, same reasoning as `hackernews FINAL`).
+export async function repoActivityWindow(window: RepoWindow, limit = 20): Promise<QueryResult<RepoWindowRow[]>> {
+  const sql = `
+    SELECT
+      d.repo_name AS repo_name,
+      any(m.owner) AS owner,
+      any(m.description) AS description,
+      any(m.language) AS language,
+      any(m.topics) AS topics,
+      any(m.github_stars) AS github_stars,
+      countMerge(d.events) AS events,
+      uniqMerge(d.actors) AS actors,
+      sum(d.pushes) AS pushes,
+      sum(d.commits) AS commits,
+      sum(d.stars) AS stars,
+      sum(d.forks) AS forks,
+      sum(d.prs_opened) AS prs_opened,
+      sum(d.prs_merged) AS prs_merged
+    FROM gh_repo_daily AS d
+    LEFT JOIN gh_repo_metadata FINAL AS m ON m.repo_name = d.repo_name
+    WHERE ${repoWindowClause(window)}
+    GROUP BY d.repo_name
+    ORDER BY events DESC
+    LIMIT {limit: UInt32}
+  `.trim();
+
+  const { rows, provenance } = await q<RepoWindowSqlRow>(sql, ["gh_repo_daily", "gh_repo_metadata"], { limit });
+
+  const data: RepoWindowRow[] = rows.map((r) => ({
+    repo_name: r.repo_name,
+    owner: r.owner,
+    description: r.description,
+    language: r.language,
+    topics: r.topics ?? [],
+    github_stars: Number(r.github_stars),
+    events: Number(r.events),
+    actors: Number(r.actors),
+    pushes: Number(r.pushes),
+    commits: Number(r.commits),
+    stars: Number(r.stars),
+    forks: Number(r.forks),
+    prsOpened: Number(r.prs_opened),
+    prsMerged: Number(r.prs_merged),
+  }));
+
+  return toQueryResult(data, provenance);
+}
+
+// Named convenience wrappers for the four windows named in the contract.
+export const repoActivityL1d = (limit?: number) => repoActivityWindow("1d", limit);
+export const repoActivityL7d = (limit?: number) => repoActivityWindow("7d", limit);
+export const repoActivityL30d = (limit?: number) => repoActivityWindow("30d", limit);
+export const repoActivityLtd = (limit?: number) => repoActivityWindow("td", limit);
+
+// --- DevScatter read fn (issue #25) - the "real builders" data source ---
+//
+// Per-actor push/PR aggregates over github_events, filtered for human signal:
+//   - excludes `[bot]`-pattern accounts outright
+//   - excludes single-repo mega-pushers (script-spam, e.g. `bolividob` at 46k
+//     pushes / 1 repo - see CLAUDE.md gotcha notes / AGENT-FLEET-PLAN.md §2.2)
+//   - ranks by merged-PR rate + repo spread, not raw push volume
+// Both exclusion counts are computed inside the single SQL statement returned
+// as `sql`, so the disclosed `note` is never a JS-side reconstruction.
+
+export type DevScatterWindow = "7d" | "30d";
+
+const DEV_SCATTER_WINDOW_DAYS: Record<DevScatterWindow, number> = { "7d": 7, "30d": 30 };
+
+// Push-count threshold (on a single repo) past which an account is treated as
+// a script-spam mega-pusher rather than a human contributor. Scaled with the
+// window so the 30d cut isn't just 4x as forgiving as the 7d cut.
+const MEGA_PUSHER_THRESHOLD: Record<DevScatterWindow, number> = { "7d": 150, "30d": 400 };
+
+export interface DevScatterResult extends QueryResult<DevPoint[]> {
+  note?: string; // discloses dropped bot/spam rows - no silent caps
+}
+
+interface DevScatterSqlRow {
+  actor: string;
+  pushes: string;
+  repos: string;
+  commits: string;
+  prs: string;
+  mergedPrs: string;
+  bot_count: string;
+  mega_pusher_count: string;
+}
+
+function devScatterSql() {
+  return `
+    WITH window_events AS (
+      SELECT actor_login, repo_name, event_type, action, pr_merged, commit_count
+      FROM github_events
+      WHERE created_at > (SELECT max(created_at) FROM github_events) - INTERVAL {days: UInt32} DAY
+        AND actor_login != ''
+    ),
+    per_actor AS (
+      SELECT
+        actor_login AS actor,
+        actor_login ILIKE '%[bot]%' AS is_bot,
+        countIf(event_type = 'PushEvent') AS pushes,
+        uniqExact(repo_name) AS repos,
+        sum(commit_count) AS commits,
+        countIf(event_type = 'PullRequestEvent' AND action = 'opened') AS prs,
+        sum(pr_merged) AS mergedPrs
+      FROM window_events
+      GROUP BY actor_login
+    ),
+    meta AS (
+      SELECT
+        countIf(is_bot) AS bot_count,
+        countIf(NOT is_bot AND repos = 1 AND pushes >= {megaPushThreshold: UInt32}) AS mega_pusher_count
+      FROM per_actor
+    )
+    SELECT
+      p.actor AS actor,
+      p.pushes AS pushes,
+      p.repos AS repos,
+      p.commits AS commits,
+      p.prs AS prs,
+      p.mergedPrs AS mergedPrs,
+      m.bot_count AS bot_count,
+      m.mega_pusher_count AS mega_pusher_count
+    FROM per_actor AS p
+    CROSS JOIN meta AS m
+    WHERE NOT p.is_bot
+      AND NOT (p.repos = 1 AND p.pushes >= {megaPushThreshold: UInt32})
+    ORDER BY (p.mergedPrs + 1.0) / (p.prs + 1.0) DESC, p.repos DESC, p.commits DESC
+    LIMIT {limit: UInt32}
+  `.trim();
+}
+
+export async function devScatter(window: DevScatterWindow, limit = 40): Promise<DevScatterResult> {
+  const days = DEV_SCATTER_WINDOW_DAYS[window];
+  const megaPushThreshold = MEGA_PUSHER_THRESHOLD[window];
+
+  const { rows, provenance } = await q<DevScatterSqlRow>(devScatterSql(), ["github_events"], {
+    days,
+    megaPushThreshold,
+    limit,
+  });
+
+  const data: DevPoint[] = rows.map((r) => ({
+    actor: r.actor,
+    pushes: Number(r.pushes),
+    repos: Number(r.repos),
+    commits: Number(r.commits),
+    prs: Number(r.prs),
+    mergedPrs: Number(r.mergedPrs),
+  }));
+
+  const botCount = Number(rows[0]?.bot_count ?? 0);
+  const megaPusherCount = Number(rows[0]?.mega_pusher_count ?? 0);
+  const dropped: string[] = [];
+  if (botCount > 0) dropped.push(`${botCount} \`[bot]\`-pattern account${botCount === 1 ? "" : "s"}`);
+  if (megaPusherCount > 0) {
+    dropped.push(
+      `${megaPusherCount} single-repo mega-pusher${megaPusherCount === 1 ? "" : "s"} (>=${megaPushThreshold} pushes to one repo)`
+    );
+  }
+  const note = dropped.length ? `Excluded ${dropped.join(" and ")} from the ${window} window.` : undefined;
+
+  return { ...toQueryResult(data, provenance), note };
 }

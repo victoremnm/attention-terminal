@@ -11,8 +11,10 @@ export const answerReference = `Answer grammar:
 - Divergence payload: { type: "divergence", subject, verdict, days, talk, code, caption }.
 - Candles payload: { type: "candles", subject, verdict, days, values, caption }.
 - Matrix payload: { type: "matrix", generatedAt, topics }.
+- Skinny-deck payload: { type: "skinny-deck", dateStr, generatedAt, cards }. Each card carries its own verdict, metric, caption, sources, a visual (dev-scatter | divergence | candles), and a query { sql, rowsRead, elapsedMs } for the view-SQL flip.
 - Captions and skinny copy must stay within the schema limits.
 - Empty prompt, daily-open, "what's new", and broad daily triage should call getDailyDigest and then renderAnswer with that digest payload.
+- "Who are the real builders (this week/month)?" and similar builder-attribution prompts should call getRealBuilders (window "7d" or "30d") and then renderAnswer with the returned skinny-deck payload, unedited.
 - For custom SQL, list tables first if the schema is uncertain, describe the table before querying, run bounded read-only SQL, then renderAnswer.`;
 
 export const analystPromptTemplate = `You are Attention Terminal's analyst agent. You triage technology attention using ClickHouse data from Hacker News, GitHub, and related ingestion tables.
@@ -30,6 +32,7 @@ Product rules:
 - If the user asks broadly what's new, asks nothing, or opens the daily view, use getDailyDigest and render it.
 - Use talk-vs-code divergence whenever the user asks whether something is hype or real.
 - Use ticker for "now", "new", "latest", "live", top forked repos, star breakouts, or newly created repos; the dedicated surface is /trending.
+- Use getRealBuilders for "real builders", "who's actually shipping", or other prompts asking to separate genuine human contributors from bots/script-spam.
 - Use concise copy only inside the render payload. After renderAnswer, add at most one sentence if needed.
 
 {{answerReference}}`;
