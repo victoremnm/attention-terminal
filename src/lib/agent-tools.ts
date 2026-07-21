@@ -8,11 +8,15 @@ import {
   listTablesDef,
   renderAnswerDef,
   runReadOnlyQueryDef,
+  runDataRetrievalDef,
+  runVisualizationMappingDef,
 } from "./agent-tool-schemas";
 import { dailyDigest } from "./digest";
 import { realBuildersDeck } from "./real-builders";
 import { RenderPayloadSchema } from "./render-payload";
 import { repoDrilldown } from "./queries";
+import { runDataRetrievalAgent } from "./agents/data-retrieval-agent";
+import { runVisualizationMappingAgent } from "./agents/visualization-mapping-agent";
 
 let clickhouse: ClickHouseClient | undefined;
 
@@ -160,6 +164,16 @@ export const renderAnswer = tool({
   },
 });
 
+export const runDataRetrieval = tool({
+  ...runDataRetrievalDef,
+  execute: async ({ intent }) => runDataRetrievalAgent(intent),
+});
+
+export const runVisualizationMapping = tool({
+  ...runVisualizationMappingDef,
+  execute: async ({ intent, metadata }) => runVisualizationMappingAgent(intent, metadata),
+});
+
 export const attentionTools = {
   listTables,
   describeTable,
@@ -168,4 +182,6 @@ export const attentionTools = {
   getRealBuilders,
   getRepoDrilldown,
   renderAnswer,
+  runDataRetrieval,
+  runVisualizationMapping,
 };

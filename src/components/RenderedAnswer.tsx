@@ -1,6 +1,6 @@
 "use client";
 
-import type { CandlesPayload, DigestPayload, DivergencePayload, MatrixPayload, RenderPayload, RepoDrilldownPayload, TickerPayload, VerdictTile } from "@/lib/render-payload";
+import type { CandlesPayload, DigestPayload, DivergencePayload, MatrixPayload, MorphingCardPayload, RenderPayload, RepoDrilldownPayload, TickerPayload, VerdictTile } from "@/lib/render-payload";
 import { VERDICT_COLOR } from "@/lib/verdict-color";
 import { AreaChart, DualLine, Sparkline } from "./charts";
 import { SkinnyDeck } from "./SkinnyDeck";
@@ -111,6 +111,7 @@ function MatrixAnswer({ payload }: { payload: MatrixPayload }) {
     </div>
   );
 }
+
 
 function compact(value: number) {
   return new Intl.NumberFormat("en", { notation: "compact", maximumFractionDigits: 1 }).format(value);
@@ -239,6 +240,20 @@ function RepoDrilldownAnswer({ payload }: { payload: RepoDrilldownPayload }) {
   );
 }
 
+function MorphingCardAnswer({ payload }: { payload: MorphingCardPayload }) {
+  return (
+    <div className="agent-answer morphing-card">
+      <div className="agent-answer-head mono">
+        {payload.visualizationType.toUpperCase()}
+      </div>
+      <div className="agent-chart-placeholder" style={{ padding: '1rem', background: '#f5f5f5', color: '#000', margin: '1rem 0' }}>
+        {payload.summary && <p style={{ marginBottom: '0.5rem' }}>{payload.summary}</p>}
+        <i>[Morphing Canvas for {payload.visualizationType}]</i>
+      </div>
+    </div>
+  );
+}
+
 export function RenderedAnswer({ payload }: { payload: RenderPayload }) {
   if (payload.type === "digest") return <DigestAnswer payload={payload} />;
   if (payload.type === "ticker") return <TickerAnswer payload={payload} />;
@@ -246,5 +261,6 @@ export function RenderedAnswer({ payload }: { payload: RenderPayload }) {
   if (payload.type === "candles") return <CandlesAnswer payload={payload} />;
   if (payload.type === "skinny-deck") return <SkinnyDeck payload={payload} />;
   if (payload.type === "repo-drilldown") return <RepoDrilldownAnswer payload={payload} />;
+  if (payload.type === "morphing-card") return <MorphingCardAnswer payload={payload} />;
   return <MatrixAnswer payload={payload} />;
 }

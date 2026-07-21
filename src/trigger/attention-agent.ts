@@ -19,10 +19,16 @@ const systemPrompt = prompts.define({
   content: analystPromptTemplate,
 });
 
+const agentLocal = chat.local<{ lastVisualization?: string }>({ id: "presentation-state" });
+
 export const attentionAgent = chat.agent({
   id: "attention-agent",
   idleTimeoutInSeconds: 300,
   tools: attentionTools,
+
+  onBoot: async () => {
+    agentLocal.init({});
+  },
 
   onChatStart: async () => {
     const resolved = await systemPrompt.resolve({ answerReference });
@@ -31,8 +37,8 @@ export const attentionAgent = chat.agent({
 
   run: async ({ messages, tools, signal }) => {
     return streamText({
-      model: openai("gpt-5.1"),
       ...chat.toStreamTextOptions({ registry }),
+      model: openai("gpt-5.1"),
       messages,
       tools,
       stopWhen: stepCountIs(15),
