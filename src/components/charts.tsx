@@ -1,5 +1,7 @@
 "use client";
 
+import type { DevPoint } from "@/lib/render-payload";
+
 // Hand-rolled SVG charts per the wireframes - no chart libraries.
 // Cyan = talk/HN, magenta = code/GitHub, muted grid, tabular numerals.
 
@@ -92,6 +94,104 @@ export function AreaChart({ days, values, label }: { days: string[]; values: num
         </text>
       </svg>
       <figcaption className="legend"><span className="muted">{label}</span></figcaption>
+    </figure>
+  );
+}
+
+// DevScatter: "real builders vs script goblins". Log-log pushes(Y) x repos(X),
+// color = mergedPrs/(prs+1) (script-goblin magenta -> real-builder cyan),
+// size = commits. Hand-rolled SVG, no chart libraries.
+export function DevScatterChart({ points, note }: { points: DevPoint[]; note?: string }) {
+  const W = 640, H = 300, padL = 48, padR = 20, padT = 18, padB = 34;
+  const iw = W - padL - padR, ih = H - padT - padB;
+
+  if (!points.length) return null;
+
+  const reposVals = points.map((p) => Math.max(1, p.repos));
+  const pushVals = points.map((p) => Math.max(1, p.pushes));
+  const maxRepos = Math.max(...reposVals, 10);
+  const maxPushes = Math.max(...pushVals, 10);
+  const minPushes = Math.min(...pushVals, 1);
+
+  const xLog = (v: number) => Math.log10(Math.max(1, v)) / Math.log10(Math.max(10, maxRepos));
+  const yLog = (v: number) => {
+    const lo = Math.log10(Math.max(1, minPushes));
+    const hi = Math.log10(Math.max(10, maxPushes));
+    const span = hi - lo || 1;
+    return (Math.log10(Math.max(1, v)) - lo) / span;
+  };
+
+  const x = (v: number) => padL + xLog(v) * iw;
+  const y = (v: number) => padT + ih - yLog(v) * ih;
+
+  const radius = (commits: number) => Math.min(22, Math.max(4, 4 + Math.sqrt(commits) * 0.28));
+  const color = (p: DevPoint) => {
+    const ratio = Math.min(1, Math.max(0, p.mergedPrs / (p.prs + 1)));
+    const pct = Math.round(ratio * 100);
+    return `color-mix(in srgb, var(--cyan) ${pct}%, var(--mag) ${100 - pct}%)`;
+  };
+
+  const xTicks = [1, 10, 100, 1000].filter((t) => t <= maxRepos * 1.4);
+  const yTicks = [100, 1000, 10000, 100000].filter((t) => t >= minPushes / 4 && t <= maxPushes * 3);
+
+  return (
+    <figure className="chart dev-scatter">
+      <svg
+        viewBox={`0 0 ${W} ${H}`}
+        role="img"
+        aria-label="Developer scatter: pushes vs repos touched, log-log axes, color shows merged-PR ratio, size shows commit volume"
+      >
+        {yTicks.map((t) => (
+          <g key={`y-${t}`}>
+            <line x1={padL} x2={W - padR} y1={y(t)} y2={y(t)} stroke="var(--line-soft)" strokeWidth="1" />
+            <text x={padL - 6} y={y(t) + 3} fontSize="9" fill="var(--muted)" textAnchor="end" className="mono">
+              {t.toLocaleString()}
+            </text>
+          </g>
+        ))}
+        {xTicks.map((t) => (
+          <g key={`x-${t}`}>
+            <line x1={x(t)} x2={x(t)} y1={padT} y2={padT + ih} stroke="var(--line-soft)" strokeWidth="1" />
+            <text x={x(t)} y={H - padB + 14} fontSize="9" fill="var(--muted)" textAnchor="middle" className="mono">
+              {t}
+            </text>
+          </g>
+        ))}
+        <line x1={padL} x2={W - padR} y1={padT + ih} y2={padT + ih} stroke="var(--line)" strokeWidth="1" />
+        <line x1={padL} x2={padL} y1={padT} y2={padT + ih} stroke="var(--line)" strokeWidth="1" />
+        <text x={W - padR} y={H - 4} fontSize="9" fill="var(--muted)" textAnchor="end" className="mono">
+          repos touched (log)
+        </text>
+        <text x={padL} y={padT - 6} fontSize="9" fill="var(--muted)" textAnchor="start" className="mono">
+          pushes (log)
+        </text>
+        {points.map((p) => {
+          const r = radius(p.commits);
+          return (
+            <g key={p.actor}>
+              <circle cx={x(p.repos)} cy={y(p.pushes)} r={r} fill={color(p)} fillOpacity="0.82" stroke="var(--s)" strokeWidth="1.5" />
+              <text x={x(p.repos)} y={y(p.pushes) - r - 5} fontSize="9" fill="var(--ink)" textAnchor="middle" className="mono">
+                {p.actor}
+              </text>
+            </g>
+          );
+        })}
+      </svg>
+      <figcaption className="legend dev-scatter-legend">
+        <span className="scatter-gradient-legend">
+          <i className="scatter-gradient" aria-hidden="true" />
+          <b>script-goblins</b>
+          <span className="muted">color = merged PRs / (PRs+1)</span>
+          <b>real builders</b>
+        </span>
+        <span className="scatter-size-legend" aria-hidden="true">
+          <i style={{ width: radius(0) * 2, height: radius(0) * 2 }} />
+          <i style={{ width: radius(1000) * 2, height: radius(1000) * 2 }} />
+          <i style={{ width: radius(4000) * 2, height: radius(4000) * 2 }} />
+        </span>
+        <span className="muted">size = commits</span>
+      </figcaption>
+      {note && <p className="scatter-note mono muted">{note}</p>}
     </figure>
   );
 }

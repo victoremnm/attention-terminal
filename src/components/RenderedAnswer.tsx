@@ -1,16 +1,9 @@
 "use client";
 
-import type { CandlesPayload, DigestPayload, DivergencePayload, MatrixPayload, RenderPayload, SkinnyDeckPayload, TickerPayload, VerdictTile } from "@/lib/render-payload";
+import type { CandlesPayload, DigestPayload, DivergencePayload, MatrixPayload, RenderPayload, TickerPayload, VerdictTile } from "@/lib/render-payload";
+import { VERDICT_COLOR } from "@/lib/verdict-color";
 import { AreaChart, DualLine, Sparkline } from "./charts";
-
-const VERDICT_COLOR: Record<string, string> = {
-  ACCELERATING: "var(--cyan)",
-  PEAKING: "var(--amber)",
-  COOLING: "var(--muted)",
-  DORMANT: "var(--muted)",
-  BREAKOUT: "var(--mag)",
-  DIVERGENT: "var(--mag)",
-};
+import { SkinnyDeck } from "./SkinnyDeck";
 
 function VerdictBadge({ verdict }: { verdict: VerdictTile }) {
   return (
@@ -119,31 +112,11 @@ function MatrixAnswer({ payload }: { payload: MatrixPayload }) {
   );
 }
 
-// Placeholder — the real tactile finishable deck (swipe/flip-to-view-SQL/discussion/
-// SESSION COMPLETE, Framer Motion) is issue #27. This static fallback keeps the union
-// exhaustive and main buildable against the frozen SkinnyDeck contract.
-function SkinnyDeckAnswer({ payload }: { payload: SkinnyDeckPayload }) {
-  return (
-    <div className="agent-answer">
-      <div className="agent-answer-head mono">THE DAILY SKINNY <span>{payload.cards.length} cards · {payload.dateStr}</span></div>
-      <div className="agent-skinny-deck-fallback">
-        {payload.cards.map((card) => (
-          <div key={card.id} className="agent-skinny-card-stub">
-            <b>{card.subject}</b>
-            <span className="mono" style={{ color: VERDICT_COLOR[card.verdict] }}>{card.verdict} · {card.metric} {card.metricLabel}</span>
-            <p>{card.caption}</p>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 export function RenderedAnswer({ payload }: { payload: RenderPayload }) {
   if (payload.type === "digest") return <DigestAnswer payload={payload} />;
   if (payload.type === "ticker") return <TickerAnswer payload={payload} />;
   if (payload.type === "divergence") return <DivergenceAnswer payload={payload} />;
   if (payload.type === "candles") return <CandlesAnswer payload={payload} />;
-  if (payload.type === "skinny-deck") return <SkinnyDeckAnswer payload={payload} />;
+  if (payload.type === "skinny-deck") return <SkinnyDeck payload={payload} />;
   return <MatrixAnswer payload={payload} />;
 }
