@@ -2,6 +2,7 @@
 // handlers. ClickHouse credentials never reach the client bundle.
 import { clickhouse, clickhouseInsert, ensureTablesExist } from "./clickhouse";
 import { fetchRepoRow } from "./github-repo";
+import { analyzeAndStoreRepo } from "./repo-analysis";
 import type { DevPoint, RepoDrilldownPayload } from "./render-payload";
 
 // Every query returns its provenance so the SQL-flip card back can show the
@@ -363,6 +364,15 @@ interface RepoDrilldownVelocitySqlRow {
   prs_opened: string;
 }
 
+interface RepoDrilldownActorSqlRow {
+  actor: string;
+  pushes: string;
+  commits: string;
+  distinct_commits: string;
+  prs_opened: string;
+  prs_merged: string;
+}
+
 interface RepoDrilldownFeedSqlRow {
   at: string;
   actor: string;
@@ -371,6 +381,14 @@ interface RepoDrilldownFeedSqlRow {
   commits: string;
   distinct_commits: string;
   merged: number | string;
+}
+
+interface RepoDrilldownAnalysisSqlRow {
+  overview: string;
+  tech_stack: string[];
+  key_files: string[];
+  architecture_summary: string;
+  analyzed_at: string;
 }
 
 function repoQuerySql(...parts: Provenance[]) {
