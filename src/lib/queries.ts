@@ -502,25 +502,55 @@ interface DevScatterSqlRow {
   kept_count: string;
 }
 
+// --- ISSUE #41 CHANGE (data-warehouse agent) -------------------------------
+// Swapped the raw github_events scan (398,890,473 rows / ~7.9s measured live)
+// for the gh_actor_daily rollup (migration
+// migrations/20260720000012_gh_actor_daily_rollup.sql), an AggregatingMergeTree
+// keyed by (day, actor_login) fed by a MV, read here with `-Merge` combinators -
+// same pattern as repoActivityWindow() above / gh_repo_daily.
+//
+// Only the FROM-source and per-actor aggregation changed: raw
+// countIf/sum/uniqExact over window_events became sum/uniqMerge over
+// gh_actor_daily's pre-aggregated states. The bot/mega-pusher filtering
+// predicates, the `meta` exclusion-count shape, the final ORDER BY ranking
+// formula, and the DevScatterResult/DevScatterSqlRow contracts are all
+// untouched byte-for-byte from before this change.
+//
+// Issue #40 (merged-PR signal enrichment) touches this same function's
+// mergedPrs computation/ranking in parallel. If #40 lands first: reconcile by
+// keeping this rollup FROM-source swap (gh_actor_daily instead of
+// github_events) and re-applying #40's JOIN/ranking edit on top of the
+// `per_actor`/`meta` CTEs below - the CTE names and output columns are
+// unchanged so a JOIN onto `per_actor` should still apply cleanly.
+// ---------------------------------------------------------------------------
 function devScatterSql() {
   return `
-    WITH window_events AS (
-      SELECT actor_login, repo_name, event_type, action, pr_merged, commit_count
-      FROM github_events
-      WHERE created_at > (SELECT max(created_at) FROM github_events) - INTERVAL {days: UInt32} DAY
+    WITH actor_days AS (
+      SELECT
+        actor_login,
+        uniqMerge(repos) AS repos,
+        sum(pushes) AS pushes,
+        sum(commits) AS commits,
+        sum(prs_opened) AS prs,
+        sum(prs_merged) AS mergedPrs
+      FROM gh_actor_daily
+      -- Anchored to the rollup's own high-water day, not wall clock, so the
+      -- window self-heals after ingestion lag - same reasoning as the
+      -- max(created_at) anchor this replaces (CLAUDE.md gotcha notes).
+      WHERE day > (SELECT max(day) FROM gh_actor_daily) - {days: UInt32}
         AND actor_login != ''
+      GROUP BY actor_login
     ),
     per_actor AS (
       SELECT
         actor_login AS actor,
         actor_login ILIKE '%[bot]%' AS is_bot,
-        countIf(event_type = 'PushEvent') AS pushes,
-        uniqExact(repo_name) AS repos,
-        sum(commit_count) AS commits,
-        countIf(event_type = 'PullRequestEvent' AND action = 'opened') AS prs,
-        sum(pr_merged) AS mergedPrs
-      FROM window_events
-      GROUP BY actor_login
+        pushes,
+        repos,
+        commits,
+        prs,
+        mergedPrs
+      FROM actor_days
     ),
     meta AS (
       SELECT
@@ -579,9 +609,13 @@ export async function devScatter(window: DevScatterWindow, limit = 40): Promise<
   const days = DEV_SCATTER_WINDOW_DAYS[window];
   const megaPushThreshold = MEGA_PUSHER_THRESHOLD[window];
 
+  // Provenance reconciles issue #41 + #40: the query no longer scans the raw
+  // github_events firehose at all. It reads the gh_actor_daily rollup (#41's
+  // FROM-source swap, via the actor_days CTE) and LEFT JOINs gh_actor_pr_stats
+  // for the GitHub-REST-enriched merged-PR counts (#40, via the enriched CTE).
   const { rows, provenance } = await q<DevScatterSqlRow>(
     devScatterSql(),
-    ["github_events", "gh_actor_pr_stats"], // issue #40: enrichment JOIN table, kept in provenance for the flip
+    ["gh_actor_daily", "gh_actor_pr_stats"],
     { days, megaPushThreshold, limit }
   );
 
