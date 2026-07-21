@@ -64,12 +64,29 @@ export interface SessionLearningRow {
   tags: string[];
 }
 
+export interface ModelDistributionSummary {
+  model: string;
+  count: number;
+  minLatencyMs: number;
+  q1LatencyMs: number;
+  medianLatencyMs: number;
+  q3LatencyMs: number;
+  maxLatencyMs: number;
+  latencies: number[];
+  avgInputTokens: number;
+  avgOutputTokens: number;
+  totalCostUsd: number;
+  avgCostUsd: number;
+  successRate: number;
+}
+
 export interface TelemetryPayload {
   kpis: TelemetryKpiSummary;
   runs: SubagentRunRow[];
   apiEvents: SubagentApiEventRow[];
   experiments: SubagentExperimentRow[];
   learnings: SessionLearningRow[];
+  modelStats: ModelDistributionSummary[];
   provenance: {
     sql: string;
     elapsedMs: number;
@@ -116,6 +133,58 @@ function estimateTokensAndCost(run: SubagentRunRow) {
     output_tokens: outTokens,
     cost_usd: cost,
   };
+}
+
+function computeModelDistributionStats(runs: SubagentRunRow[]): ModelDistributionSummary[] {
+  const groups: Record<string, SubagentRunRow[]> = {};
+
+  for (const r of runs) {
+    const model = r.model || "unknown";
+    if (!groups[model]) groups[model] = [];
+    groups[model].push(r);
+  }
+
+  const result: ModelDistributionSummary[] = [];
+
+  for (const [model, modelRuns] of Object.entries(groups)) {
+    const count = modelRuns.length;
+    const latencies = modelRuns.map((r) => Number(r.latency_ms || 0)).sort((a, b) => a - b);
+    const minLatencyMs = latencies[0] || 0;
+    const maxLatencyMs = latencies[latencies.length - 1] || 0;
+    const q1LatencyMs = latencies[Math.floor(count * 0.25)] || minLatencyMs;
+    const medianLatencyMs = latencies[Math.floor(count * 0.50)] || minLatencyMs;
+    const q3LatencyMs = latencies[Math.floor(count * 0.75)] || maxLatencyMs;
+
+    let totalIn = 0;
+    let totalOut = 0;
+    let totalCost = 0;
+    let okCount = 0;
+
+    for (const r of modelRuns) {
+      totalIn += r.input_tokens;
+      totalOut += r.output_tokens;
+      totalCost += r.cost_usd;
+      if (r.ok === 1) okCount++;
+    }
+
+    result.push({
+      model,
+      count,
+      minLatencyMs,
+      q1LatencyMs,
+      medianLatencyMs,
+      q3LatencyMs,
+      maxLatencyMs,
+      latencies,
+      avgInputTokens: Math.round(totalIn / count),
+      avgOutputTokens: Math.round(totalOut / count),
+      totalCostUsd: Number(totalCost.toFixed(4)),
+      avgCostUsd: Number((totalCost / count).toFixed(4)),
+      successRate: Number(((okCount / count) * 100).toFixed(1)),
+    });
+  }
+
+  return result.sort((a, b) => b.count - a.count);
 }
 
 export async function fetchTelemetryData(): Promise<TelemetryPayload> {
@@ -252,6 +321,9 @@ export async function fetchTelemetryData(): Promise<TelemetryPayload> {
     };
   });
 
+  // Compute model distribution stats (min, Q1, median, Q3, max, violin contours)
+  const modelStats = computeModelDistributionStats(runs);
+
   // Synthesize API events for runs that have no OTel trace in subagent_api_events
   const existingEventPrompts = new Set(rawApiEvents.map((e) => e.prompt_id));
   const apiEvents: SubagentApiEventRow[] = [...rawApiEvents];
@@ -316,6 +388,7 @@ export async function fetchTelemetryData(): Promise<TelemetryPayload> {
     apiEvents,
     experiments,
     learnings,
+    modelStats,
     provenance: {
       sql: `SELECT * FROM subagent_runs FINAL; SELECT * FROM subagent_api_events; SELECT * FROM session_learnings;`,
       elapsedMs,
