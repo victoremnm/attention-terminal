@@ -39,6 +39,14 @@ export const getDailyDigestDef = {
   }),
 } as const;
 
+export const getRealBuildersDef = {
+  description:
+    "Compute the 'real builders' DevScatter answer: per-actor push/PR activity over a 7d or 30d window from github_events, with bot and single-repo script-spam accounts filtered out and disclosed. Use for 'who are the real builders (this week)?' and similar builder-attribution prompts.",
+  inputSchema: z.object({
+    window: z.enum(["7d", "30d"]).default("7d"),
+  }),
+} as const;
+
 export const renderAnswerDef = {
   description:
     "Validate and render an Attention Terminal answer payload. Use this instead of markdown tables or long prose. Payloads must match the answer grammar.",
@@ -55,5 +63,6 @@ export const attentionToolSchemas = {
   describeTable: tool(describeTableDef),
   runReadOnlyQuery: tool(runReadOnlyQueryDef),
   getDailyDigest: tool(getDailyDigestDef),
+  getRealBuilders: tool(getRealBuildersDef),
   renderAnswer: tool(renderAnswerDef),
 };
