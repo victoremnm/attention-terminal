@@ -113,12 +113,87 @@ export const MatrixSchema = z.object({
   })),
 });
 
+// --- Daily Skinny deck (tactile finishable card deck; see docs/architecture/AGENT-FLEET-PLAN.md §4.2) ---
+
+export const DevPointSchema = z.object({
+  actor: z.string().max(120),
+  pushes: z.number().int().nonnegative(),
+  repos: z.number().int().nonnegative(),
+  commits: z.number().int().nonnegative(),
+  prs: z.number().int().nonnegative(),
+  mergedPrs: z.number().int().nonnegative(),
+});
+
+// A card's visual is a discriminated union on `kind` (distinct from top-level payload `type`).
+export const DevScatterVisualSchema = z.object({
+  kind: z.literal("dev-scatter"),
+  window: z.enum(["7d", "30d"]),
+  points: z.array(DevPointSchema),
+  note: z.string().max(240).optional(), // discloses dropped rows (bots/spam) — no silent caps
+});
+
+export const DivergenceVisualSchema = z.object({
+  kind: z.literal("divergence"),
+  days: z.array(z.string()),
+  talk: z.array(z.number()),
+  code: z.array(z.number()),
+});
+
+export const CandlesVisualSchema = z.object({
+  kind: z.literal("candles"),
+  days: z.array(z.string()),
+  values: z.array(z.number()),
+});
+
+export const SkinnyVisualSchema = z.discriminatedUnion("kind", [
+  DevScatterVisualSchema,
+  DivergenceVisualSchema,
+  CandlesVisualSchema,
+]);
+
+// view-SQL: the exact query behind the card + real read stats. Not a reconstruction.
+export const CardQuerySchema = z.object({
+  sql: z.string(),
+  rowsRead: z.number().int().nonnegative(),
+  elapsedMs: z.number().nonnegative(),
+});
+
+export const SkinnyCommentSchema = z.object({
+  author: z.string().max(120),
+  pts: z.number().int(),
+  ago: z.string().max(40),
+  body: z.string().max(600),
+});
+
+export const SkinnyCardSchema = z.object({
+  id: z.string(),
+  subject: z.string().max(120),
+  verdict: VerdictSchema,
+  metric: z.string().max(40), // load-bearing number, e.g. "2.4x"
+  metricLabel: z.string().max(64),
+  caption: z.string().max(320), // <=2 sentences, third-person
+  sources: z.string().max(120), // e.g. "200 HN · 121 repos"
+  visual: SkinnyVisualSchema,
+  topComment: SkinnyCommentSchema.optional(),
+  commentsCount: z.number().int().nonnegative().optional(),
+  hnThreadUrl: z.string().url().optional(),
+  query: CardQuerySchema, // powers the flip-to-view-SQL reveal
+});
+
+export const SkinnyDeckSchema = z.object({
+  type: z.literal("skinny-deck"),
+  dateStr: z.string(),
+  generatedAt: z.string(),
+  cards: z.array(SkinnyCardSchema), // finite — the deck runs out (no refill)
+});
+
 export const RenderPayloadSchema = z.discriminatedUnion("type", [
   DigestSchema,
   TickerSchema,
   DivergenceSchema,
   CandlesSchema,
   MatrixSchema,
+  SkinnyDeckSchema,
 ]);
 
 export type Verdict = z.infer<typeof VerdictSchema>;
@@ -130,4 +205,9 @@ export type TickerPayload = z.infer<typeof TickerSchema>;
 export type DivergencePayload = z.infer<typeof DivergenceSchema>;
 export type CandlesPayload = z.infer<typeof CandlesSchema>;
 export type MatrixPayload = z.infer<typeof MatrixSchema>;
+export type DevPoint = z.infer<typeof DevPointSchema>;
+export type SkinnyVisual = z.infer<typeof SkinnyVisualSchema>;
+export type CardQuery = z.infer<typeof CardQuerySchema>;
+export type SkinnyCard = z.infer<typeof SkinnyCardSchema>;
+export type SkinnyDeckPayload = z.infer<typeof SkinnyDeckSchema>;
 export type RenderPayload = z.infer<typeof RenderPayloadSchema>;
