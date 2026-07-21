@@ -27,6 +27,7 @@ function RankRow({
   onOpen: (repo: string) => void;
 }) {
   const subline = [row.language, row.description].filter(Boolean).join(" · ");
+  const sparkLabel = `${row.events} events over the selected window`;
   return (
     <button
       type="button"
@@ -34,6 +35,7 @@ function RankRow({
       data-state={state}
       onClick={() => onOpen(row.repo_name)}
       aria-pressed={state === "selected"}
+      aria-label={`${row.repo_name}. ${sparkLabel}. ${row.pushes} pushes, ${row.commits} commits, ${row.actors} actors.`}
     >
       <span className="rank-num">{rank}</span>
       <span className="rank-repo">
@@ -41,7 +43,12 @@ function RankRow({
         {subline ? <em>{subline}</em> : null}
       </span>
       <span className="rank-spark">
-        <Sparkline data={row.spark} color="var(--cyan)" w={104} h={22} />
+        <Sparkline data={row.spark} color="var(--cyan)" w={148} h={24} />
+      </span>
+      <span className="rank-stats">
+        <span><b>{NUMBER.format(row.pushes)}</b> pushes</span>
+        <span><b>{NUMBER.format(row.commits)}</b> commits</span>
+        <span><b>{NUMBER.format(row.actors)}</b> actors</span>
       </span>
       <span className="rank-events">{NUMBER.format(row.events)}</span>
     </button>
@@ -127,6 +134,7 @@ export function RepoRankings({ windows }: { windows: Record<RepoWindow, RepoWind
         <span className="rank-num">#</span>
         <span className="rank-repo">REPO</span>
         <span className="rank-spark">ACTIVITY</span>
+        <span className="rank-stats">DETAILS</span>
         <span className="rank-events">EVENTS</span>
       </div>
 
