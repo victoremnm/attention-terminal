@@ -125,6 +125,10 @@ a { color: inherit; }
   padding: 0;
   overflow: hidden;
 }
+.tk-card-shell:hover,
+.tk-card-shell:focus-within {
+  border-color: color-mix(in srgb, var(--cyan) 62%, var(--line-soft) 38%);
+}
 .tk-card-shell.is-selected {
   border-color: color-mix(in srgb, var(--cyan) 56%, var(--line) 44%);
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--cyan) 18%, transparent 82%);
@@ -145,11 +149,6 @@ a { color: inherit; }
   padding: 9px 10px;
   text-align: left;
   cursor: pointer;
-}
-.tk-card-button:hover .tk-action,
-.tk-card-button:focus-visible .tk-action {
-  border-color: color-mix(in srgb, var(--cyan) 62%, var(--line-soft) 38%);
-  color: var(--cyan);
 }
 .tk-card-button:focus-visible {
   outline: 1px solid var(--cyan);
@@ -187,6 +186,7 @@ a { color: inherit; }
   flex-wrap: wrap;
   gap: 4px;
   margin-top: auto;
+  padding-right: 34px;
 }
 .tk-stats span {
   border: 1px solid var(--line-soft);

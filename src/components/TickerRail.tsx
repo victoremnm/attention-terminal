@@ -17,7 +17,7 @@ function Card({
   onOpenRepo: (repoName: string) => void;
 }) {
   const stats = card.stats?.filter((stat) => stat.value !== "0").slice(0, 6) ?? [];
-  const actionLabel = state === "loading" ? "rendering..." : state === "selected" ? "rendered below" : "click to render data";
+  const actionLabel = state === "loading" ? "rendering..." : state === "selected" ? "rendered below" : undefined;
   const inner = (
     <>
       {card.spark && card.spark.length > 1 && (
@@ -50,7 +50,7 @@ function Card({
           onClick={() => onOpenRepo(card.repoName!)}
         >
           {inner}
-          <span className="tk-action mono">{actionLabel}</span>
+          {actionLabel && <span className="tk-action mono">{actionLabel}</span>}
         </button>
         {card.href && (
           <a className="tk-card-external mono" href={card.href} target="_blank" rel="noreferrer" onClick={(event) => event.stopPropagation()}>
@@ -152,7 +152,10 @@ export function TickerRail({ initial, ingestToken }: { initial: TickerLanes; ing
 
   return (
     <section className="ticker" aria-label="Breakout ticker">
-      <div className="tk-head mono">📌 PINNED · BREAKOUT TICKER <span className="muted">{ingestToken ? "ticks with ingestion" : "refreshes 60s"}</span></div>
+      <div className="tk-head mono">
+        📌 PINNED · BREAKOUT TICKER <span className="muted">{ingestToken ? "ticks with ingestion" : "refreshes 60s"}</span>
+        <span className="muted">· tap any repo to render its live data</span>
+      </div>
       <Lane title="NEW REPOS" cards={lanes.newRepos} selectedRepo={selectedRepo} loadingRepo={loadingRepo} onOpenRepo={openRepo} />
       <Lane title="TOP FORKED · 24H" cards={lanes.topForked} selectedRepo={selectedRepo} loadingRepo={loadingRepo} onOpenRepo={openRepo} />
       <Lane title="SHIPPING VELOCITY · 24H" cards={lanes.shippingVelocity} selectedRepo={selectedRepo} loadingRepo={loadingRepo} onOpenRepo={openRepo} />
