@@ -68,14 +68,53 @@ export function RepoRankings({ windows }: { windows: Record<RepoWindow, RepoWind
 
   useEffect(() => () => drilldownAbort.current?.abort(), []);
 
+  const source = windows[active] ?? [];
   const rows = useMemo(() => {
-    const source = windows[active] ?? [];
     const needle = query.trim().toLowerCase();
     if (!needle) return source;
     return source.filter((r) =>
-      `${r.repo_name} ${r.owner} ${r.description}`.toLowerCase().includes(needle)
+      [
+        r.repo_name,
+        r.owner,
+        r.description,
+        r.language,
+        ...r.topics,
+        String(r.github_stars),
+        String(r.events),
+        String(r.pushes),
+        String(r.commits),
+        String(r.actors),
+        String(r.forks),
+        String(r.stars),
+        String(r.prsOpened),
+        String(r.prsMerged),
+      ]
+        .join(" ")
+        .toLowerCase()
+        .includes(needle)
     );
-  }, [windows, active, query]);
+  }, [source, query]);
+
+  const summary = useMemo(() => {
+    const totals = source.reduce(
+      (acc, row) => {
+        acc.events += row.events;
+        acc.pushes += row.pushes;
+        acc.commits += row.commits;
+        acc.actors += row.actors;
+        return acc;
+      },
+      { events: 0, pushes: 0, commits: 0, actors: 0 }
+    );
+    const top = source[0];
+    return {
+      visible: rows.length,
+      total: source.length,
+      topRepo: top?.repo_name ?? "—",
+      topEvents: top?.events ?? 0,
+      ...totals,
+    };
+  }, [rows.length, source]);
 
   // Mirrors TickerRail.openRepo: abort-safe, last-click-wins drill-down fetch.
   async function openRepo(repoName: string) {
@@ -106,14 +145,40 @@ export function RepoRankings({ windows }: { windows: Record<RepoWindow, RepoWind
 
   return (
     <section className="rankings" aria-label="Repo rankings">
+      <div className="rankings-summary mono" aria-label="Trending summary">
+        <div className="rankings-summary-card">
+          <span>visible</span>
+          <b>{summary.visible}</b>
+          <em>of {summary.total}</em>
+        </div>
+        <div className="rankings-summary-card">
+          <span>events</span>
+          <b>{NUMBER.format(summary.events)}</b>
+          <em>{active} window</em>
+        </div>
+        <div className="rankings-summary-card">
+          <span>pushes</span>
+          <b>{NUMBER.format(summary.pushes)}</b>
+          <em>{NUMBER.format(summary.commits)} commits</em>
+        </div>
+        <div className="rankings-summary-card">
+          <span>leader</span>
+          <b title={summary.topRepo}>{summary.topRepo}</b>
+          <em>{NUMBER.format(summary.topEvents)} events</em>
+        </div>
+      </div>
       <input
         type="search"
         className="rankings-search mono"
-        placeholder="Search repos..."
+        placeholder="Search repo, owner, language, topic..."
         value={query}
         onChange={(e) => setQuery(e.target.value)}
         aria-label="Search repos"
+        aria-describedby="rankings-search-hint"
       />
+      <p id="rankings-search-hint" className="rankings-hint mono">
+        Search against repo name, owner, description, language, topics, and window metrics.
+      </p>
 
       <div className="rankings-tabs mono" role="tablist" aria-label="Time window">
         {TABS.map((tab) => (
@@ -128,6 +193,12 @@ export function RepoRankings({ windows }: { windows: Record<RepoWindow, RepoWind
             {tab.label}
           </button>
         ))}
+      </div>
+
+      <div className="rankings-meta mono" aria-live="polite">
+        <span>{NUMBER.format(summary.visible)} shown</span>
+        <span>{NUMBER.format(summary.total)} in window</span>
+        {query.trim() ? <span>filtered by &ldquo;{query.trim()}&rdquo;</span> : <span>showing top attention leaders</span>}
       </div>
 
       <div className="rank-head mono">
