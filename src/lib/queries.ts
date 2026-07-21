@@ -118,9 +118,13 @@ export async function tickerLanes(): Promise<TickerLanes> {
              -- drop bot accounts wholesale.
              countIf(event_type = 'ForkEvent' AND NOT actor_login ILIKE '%[bot]%') AS forks_24h,
              countIf(event_type = 'WatchEvent') AS stars_24h,
-             countIf(event_type = 'PushEvent') AS pushes_24h,
-             countIf(event_type = 'PullRequestEvent' AND action = 'opened') AS prs_24h,
-             countIf(event_type = 'IssuesEvent' AND action = 'opened') AS issues_24h,
+             -- Substance counters exclude [bot] actors (Codex P2): these feed
+             -- the fork-farm gate AND the score below, so a bot-only push/PR/
+             -- issue must not let a farm repo pass. Same bot predicate as
+             -- engaged_actors_24h / forks_24h - no bot signal counts as "real".
+             countIf(event_type = 'PushEvent' AND NOT actor_login ILIKE '%[bot]%') AS pushes_24h,
+             countIf(event_type = 'PullRequestEvent' AND action = 'opened' AND NOT actor_login ILIKE '%[bot]%') AS prs_24h,
+             countIf(event_type = 'IssuesEvent' AND action = 'opened' AND NOT actor_login ILIKE '%[bot]%') AS issues_24h,
              uniqExactIf(
                actor_login,
                event_type IN ('PushEvent', 'PullRequestEvent', 'IssuesEvent') AND NOT actor_login ILIKE '%[bot]%'
@@ -176,7 +180,11 @@ export async function tickerLanes(): Promise<TickerLanes> {
               countIf(event_type = 'PullRequestEvent' AND action = 'closed') AS closed_prs,
               countIf(event_type = 'IssuesEvent' AND action = 'opened') AS issues,
               countIf(event_type = 'ForkEvent') AS forks,
-              uniqExact(actor_login) AS actors,
+              -- Count only engagement actors, not fork actors (Codex P2): the
+              -- ORDER BY weights actors * 2 unbounded, so a spray-fork burst of
+              -- throwaway accounts must not inflate the shipping score via the
+              -- actor count. Bots are already excluded by the WHERE below.
+              uniqExactIf(actor_login, event_type IN ('PushEvent', 'PullRequestEvent', 'IssuesEvent')) AS actors,
               sum(commit_count) + countIf(event_type = 'PushEvent')
                 + countIf(event_type = 'PullRequestEvent' AND action = 'opened')
                 + countIf(event_type = 'PullRequestEvent' AND action = 'closed')
