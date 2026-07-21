@@ -2,6 +2,7 @@
 // handlers. ClickHouse credentials never reach the client bundle.
 import { clickhouse, clickhouseInsert, ensureTablesExist } from "./clickhouse";
 import { fetchRepoRow } from "./github-repo";
+import { analyzeAndStoreRepo } from "./repo-analysis";
 import type { DevPoint, RepoDrilldownPayload } from "./render-payload";
 
 // Every query returns its provenance so the SQL-flip card back can show the
@@ -373,6 +374,73 @@ interface RepoDrilldownFeedSqlRow {
   merged: number | string;
 }
 
+interface RepoDrilldownActorSqlRow {
+  actor: string;
+  pushes: string;
+  commits: string;
+  distinct_commits: string;
+  prs_opened: string;
+  prs_merged: string;
+}
+
+interface RepoDrilldownAnalysisSqlRow {
+  overview: string;
+  tech_stack: string[];
+  key_files: string[];
+  architecture_summary: string;
+  analyzed_at: string;
+}
+
+// REST-activity rows (issue #79 track #83). Fetched by the watchlist poller
+// (issue #82) and read here for the drilldown's activity + trends sections.
+interface RepoDrilldownCommitSqlRow {
+  sha: string;
+  author: string;
+  author_date: string;
+  message: string;
+}
+
+interface RepoDrilldownPrSqlRow {
+  number: string;
+  title: string;
+  state: string;
+  author: string;
+  created_at: string;
+  merged_at: string;
+  closed_at: string;
+  labels: string[];
+}
+
+interface RepoDrilldownReleaseSqlRow {
+  tag: string;
+  name: string;
+  author: string;
+  published_at: string;
+  body: string;
+}
+
+interface RepoDrilldownIssueSqlRow {
+  number: string;
+  title: string;
+  state: string;
+  author: string;
+  created_at: string;
+  closed_at: string;
+  labels: string[];
+  comments: string;
+}
+
+// 30-day trend row: daily star/fork counts from gh_repo_daily, with any
+// release/PR-merge/issue-open events that landed on that date.
+interface RepoDrilldownTrendSqlRow {
+  date: string;
+  stars: string;
+  forks: string;
+  event_type: string; // 'release' | 'pr_merged' | 'issue_opened' | '' (no event)
+  event_label: string;
+  event_url: string;
+}
+
 function repoQuerySql(...parts: Provenance[]) {
   return parts
     .map((part, index) => `-- repo drill-down query ${index + 1}\n${part.sql}`)
@@ -397,9 +465,42 @@ async function repoSeenInGithubEvents(repoName: string): Promise<boolean> {
   return rows.length > 0;
 }
 
+// Groups the trend UNION ALL rows (one row per day + one row per event) into
+// a per-date timeline with annotated events. Days with no event have an empty
+// `events` array. The trend chart renders star/fork lines + event markers.
+function buildTrends(rows: RepoDrilldownTrendSqlRow[]): Array<{
+  date: string;
+  stars: number;
+  forks: number;
+  events: Array<{ type: "release" | "pr_merged" | "issue_opened"; label: string; url: string }>;
+}> {
+  const byDate = new Map<string, { stars: number; forks: number; events: Array<{ type: "release" | "pr_merged" | "issue_opened"; label: string; url: string }> }>();
+  for (const row of rows) {
+    let entry = byDate.get(row.date);
+    if (!entry) {
+      entry = { stars: 0, forks: 0, events: [] };
+      byDate.set(row.date, entry);
+    }
+    // The UNION ALL emits stars/forks only on the gh_repo_daily rows; event
+    // rows carry 0 for stars/forks. Take the max so the daily row wins.
+    entry.stars = Math.max(entry.stars, Number(row.stars));
+    entry.forks = Math.max(entry.forks, Number(row.forks));
+    if (row.event_type && row.event_label && row.event_url) {
+      entry.events.push({
+        type: row.event_type as "release" | "pr_merged" | "issue_opened",
+        label: row.event_label,
+        url: row.event_url,
+      });
+    }
+  }
+  return Array.from(byDate.entries())
+    .map(([date, entry]) => ({ date, ...entry }))
+    .sort((a, b) => (a.date < b.date ? -1 : 1));
+}
+
 export async function repoDrilldown(repoName: string): Promise<RepoDrilldownPayload> {
   const queryParams = { repoName };
-  const [metadata, kpis, velocity, actors, feed, analysisResult] = await Promise.all([
+  const [metadata, kpis, velocity, actors, feed, analysisResult, commitsR, prsR, releasesR, issuesR, trendsR] = await Promise.all([
     q<RepoDrilldownMetadataSqlRow>(
       `SELECT
          description,
@@ -519,6 +620,121 @@ export async function repoDrilldown(repoName: string): Promise<RepoDrilldownPayl
       ["gh_repo_analysis"],
       queryParams
     ),
+    // --- REST-activity queries (issue #79 track #83) -------------------------
+    // 7-day window for the activity lists. Graceful degradation: if the
+    // poller (#82) hasn't run yet, these return empty and the payload omits
+    // `activity`/`trends` (see the return shaping below).
+    q<RepoDrilldownCommitSqlRow>(
+      `SELECT sha, author, toString(author_date) AS author_date, message
+       FROM (
+         SELECT sha, author, author_date, message
+         FROM gh_repo_commits FINAL
+         WHERE repo_name = {repoName: String} AND author_date >= now() - INTERVAL 7 DAY
+         ORDER BY author_date DESC LIMIT 10
+       )`,
+      ["gh_repo_commits"],
+      queryParams
+    ),
+    q<RepoDrilldownPrSqlRow>(
+      `SELECT toString(number) AS number, title, state, author,
+              toString(created_at) AS created_at,
+              toString(merged_at) AS merged_at,
+              toString(closed_at) AS closed_at,
+              labels
+       FROM (
+         SELECT number, title, state, author, created_at, merged_at, closed_at, labels
+         FROM gh_repo_prs FINAL
+         WHERE repo_name = {repoName: String} AND created_at >= now() - INTERVAL 7 DAY
+         ORDER BY created_at DESC LIMIT 10
+       )`,
+      ["gh_repo_prs"],
+      queryParams
+    ),
+    q<RepoDrilldownReleaseSqlRow>(
+      `SELECT tag, name, author, toString(published_at) AS published_at, body
+       FROM (
+         SELECT tag, name, author, published_at, body
+         FROM gh_repo_releases FINAL
+         WHERE repo_name = {repoName: String}
+         ORDER BY published_at DESC LIMIT 10
+       )`,
+      ["gh_repo_releases"],
+      queryParams
+    ),
+    q<RepoDrilldownIssueSqlRow>(
+      `SELECT toString(number) AS number, title, state, author,
+              toString(created_at) AS created_at,
+              toString(closed_at) AS closed_at,
+              labels, toString(comments) AS comments
+       FROM (
+         SELECT number, title, state, author, created_at, closed_at, labels, comments
+         FROM gh_repo_issues FINAL
+         WHERE repo_name = {repoName: String} AND created_at >= now() - INTERVAL 7 DAY
+         ORDER BY created_at DESC LIMIT 10
+       )`,
+      ["gh_repo_issues"],
+      queryParams
+    ),
+    // 30-day trend timeline: daily stars/forks from gh_repo_daily, with any
+    // release / PR-merge / issue-open events that landed on that date. The
+    // UNION ALL pattern lets us annotate days that had content events without
+    // a JOIN (releases/PRs/issues are sparse — most days have no event).
+    // All branches cast to explicit types so ClickHouse doesn't reject the
+    // UNION ALL on type mismatches (Date vs DateTime, UInt64 vs UInt8, etc.).
+    q<RepoDrilldownTrendSqlRow>(
+      `SELECT
+         toString(day) AS date,
+         toString(stars) AS stars,
+         toString(forks) AS forks,
+         event_type,
+         event_label,
+         event_url
+       FROM (
+         SELECT
+           toDate(day) AS day,
+           toUInt64(sum(stars)) AS stars,
+           toUInt64(sum(forks)) AS forks,
+           '' AS event_type,
+           '' AS event_label,
+           '' AS event_url
+         FROM gh_repo_daily
+         WHERE repo_name = {repoName: String} AND day >= today() - 30
+         GROUP BY day
+         UNION ALL
+         SELECT
+           toDate(published_at) AS day,
+           toUInt64(0) AS stars,
+           toUInt64(0) AS forks,
+           'release' AS event_type,
+           concat('release ', tag) AS event_label,
+           concat('https://github.com/', {repoName: String}, '/releases/tag/', tag) AS event_url
+         FROM gh_repo_releases FINAL
+         WHERE repo_name = {repoName: String} AND published_at >= today() - 30
+         UNION ALL
+         SELECT
+           toDate(merged_at) AS day,
+           toUInt64(0) AS stars,
+           toUInt64(0) AS forks,
+           'pr_merged' AS event_type,
+           concat('#', toString(number), ' ', title) AS event_label,
+           concat('https://github.com/', {repoName: String}, '/pull/', toString(number)) AS event_url
+         FROM gh_repo_prs FINAL
+         WHERE repo_name = {repoName: String} AND merged_at >= today() - 30
+         UNION ALL
+         SELECT
+           toDate(created_at) AS day,
+           toUInt64(0) AS stars,
+           toUInt64(0) AS forks,
+           'issue_opened' AS event_type,
+           concat('#', toString(number), ' ', title) AS event_label,
+           concat('https://github.com/', {repoName: String}, '/issues/', toString(number)) AS event_url
+         FROM gh_repo_issues FINAL
+         WHERE repo_name = {repoName: String} AND created_at >= today() - 30
+       )
+       ORDER BY date ASC`,
+      ["gh_repo_daily", "gh_repo_releases", "gh_repo_prs", "gh_repo_issues"],
+      queryParams
+    ),
   ]);
 
   let meta = metadata.rows[0];
@@ -531,6 +747,11 @@ export async function repoDrilldown(repoName: string): Promise<RepoDrilldownPayl
     actors.provenance,
     feed.provenance,
     analysisResult.provenance,
+    commitsR.provenance,
+    prsR.provenance,
+    releasesR.provenance,
+    issuesR.provenance,
+    trendsR.provenance,
   ];
 
   if (!meta && process.env.GITHUB_TOKEN) {
@@ -649,6 +870,52 @@ export async function repoDrilldown(repoName: string): Promise<RepoDrilldownPayl
       merged: Number(row.merged) === 1,
     })),
     analysis: analysisPayload,
+    // REST-activity enrichment (issue #79 track #83). Omitted when the poller
+    // (#82) hasn't populated the tables yet — graceful degradation to v1.
+    activity:
+      commitsR.rows.length || prsR.rows.length || releasesR.rows.length || issuesR.rows.length
+        ? {
+            commits: commitsR.rows.map((row) => ({
+              sha: row.sha,
+              author: row.author,
+              authorDate: row.author_date,
+              message: row.message,
+            })),
+            prs: prsR.rows.map((row) => ({
+              number: Number(row.number),
+              title: row.title,
+              state: row.state,
+              author: row.author,
+              createdAt: row.created_at,
+              mergedAt: row.merged_at,
+              closedAt: row.closed_at,
+              labels: row.labels ?? [],
+            })),
+            releases: releasesR.rows.map((row) => ({
+              tag: row.tag,
+              name: row.name,
+              author: row.author,
+              publishedAt: row.published_at,
+              body: row.body,
+            })),
+            issues: issuesR.rows.map((row) => ({
+              number: Number(row.number),
+              title: row.title,
+              state: row.state,
+              author: row.author,
+              createdAt: row.created_at,
+              closedAt: row.closed_at,
+              labels: row.labels ?? [],
+              comments: Number(row.comments),
+            })),
+          }
+        : undefined,
+    // 30-day trend timeline with annotated content events. Omitted when the
+    // trends query returns no rows (poller hasn't run OR repo has no 30d
+    // firehose signal).
+    trends: trendsR.rows.length
+      ? buildTrends(trendsR.rows)
+      : undefined,
     query: {
       sql: repoQuerySql(...provenances),
       rowsRead: provenances.reduce((sum, provenance) => sum + (provenance.rowsRead ?? 0), 0),
