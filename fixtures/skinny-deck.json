@@ -55,7 +55,7 @@
       "commentsCount": 21751,
       "hnThreadUrl": "https://news.ycombinator.com/item?id=48970001",
       "query": {
-        "sql": "SELECT subject, sum(hn_stories) AS hn, sum(hn_comments) AS cmts, sum(gh_repos) AS repos, sum(talk_share)/count() AS talk_share\nFROM daily_skinny_subject_hourly\nWHERE hour >= now() - INTERVAL 7 DAY AND subject = 'Qwen'\nGROUP BY subject",
+        "sql": "SELECT toStartOfDay(hour) AS day, sum(talk_threads) AS talk, sum(code_score) AS code\nFROM daily_skinny_subject_hourly\nWHERE subject = 'Qwen' AND hour >= now() - INTERVAL 7 DAY\nGROUP BY day\nORDER BY day",
         "rowsRead": 168,
         "elapsedMs": 11
       }
@@ -74,7 +74,7 @@
         "values": [1, 1, 2, 2, 3, 8, 11]
       },
       "query": {
-        "sql": "SELECT toDate(day) AS day, sumMerge(stars) AS stars\nFROM gh_repo_daily\nWHERE repo_name = 'bojieli/ai-agent-book' AND day >= today() - 7\nGROUP BY day ORDER BY day",
+        "sql": "SELECT day, sum(stars) AS stars\nFROM gh_repo_daily\nWHERE repo_name = 'bojieli/ai-agent-book' AND day >= today() - 7\nGROUP BY day\nORDER BY day",
         "rowsRead": 5120,
         "elapsedMs": 8
       }

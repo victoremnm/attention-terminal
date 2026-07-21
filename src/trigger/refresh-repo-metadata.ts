@@ -134,21 +134,36 @@ async function pickRepos(): Promise<string[]> {
        ORDER BY total_stars DESC
        LIMIT ${TOP_STARS_LIMIT}`
     ),
-    // Stale: rows we already enriched but haven't refreshed in over a week.
+    // Stale: repos whose LATEST metadata version is over a week old. Group by
+    // repo_name and test max(fetched_at) so a just-refreshed repo's older
+    // ReplacingMergeTree versions (visible pre-merge) don't re-qualify it as stale.
     selectRows<{ repo_name: string }>(
       `SELECT repo_name
        FROM gh_repo_metadata
-       WHERE fetched_at < now() - INTERVAL ${STALE_DAYS} DAY
-       ORDER BY fetched_at ASC
+       GROUP BY repo_name
+       HAVING max(fetched_at) < now() - INTERVAL ${STALE_DAYS} DAY
+       ORDER BY max(fetched_at) ASC
        LIMIT ${STALE_LIMIT}`
     ),
   ]);
 
-  const repos = new Set<string>();
-  for (const row of [...newToday, ...topByStars, ...stale]) {
-    if (row.repo_name && row.repo_name.includes("/")) repos.add(row.repo_name);
+  const valid = (name?: string) => !!name && name.includes("/");
+
+  // Reserve capacity for the stale bucket so a full new-today + top-by-stars set
+  // can't fill MAX_REPOS_PER_RUN and starve stale refreshes entirely.
+  const staleReserve = Math.min(STALE_LIMIT, Math.floor(MAX_REPOS_PER_RUN / 3));
+  const freshBudget = MAX_REPOS_PER_RUN - staleReserve;
+
+  const picked = new Set<string>();
+  for (const row of [...newToday, ...topByStars]) {
+    if (picked.size >= freshBudget) break;
+    if (valid(row.repo_name)) picked.add(row.repo_name);
   }
-  return Array.from(repos).slice(0, MAX_REPOS_PER_RUN);
+  for (const row of stale) {
+    if (picked.size >= MAX_REPOS_PER_RUN) break;
+    if (valid(row.repo_name)) picked.add(row.repo_name);
+  }
+  return Array.from(picked);
 }
 
 export const refreshRepoMetadata = schedules.task({
