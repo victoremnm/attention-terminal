@@ -154,14 +154,25 @@ async function pickRepos(): Promise<string[]> {
   const staleReserve = Math.min(STALE_LIMIT, Math.floor(MAX_REPOS_PER_RUN / 3));
   const freshBudget = MAX_REPOS_PER_RUN - staleReserve;
 
+  const fresh = [...newToday, ...topByStars].map((r) => r.repo_name).filter(valid);
+  const staleNames = stale.map((r) => r.repo_name).filter(valid);
+
   const picked = new Set<string>();
-  for (const row of [...newToday, ...topByStars]) {
+  // 1. Fresh up to the reserved fresh budget.
+  for (const name of fresh) {
     if (picked.size >= freshBudget) break;
-    if (valid(row.repo_name)) picked.add(row.repo_name);
+    picked.add(name);
   }
-  for (const row of stale) {
+  // 2. Stale up to the overall cap.
+  for (const name of staleNames) {
     if (picked.size >= MAX_REPOS_PER_RUN) break;
-    if (valid(row.repo_name)) picked.add(row.repo_name);
+    picked.add(name);
+  }
+  // 3. Backfill any capacity the stale bucket didn't use with the remaining fresh
+  //    candidates, so a small stale set never leaves GitHub/Trigger capacity idle.
+  for (const name of fresh) {
+    if (picked.size >= MAX_REPOS_PER_RUN) break;
+    picked.add(name);
   }
   return Array.from(picked);
 }
