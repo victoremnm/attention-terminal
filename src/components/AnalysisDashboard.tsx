@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import type { TelemetryPayload } from "@/lib/telemetry-queries";
+import { ModelDistributionChart } from "./ModelDistributionChart";
 
 interface AnalysisDashboardProps {
   initialData: TelemetryPayload;
@@ -10,7 +11,7 @@ interface AnalysisDashboardProps {
 export function AnalysisDashboard({ initialData }: AnalysisDashboardProps) {
   const [data, setData] = useState<TelemetryPayload>(initialData);
   const [loading, setLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState<"learnings" | "runs" | "events" | "sql">("learnings");
+  const [activeTab, setActiveTab] = useState<"models" | "learnings" | "runs" | "events" | "sql">("models");
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState<string>("");
 
@@ -60,11 +61,11 @@ export function AnalysisDashboard({ initialData }: AnalysisDashboardProps) {
               <span className="dot" /> CLICKHOUSE CLOUD ACTIVE
             </span>
             <span className="tech-badge">OTEL TRACES ENABLED</span>
-            <span className="tech-badge">AGY 2.0 BENCHMARKS</span>
+            <span className="tech-badge">VIOLIN / BOXPLOT VISUALS</span>
           </div>
           <h1>Agent Telemetry & Session Learnings</h1>
           <p className="subtitle">
-            Autonomous multi-agent execution metrics, token cost analytics, and durable engineering learnings stored in ClickHouse.
+            Autonomous multi-agent execution metrics, model latency distributions, token cost analytics, and durable engineering learnings stored in ClickHouse.
           </p>
         </div>
 
@@ -114,6 +115,12 @@ export function AnalysisDashboard({ initialData }: AnalysisDashboardProps) {
       {/* Tab Navigation */}
       <div className="tab-nav">
         <button
+          className={`tab-btn ${activeTab === "models" ? "active" : ""}`}
+          onClick={() => setActiveTab("models")}
+        >
+          📊 Model Distribution ({data.modelStats.length} Models)
+        </button>
+        <button
           className={`tab-btn ${activeTab === "learnings" ? "active" : ""}`}
           onClick={() => setActiveTab("learnings")}
         >
@@ -138,6 +145,13 @@ export function AnalysisDashboard({ initialData }: AnalysisDashboardProps) {
           ⚡ SQL Provenance
         </button>
       </div>
+
+      {/* Tab Content 0: Model Distribution Box/Violin Plot */}
+      {activeTab === "models" && (
+        <section className="dashboard-section space-y-6">
+          <ModelDistributionChart stats={data.modelStats} />
+        </section>
+      )}
 
       {/* Tab Content 1: Learnings Bank */}
       {activeTab === "learnings" && (
@@ -220,7 +234,7 @@ export function AnalysisDashboard({ initialData }: AnalysisDashboardProps) {
                 ) : (
                   data.runs.map((r, i) => (
                     <tr key={`${r.prompt_id}-${i}`}>
-                      <td className="mono font-semibold text-cyan">{r.prompt_id}</td>
+                      <td className="mono font-semibold text-cyan-400">{r.prompt_id}</td>
                       <td>
                         <div className="agent-tag">{r.agent_type}</div>
                         <div className="model-sub mono">{r.model}</div>
@@ -229,7 +243,7 @@ export function AnalysisDashboard({ initialData }: AnalysisDashboardProps) {
                       <td className="mono">
                         {formatTokens(r.input_tokens)} / {formatTokens(r.output_tokens)}
                       </td>
-                      <td className="mono text-emerald">${r.cost_usd.toFixed(4)}</td>
+                      <td className="mono text-emerald-400">${r.cost_usd.toFixed(4)}</td>
                       <td className="spec-text">{r.spec_preview}</td>
                       <td className="result-text">{r.result_preview}</td>
                     </tr>
@@ -271,11 +285,11 @@ export function AnalysisDashboard({ initialData }: AnalysisDashboardProps) {
                       <td className="mono">{ev.ts.substring(0, 19)}</td>
                       <td className="mono font-semibold">{ev.agent_name}</td>
                       <td className="mono">{ev.model}</td>
-                      <td className="mono text-purple">{ev.query_source}</td>
+                      <td className="mono text-purple-400">{ev.query_source}</td>
                       <td className="mono">{(ev.duration_ms / 1000).toFixed(1)}s</td>
                       <td className="mono">{formatTokens(ev.input_tokens)}</td>
                       <td className="mono">{formatTokens(ev.output_tokens)}</td>
-                      <td className="mono text-emerald">${ev.cost_usd.toFixed(4)}</td>
+                      <td className="mono text-emerald-400">${ev.cost_usd.toFixed(4)}</td>
                     </tr>
                   ))
                 )}
@@ -291,7 +305,7 @@ export function AnalysisDashboard({ initialData }: AnalysisDashboardProps) {
           <div className="sql-box">
             <div className="sql-header mono">
               <span>PROVENANCE EXECUTION TIMING</span>
-              <span className="text-cyan">{data.provenance.elapsedMs} ms total</span>
+              <span className="text-cyan-400">{data.provenance.elapsedMs} ms total</span>
             </div>
 
             <div className="sql-meta">
