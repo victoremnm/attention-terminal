@@ -93,7 +93,7 @@ export async function tickerLanes(): Promise<TickerLanes> {
        WHERE event_type = 'CreateEvent'
          AND ref_type = 'repository'
          AND created_at > (SELECT max(created_at) FROM github_events) - INTERVAL 6 HOUR
-       GROUP BY repo_name ORDER BY at DESC LIMIT 8`,
+       GROUP BY repo_name ORDER BY at DESC LIMIT 20`,
       ["github_events"]
     ),
     q<{ name: string; forks: string; stars: string; pushes: string; prs: string; issues: string }>(
@@ -106,7 +106,7 @@ export async function tickerLanes(): Promise<TickerLanes> {
              AND created_at > high_water - INTERVAL 24 HOUR
            GROUP BY repo_name
            ORDER BY forks_24h DESC
-           LIMIT 8
+           LIMIT 20
          )
        SELECT
          f.repo_name AS name,
@@ -160,7 +160,7 @@ export async function tickerLanes(): Promise<TickerLanes> {
        HAVING pushes + commits + prs + closed_prs + issues + forks > 0
        ORDER BY prs * 4 + closed_prs * 3 + issues * 2 + forks * 3 + least(pushes, 10) + actors * 2 DESC,
                 events DESC
-       LIMIT 8`,
+       LIMIT 20`,
       ["github_events"]
     ),
     q<{ name: string; stars: string; surge: number; spark: number[] }>(
@@ -188,7 +188,7 @@ export async function tickerLanes(): Promise<TickerLanes> {
               round(sum(r.stars) / greatest(any(b.daily_avg), 0.5), 1) AS surge,
               any(r.spark) AS spark
        FROM recent r LEFT ANY JOIN base b ON r.repo_name = b.repo_name
-       GROUP BY name ORDER BY sum(r.stars) DESC LIMIT 8`,
+       GROUP BY name ORDER BY sum(r.stars) DESC LIMIT 20`,
       ["github_events"]
     ),
     q<{ id: number; name: string; score: number; velocity: number }>(
@@ -197,7 +197,7 @@ export async function tickerLanes(): Promise<TickerLanes> {
        FROM hackernews FINAL
        WHERE type = 'story' AND time > now() - INTERVAL 6 HOUR
          AND score >= 10 AND deleted = 0 AND dead = 0
-       ORDER BY velocity DESC LIMIT 8`,
+       ORDER BY velocity DESC LIMIT 20`,
       ["hackernews"]
     ),
   ]);
@@ -213,15 +213,13 @@ export async function tickerLanes(): Promise<TickerLanes> {
       kicker: "FORKED 24H",
       name: r.name,
       metric: `+${r.forks} new forks`,
-      delta: activityDelta([
-        ["stars", r.stars],
-        ["pushes", r.pushes],
-        ["PRs", r.prs],
-        ["issues", r.issues],
-      ]) ?? "latest feed day",
+      // No `delta`: it re-listed stars/pushes/PRs/issues, which the stats row
+      // below already breaks out — the two rows rendered the same numbers twice.
+      // stats carries the supporting dimensions (never `new forks` again, since
+      // that IS the metric); pushes moved here from the old delta for resolution.
       stats: [
-        stat("new forks", r.forks, "hot"),
-        stat("stars", r.stars),
+        stat("stars", r.stars, "hot"),
+        stat("pushes", r.pushes),
         stat("PRs", r.prs),
         stat("issues", r.issues),
       ],
@@ -230,25 +228,25 @@ export async function tickerLanes(): Promise<TickerLanes> {
     shippingVelocity: shipping.rows.map((r) => {
       const commits = valueOf(r.commits);
       const pushes = valueOf(r.pushes);
+      // When the metric headlines pushes (no commits), don't repeat pushes in the
+      // stats row — that repetition, plus the delta below, was the "same data
+      // twice" the card showed. When the metric is commits, pushes is still a
+      // distinct number worth keeping in stats.
+      const metricIsPushes = commits === 0 && pushes > 0;
       const metric = commits > 0 ? `${r.commits} commits` : pushes > 0 ? `${r.pushes} pushes` : `${r.events} events`;
       return {
         kicker: "SHIPPING",
         name: r.name,
         metric,
-        delta: activityDelta([
-          ["PRs", r.prs],
-          ["closed", r.closed_prs],
-          ["issues", r.issues],
-          ["forks", r.forks],
-          ["actors", r.actors],
-        ]) ?? `${r.events} events`,
+        // No `delta`: it re-listed PRs/closed/issues/forks/actors, exactly the
+        // dimensions the stats row breaks out, so the two rows were identical.
         stats: [
-          stat("pushes", r.pushes, pushes > 0 ? "hot" : "muted"),
+          ...(metricIsPushes ? [] : [stat("pushes", r.pushes, pushes > 0 ? "hot" : "muted")]),
           stat("PRs", r.prs),
           stat("closed", r.closed_prs),
           stat("issues", r.issues),
           stat("forks", r.forks),
-          stat("actors", r.actors),
+          stat("actors", r.actors, "hot"),
         ],
         href: `https://github.com/${r.name}`,
       };
