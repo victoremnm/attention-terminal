@@ -35,6 +35,7 @@
     "build": "next build",
     "start": "next start",
     "release": "semantic-release",
-    "test": "vitest run"
+    "test": "vitest run",
+    "log-telemetry": "tsx scripts/log-session-telemetry.ts"
   }
 }
