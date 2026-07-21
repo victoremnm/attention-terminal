@@ -11,6 +11,7 @@ import {
   runDataRetrievalDef,
   runVisualizationMappingDef,
 } from "./agent-tool-schemas";
+import { ensureTablesExist } from "./clickhouse";
 import { dailyDigest } from "./digest";
 import { realBuildersDeck } from "./real-builders";
 import { RenderPayloadSchema } from "./render-payload";
@@ -49,6 +50,21 @@ const MAX_OUTPUT_CHARS = 50_000;
 
 function hasMultipleStatements(query: string) {
   return query.replace(/;+\s*$/, "").includes(";");
+}
+
+function extractTableCandidates(query: string) {
+  const cteNames = new Set<string>();
+  for (const match of query.matchAll(/\b([A-Za-z_][\w$]*)\s+AS\s*\(/gi)) {
+    cteNames.add(match[1]);
+  }
+
+  const refs = new Set<string>();
+  for (const match of query.matchAll(/\b(?:from|join)\s+([`"]?)([A-Za-z_][\w$]*)\1(?:\.([`"]?)([A-Za-z_][\w$]*)\3)?/gi)) {
+    const table = match[4] ? `${match[2]}.${match[4]}` : match[2];
+    if (!cteNames.has(match[2])) refs.add(table);
+  }
+
+  return [...refs];
 }
 
 function capOutput(rows: unknown[]) {
@@ -108,6 +124,8 @@ export const runReadOnlyQuery = tool({
     }
 
     try {
+      const tables = extractTableCandidates(query);
+      await ensureTablesExist(tables);
       const result = await getClickHouse().query({
         query,
         format: "JSONEachRow",

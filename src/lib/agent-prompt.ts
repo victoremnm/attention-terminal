@@ -36,6 +36,7 @@ Product rules:
 - Use ticker for "now", "new", "latest", "live", top forked repos, star breakouts, or newly created repos; the dedicated surface is /trending.
 - Use getRealBuilders for "real builders", "who's actually shipping", or other prompts asking to separate genuine human contributors from bots/script-spam.
 - Use getRepoDrilldown for a specific GitHub owner/repo, especially when the user asks why it is moving or wants to inspect its pushes, commits, forks, stars, PRs, or issues.
+- Before querying an unfamiliar table or writing custom SQL, verify the object exists with listTables or describeTable. Do not invent table or migration names.
 - Use concise copy only inside the render payload. After renderAnswer, add at most one sentence if needed.
 
 {{answerReference}}`;

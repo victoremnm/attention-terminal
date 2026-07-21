@@ -30,6 +30,46 @@ export const clickhouseInsert = createClient({
   },
 });
 
+function splitTableName(table: string) {
+  const trimmed = table.trim();
+  const parts = trimmed.split(".");
+  if (parts.length === 2) {
+    return { database: parts[0], name: parts[1] };
+  }
+  return { database: base.database, name: trimmed };
+}
+
+export async function ensureTablesExist(tables: string[]) {
+  const uniqueTables = [...new Set(tables.map((table) => table.trim()).filter(Boolean))];
+  if (uniqueTables.length === 0) return;
+
+  const missing: string[] = [];
+  for (const table of uniqueTables) {
+    const { database, name } = splitTableName(table);
+    const result = await clickhouse.query({
+      query: `
+        SELECT 1 AS present
+        FROM system.tables
+        WHERE database = {database: String}
+          AND name = {name: String}
+        LIMIT 1
+      `,
+      format: "JSONEachRow",
+      query_params: { database, name },
+      clickhouse_settings: {
+        readonly: "2",
+        max_execution_time: 10,
+      },
+    });
+    const rows = await result.json<{ present: number }>();
+    if (rows.length === 0) missing.push(table);
+  }
+
+  if (missing.length > 0) {
+    throw new Error(`Missing ClickHouse table(s): ${missing.join(", ")}. Run the migration or update the query to a known table.`);
+  }
+}
+
 export async function selectRows<T>(query: string): Promise<T[]> {
   const result = await clickhouse.query({ query, format: "JSONEachRow" });
   return result.json<T>();

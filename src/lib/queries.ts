@@ -1,6 +1,6 @@
 // Server-side only: imported exclusively from server components and route
 // handlers. ClickHouse credentials never reach the client bundle.
-import { clickhouse, clickhouseInsert } from "./clickhouse";
+import { clickhouse, clickhouseInsert, ensureTablesExist } from "./clickhouse";
 import { fetchRepoRow } from "./github-repo";
 import type { DevPoint, RepoDrilldownPayload } from "./render-payload";
 
@@ -18,6 +18,7 @@ export async function q<T>(
   tables: string[],
   query_params?: Record<string, unknown>
 ): Promise<{ rows: T[]; provenance: Provenance }> {
+  await ensureTablesExist(tables);
   const t0 = Date.now();
   const rs = await clickhouse.query({ query: sql, format: "JSONEachRow", query_params });
   const rows = await rs.json<T>();
