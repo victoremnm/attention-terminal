@@ -1,4 +1,4 @@
-// One-time (idempotent, re-runnable) backfill for gh_actor_daily (issue #41).
+// Idempotent backfill/reconcile for gh_actor_daily (issue #41).
 //
 // gh_actor_daily is an AggregatingMergeTree fed by a materialized view
 // (migration 20260720000012_gh_actor_daily_rollup.sql). An MV only sees inserts
@@ -7,43 +7,43 @@
 // (CLAUDE.md: "New MVs need a manual INSERT ... SELECT backfill"). Until this
 // runs, devScatter() / the Real Builders deck reads an empty rollup.
 //
-// This is deliberately a Trigger.dev task rather than a raw manual INSERT so the
-// backfill is observable (run logs/metadata), retryable, and — most importantly
-// — idempotent:
-//   - It fills only COMPLETE days (< today). Today's partial day is left to the
-//     live MV; it ages into the 7d/30d window naturally.
-//   - It skips any day already present in gh_actor_daily (populated by the MV
-//     since migration, or by a prior run of this task). Re-inserting a day would
-//     double-count it — an AggregatingMergeTree sums the -State values, so an
-//     overlapping backfill silently inflates every aggregate.
-// Together those two rules make the historical backfill and the live MV cover
-// disjoint day ranges, so this can be triggered as many times as needed safely.
+// This rebuilds every COMPLETE day (day < today) authoritatively from
+// github_events, which retains the full ~30-day window (CLAUDE.md). It DELETEs
+// the historical range and reinserts it rather than skipping days already
+// present, because the live MV writes only PARTIAL coverage for some historical
+// days:
+//   - the migration day, where the MV started mid-day and has none of that day's
+//     pre-migration hours;
+//   - any older hour that ingest-gharchive catches up AFTER the MV was created.
+// A presence check would treat those partial days as done and leave them
+// permanently undercounted. DELETE + reinsert makes each run reconcile the whole
+// history from source, so the task is idempotent and safe to re-run (e.g. after
+// midnight UTC to fold in the migration day, or after a gharchive catch-up).
 //
-// The aggregation below mirrors gh_actor_daily_mv's SELECT byte-for-byte; if the
-// MV definition changes, change both. github_events retains ~30 days (CLAUDE.md),
-// so this is one bounded server-side INSERT ... SELECT, not a catch-up loop.
+// today() is left entirely to the live MV: deleting/reinserting it would race the
+// MV's concurrent writes. The migration day heals on the next run, once it has
+// become a complete day < today().
+//
+// The aggregation mirrors gh_actor_daily_mv's SELECT byte-for-byte; if the MV
+// definition changes, change both.
 import { logger, metadata, task } from "@trigger.dev/sdk";
 import { clickhouse, selectRows } from "../lib/clickhouse";
 
 export const backfillActorDaily = task({
   id: "backfill-actor-daily",
   maxDuration: 600,
+  // Singleton. Two runs overlapping would each DELETE then INSERT the same
+  // range; because an AggregatingMergeTree SUMS the inserted -State values,
+  // overlapping runs would double-count every actor/day instead of being
+  // idempotent. concurrencyLimit: 1 serializes them.
+  queue: { concurrencyLimit: 1 },
   run: async () => {
-    // Days the rollup already has — skip them so re-running never double-counts.
-    const present = await selectRows<{ day: string }>(
-      "SELECT DISTINCT toString(day) AS day FROM gh_actor_daily ORDER BY day"
-    );
-    const presentDays = present.map((r) => r.day);
-    logger.log("gh_actor_daily days already present", {
-      count: presentDays.length,
-      days: presentDays,
+    // Wipe the historical range first so the reinsert is a replace, not a sum.
+    // mutations_sync = 2 blocks until the delete mutation is fully materialized,
+    // so the INSERT below can't race it.
+    await clickhouse.command({
+      query: "ALTER TABLE gh_actor_daily DELETE WHERE day < today() SETTINGS mutations_sync = 2",
     });
-    metadata.set("backfill", { presentDays: presentDays.length });
-
-    // day-granular exclusion; the list is at most ~30 entries (30d retention).
-    const excludeClause = presentDays.length
-      ? `AND toDate(created_at) NOT IN (${presentDays.map((d) => `toDate('${d}')`).join(", ")})`
-      : "";
 
     // Single server-side INSERT ... SELECT: ClickHouse does the aggregation, no
     // rows cross the wire. -State combinators write the AggregateFunction states
@@ -63,7 +63,6 @@ export const backfillActorDaily = task({
         FROM github_events
         WHERE actor_login != ''
           AND toDate(created_at) < today()
-          ${excludeClause}
         GROUP BY day, actor_login
       `,
     });
@@ -77,7 +76,6 @@ export const backfillActorDaily = task({
       totalDays: Number(summary?.days ?? 0),
       firstDay: summary?.first ?? null,
       lastDay: summary?.last ?? null,
-      daysSkipped: presentDays.length,
     };
     logger.log("gh_actor_daily backfill complete", result);
     metadata.set("backfill", result);
