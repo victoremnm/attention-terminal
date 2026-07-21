@@ -58,3 +58,21 @@ jobs:
 
       - name: Parse dbt project
         run: dbt parse --profiles-dir dbt
+
+  tests:
+    name: Query integration tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24.x"
+          cache: npm
+      - run: npm ci
+      - name: Run query tests
+        run: npm test
+        env:
+          CLICKHOUSE_URL: ${{ secrets.CLICKHOUSE_URL }}
+          CLICKHOUSE_USER: ${{ secrets.CLICKHOUSE_USER }}
+          CLICKHOUSE_PASSWORD: ${{ secrets.CLICKHOUSE_PASSWORD }}
+          CLICKHOUSE_DATABASE: ${{ secrets.CLICKHOUSE_DATABASE }}

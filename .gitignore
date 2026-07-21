@@ -13,3 +13,5 @@ graphify-out/
 reference-design/
 .vercel
 .next/
+.claude/
+.codex/
