@@ -33,6 +33,11 @@ function chDateTime(value: Date) {
   return value.toISOString().slice(0, 19).replace("T", " ");
 }
 
+// YYYY-MM-DD for GitHub search's `merged:>=` qualifier.
+function isoDate(value: Date) {
+  return value.toISOString().slice(0, 10);
+}
+
 function authHeaders(): HeadersInit {
   const token = process.env.GITHUB_TOKEN;
   const headers: Record<string, string> = {
@@ -69,8 +74,15 @@ function sleep(ms: number) {
 // GitHub logins are alnum + single hyphens, but be defensive: a login containing
 // search-operator-breaking characters would produce a malformed query (422)
 // rather than a crash, so callers just skip it.
-function fetchMergedPrCount(actor: string) {
-  const query = `type:pr is:merged author:${actor}`;
+//
+// `merged:>=${since}` scopes the count to PRs merged within the scatter window
+// (issue #40 / PR #43 review): devScatter() divides this by p.prs, which is the
+// selected 7d/30d window's opened-PR count, so a lifetime count would produce
+// merge rates far above 100% and let prolific historical contributors outrank
+// current-window builders. Bounding the numerator to the same window keeps the
+// ratio meaningful.
+function fetchMergedPrCount(actor: string, since: string) {
+  const query = `type:pr is:merged author:${actor} merged:>=${since}`;
   return fetchSearchTotalCount(query);
 }
 
@@ -182,18 +194,42 @@ export const refreshActorPrStats = schedules.task({
     }
 
     const fetchedAt = new Date();
-    const rows: Array<{ actor_login: string; merged_prs: number; fetched_at: string }> = [];
+    const since7d = isoDate(new Date(fetchedAt.getTime() - 7 * 86_400_000));
+    const since30d = isoDate(new Date(fetchedAt.getTime() - 30 * 86_400_000));
+    const rows: Array<{
+      actor_login: string;
+      merged_prs_7d: number;
+      merged_prs_30d: number;
+      fetched_at: string;
+    }> = [];
     let notFound = 0;
 
     // Sequential, not batched: the search API's rate limit is per-minute and
     // much tighter than core REST, so concurrency here would just trip 403s.
+    // Two windowed counts per actor (7d/30d) so each matches devScatter()'s
+    // per-window denominator. The 7d count is a subset of the 30d count, so we
+    // only spend the second search call when the 30d count is non-zero - most
+    // candidates have no recent merged PRs, keeping us within the tight budget.
     for (let i = 0; i < actors.length; i++) {
       const actor = actors[i];
-      const mergedPrs = await fetchMergedPrCount(actor);
-      if (mergedPrs === null) {
+      const merged30d = await fetchMergedPrCount(actor, since30d);
+      if (merged30d === null) {
         notFound += 1;
       } else {
-        rows.push({ actor_login: actor, merged_prs: mergedPrs, fetched_at: chDateTime(fetchedAt) });
+        let merged7d = 0;
+        if (merged30d > 0) {
+          await sleep(SEARCH_DELAY_MS);
+          const fetched7d = await fetchMergedPrCount(actor, since7d);
+          // A failed 7d refetch falls back to 0 rather than dropping the actor;
+          // the 30d signal is still worth landing.
+          merged7d = fetched7d ?? 0;
+        }
+        rows.push({
+          actor_login: actor,
+          merged_prs_7d: merged7d,
+          merged_prs_30d: merged30d,
+          fetched_at: chDateTime(fetchedAt),
+        });
       }
       metadata.set("ingest", {
         source: "gh-actor-pr-stats",

@@ -523,7 +523,10 @@ interface DevScatterSqlRow {
 // `per_actor`/`meta` CTEs below - the CTE names and output columns are
 // unchanged so a JOIN onto `per_actor` should still apply cleanly.
 // ---------------------------------------------------------------------------
-function devScatterSql() {
+// `mergedCol` selects the window-scoped enriched merged-PR count
+// (gh_actor_pr_stats.merged_prs_7d | merged_prs_30d) matching the scatter's own
+// p.prs denominator window - see the enriched CTE below and issue #40 / PR #43.
+function devScatterSql(mergedCol: "merged_prs_7d" | "merged_prs_30d") {
   return `
     WITH actor_days AS (
       SELECT
@@ -562,9 +565,11 @@ function devScatterSql() {
     -- Issue #40: GitHub-REST-enriched merged-PR counts (gh_actor_pr_stats,
     -- migration 20260721000012), fed by the refreshActorPrStats Trigger.dev job.
     -- ReplacingMergeTree(fetched_at) ORDER BY actor_login, so FINAL already
-    -- collapses to one row per actor.
+    -- collapses to one row per actor. ${mergedCol} is the count merged within
+    -- THIS scatter's window, so dividing it by the window's p.prs (below) yields
+    -- a bounded merge rate instead of a lifetime-count-over-window blowup.
     enriched AS (
-      SELECT actor_login, merged_prs, 1 AS has_stats
+      SELECT actor_login, ${mergedCol} AS merged_prs, 1 AS has_stats
       FROM gh_actor_pr_stats FINAL
     )
     SELECT
@@ -608,13 +613,16 @@ function devScatterSql() {
 export async function devScatter(window: DevScatterWindow, limit = 40): Promise<DevScatterResult> {
   const days = DEV_SCATTER_WINDOW_DAYS[window];
   const megaPushThreshold = MEGA_PUSHER_THRESHOLD[window];
+  // Read the enriched merged-PR count scoped to this window, so it matches the
+  // p.prs denominator the ranking divides it by (issue #40 / PR #43 review).
+  const mergedCol = window === "7d" ? "merged_prs_7d" : "merged_prs_30d";
 
   // Provenance reconciles issue #41 + #40: the query no longer scans the raw
   // github_events firehose at all. It reads the gh_actor_daily rollup (#41's
   // FROM-source swap, via the actor_days CTE) and LEFT JOINs gh_actor_pr_stats
   // for the GitHub-REST-enriched merged-PR counts (#40, via the enriched CTE).
   const { rows, provenance } = await q<DevScatterSqlRow>(
-    devScatterSql(),
+    devScatterSql(mergedCol),
     ["gh_actor_daily", "gh_actor_pr_stats"],
     { days, megaPushThreshold, limit }
   );
