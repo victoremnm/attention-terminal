@@ -928,6 +928,64 @@ a { color: inherit; }
   color: var(--muted);
   font-size: 9px;
 }
+.repo-analysis {
+  margin-top: 14px;
+  border: 1px solid var(--line-soft);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--panel-2) 90%, transparent 10%);
+  padding: 12px;
+}
+.repo-analysis-overview {
+  margin: 4px 0 10px;
+  color: rgba(255, 255, 255, 0.88);
+  font-size: 11.5px;
+  line-height: 1.45;
+}
+.repo-analysis-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px;
+  margin-bottom: 10px;
+}
+.repo-analysis-grid b {
+  display: block;
+  color: var(--cyan);
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  margin-bottom: 3px;
+}
+.repo-analysis-grid p,
+.repo-analysis-grid ul {
+  margin: 0;
+  padding: 0;
+  color: var(--ink);
+  font-size: 11px;
+  list-style: none;
+}
+.repo-analysis-grid li {
+  margin-bottom: 2px;
+  color: var(--muted);
+}
+.repo-analysis-stack {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--line-soft);
+  font-size: 9.5px;
+}
+.repo-analysis-stack .label {
+  color: var(--muted);
+}
+.repo-analysis-stack .tech-badge {
+  border: 1px solid var(--cyan);
+  border-radius: 3px;
+  color: var(--cyan);
+  padding: 1px 5px;
+  font-size: 9px;
+}
 .repo-feed {
   margin-top: 12px;
 }
@@ -995,6 +1053,141 @@ a { color: inherit; }
   color: var(--muted);
   font-size: 10px;
   padding: 10px;
+}
+
+/* rankings (skills.sh-style dense ranked table) */
+.rankings {
+  display: flex;
+  flex-direction: column;
+}
+.rankings-search {
+  width: 100%;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  background: transparent;
+  color: var(--ink);
+  font-size: 13px;
+  padding: 10px 2px;
+  outline: none;
+}
+.rankings-search::placeholder {
+  color: var(--muted);
+}
+.rankings-search:focus {
+  border-bottom-color: color-mix(in srgb, var(--cyan) 62%, var(--line) 38%);
+}
+.rankings-tabs {
+  display: flex;
+  gap: 6px;
+  margin: 14px 0 4px;
+}
+.rankings-tab {
+  border: 1px solid var(--line-soft);
+  border-radius: 4px;
+  padding: 4px 10px;
+  color: var(--muted);
+  background: transparent;
+  font-size: 10px;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.rankings-tab:hover,
+.rankings-tab:focus-visible,
+.rankings-tab[aria-selected="true"] {
+  border-color: var(--line);
+  color: var(--ink);
+  background: var(--panel);
+}
+.rank-head {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr) 120px 90px;
+  gap: 12px;
+  align-items: center;
+  padding: 10px 6px 8px;
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 9.5px;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+}
+.rank-row {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr) 120px 90px;
+  gap: 12px;
+  align-items: center;
+  width: 100%;
+  text-align: left;
+  border: 0;
+  border-bottom: 1px solid var(--line-soft);
+  border-left: 2px solid transparent;
+  background: transparent;
+  color: var(--ink);
+  padding: 9px 6px;
+  cursor: pointer;
+}
+.rank-row:hover,
+.rank-row:focus-visible {
+  outline: none;
+  background: color-mix(in srgb, var(--panel) 60%, transparent 40%);
+  border-left-color: color-mix(in srgb, var(--cyan) 62%, var(--line-soft) 38%);
+}
+.rank-row[data-state="selected"] {
+  border-left-color: var(--cyan);
+  background: color-mix(in srgb, var(--cyan) 8%, transparent 92%);
+}
+.rank-row[data-state="loading"] {
+  border-left-color: var(--amber);
+}
+.rank-num {
+  color: var(--muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.rank-repo {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.rank-repo b {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ink);
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rank-repo em {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 10px;
+  font-style: normal;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rank-spark {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  color: var(--cyan);
+}
+.rank-events {
+  text-align: right;
+  color: var(--ink);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+/* skills.sh hides the sparkline column on small screens */
+@media (max-width: 640px) {
+  .rank-head,
+  .rank-row {
+    grid-template-columns: 32px minmax(0, 1fr) 76px;
+  }
+  .rank-spark {
+    display: none;
+  }
 }
 .repo-sql {
   margin-top: 10px;

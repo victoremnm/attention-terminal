@@ -268,6 +268,15 @@ export const RepoDrilldownSchema = z.object({
     distinctCommits: z.number().int().nonnegative(),
     merged: z.boolean(),
   })),
+  analysis: z
+    .object({
+      overview: z.string(),
+      techStack: z.array(z.string()),
+      keyFiles: z.array(z.string()),
+      architectureSummary: z.string(),
+      analyzedAt: z.string().optional(),
+    })
+    .optional(),
   query: CardQuerySchema,
 });
 

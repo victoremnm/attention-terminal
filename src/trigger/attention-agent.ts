@@ -5,7 +5,8 @@ import { createProviderRegistry, stepCountIs, streamText } from "ai";
 import { z } from "zod";
 import { attentionTelemetry, ensureAiSdkTelemetry } from "../lib/ai-telemetry";
 import { analystPromptTemplate, answerReference } from "../lib/agent-prompt";
-import { attentionTools } from "../lib/agent-tools";
+import { attentionTools, resetCatalogState } from "../lib/agent-tools";
+import { catalogPromptSection } from "../lib/catalog";
 
 ensureAiSdkTelemetry("trigger");
 
@@ -18,6 +19,7 @@ const systemPrompt = prompts.define({
   config: { temperature: 0.2 },
   variables: z.object({
     answerReference: z.string(),
+    catalogReference: z.string(),
   }),
   content: analystPromptTemplate,
 });
@@ -30,11 +32,16 @@ export const attentionAgent = chat.agent({
   tools: attentionTools,
 
   onBoot: async () => {
+    resetCatalogState();
     agentLocal.init({});
   },
 
   onChatStart: async () => {
-    const resolved = await systemPrompt.resolve({ answerReference });
+    const catalogReference = await catalogPromptSection();
+    const resolved = await systemPrompt.resolve({
+      answerReference,
+      catalogReference,
+    });
     chat.prompt.set(resolved);
   },
 

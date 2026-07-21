@@ -1,0 +1,65 @@
+{
+  "version": 1,
+  "skills": {
+    "address-feedback": {
+      "source": "victoremnm/skills",
+      "sourceType": "github",
+      "skillPath": "skills/address-feedback/SKILL.md",
+      "computedHash": "16e11fba1e1bc32c8cd6e1f914c72c3b1e725cfa4b1d4c8d8a391dd4c367f6fa"
+    },
+    "agent-chain": {
+      "source": "victoremnm/skills",
+      "sourceType": "github",
+      "skillPath": "skills/agent-chain/SKILL.md",
+      "computedHash": "c13a9f18386548a8dcd35bbaac4ba933c523bbda4a5490ee28070be0dc4b15ae"
+    },
+    "background-runner": {
+      "source": "victoremnm/skills",
+      "sourceType": "github",
+      "skillPath": "skills/background-runner/SKILL.md",
+      "computedHash": "6f2324418db211f64de16b03cadd887374c2c23105dc126208613682144eec4a"
+    },
+    "idle-pickup": {
+      "source": "victoremnm/skills",
+      "sourceType": "github",
+      "skillPath": "skills/idle-pickup/SKILL.md",
+      "computedHash": "492bca4b419872d125a5c0f005b10bf08a4c0cae2ac6255068b421043bbd60f8"
+    },
+    "multi-agent-pr-review": {
+      "source": "victoremnm/skills",
+      "sourceType": "github",
+      "skillPath": "skills/multi-agent-pr-review/SKILL.md",
+      "computedHash": "fafdff0bddac9b111bdeb906c3d6bb859cbd92e2b908fcb858b50cec23420d7d"
+    },
+    "parallel-explore": {
+      "source": "victoremnm/skills",
+      "sourceType": "github",
+      "skillPath": "skills/parallel-explore/SKILL.md",
+      "computedHash": "4e6cd996d337002e4a8b1ea119b8ad5967be9d934bb14b2ff189be0ae8b4d9c5"
+    },
+    "personal-handover": {
+      "source": "victoremnm/skills",
+      "sourceType": "github",
+      "skillPath": "skills/personal-handover/SKILL.md",
+      "computedHash": "4fe5cebcd2cd541f25bfc8242408a819fae14a8f4af83b18d95cfe580c5c2d1a"
+    },
+    "repo-docs-audit": {
+      "source": "victoremnm/skills",
+      "sourceType": "github",
+      "skillPath": "skills/repo-docs-audit/SKILL.md",
+      "computedHash": "bcc9b8be55418f6a207abb176c85cbde53418c3d05e91ef5256999ef1b6280c4"
+    },
+    "security-scrub": {
+      "source": "victoremnm/skills",
+      "sourceType": "github",
+      "skillPath": "skills/security-scrub/SKILL.md",
+      "computedHash": "6627c907890ace7c4cd0f96bc3fb1dc42407cc6e42b26953b1ac21ca0daab5cb"
+    },
+    "watch-pr": {
+      "source": "victoremnm/skills",
+      "sourceType": "github",
+      "skillPath": "skills/watch-pr/SKILL.md",
+      "computedHash": "562cbea2d3eaac3de39f1aee0170255fdfff985c6065e3e39a16d25768d4b5b8"
+    }
+  }
+}

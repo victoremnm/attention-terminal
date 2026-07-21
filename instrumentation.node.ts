@@ -37,7 +37,17 @@ registerTelemetry(
     usage: true,
     providerMetadata: true,
     runtimeContext: true,
-    enrichSpan: ({ spanType, operationId, callId, runtimeContext }) => ({
+    enrichSpan: ({
+      spanType,
+      operationId,
+      callId,
+      runtimeContext,
+    }: {
+      spanType: string;
+      operationId: string;
+      callId: string;
+      runtimeContext?: { surface?: string };
+    }) => ({
       "app.name": "attention-terminal",
       "app.surface":
         typeof runtimeContext?.surface === "string"

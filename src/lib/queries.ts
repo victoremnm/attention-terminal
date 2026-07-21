@@ -2,6 +2,7 @@
 // handlers. ClickHouse credentials never reach the client bundle.
 import { clickhouse, clickhouseInsert, ensureTablesExist } from "./clickhouse";
 import { fetchRepoRow } from "./github-repo";
+import { analyzeAndStoreRepo } from "./repo-analysis";
 import type { DevPoint, RepoDrilldownPayload } from "./render-payload";
 
 // Every query returns its provenance so the SQL-flip card back can show the
@@ -406,9 +407,17 @@ async function repoSeenInGithubEvents(repoName: string): Promise<boolean> {
   return rows.length > 0;
 }
 
+interface RepoDrilldownAnalysisSqlRow {
+  overview: string;
+  tech_stack: string[];
+  key_files: string[];
+  architecture_summary: string;
+  analyzed_at: string;
+}
+
 export async function repoDrilldown(repoName: string): Promise<RepoDrilldownPayload> {
   const queryParams = { repoName };
-  const [metadata, kpis, velocity, actors, feed] = await Promise.all([
+  const [metadata, kpis, velocity, actors, feed, analysisResult] = await Promise.all([
     q<RepoDrilldownMetadataSqlRow>(
       `SELECT
          description,
@@ -515,22 +524,33 @@ export async function repoDrilldown(repoName: string): Promise<RepoDrilldownPayl
       ["gh_repo_activity_feed", "gh_repo_drilldown_hourly"],
       queryParams
     ),
+    q<RepoDrilldownAnalysisSqlRow>(
+      `SELECT
+         overview,
+         tech_stack,
+         key_files,
+         architecture_summary,
+         toString(analyzed_at) AS analyzed_at
+       FROM gh_repo_analysis FINAL
+       WHERE repo_name = {repoName: String}
+       LIMIT 1`,
+      ["gh_repo_analysis"],
+      queryParams
+    ),
   ]);
 
   let meta = metadata.rows[0];
+  let analysisRow = analysisResult.rows[0];
   const totals = kpis.rows[0];
-  const provenances = [metadata.provenance, kpis.provenance, velocity.provenance, actors.provenance, feed.provenance];
+  const provenances = [
+    metadata.provenance,
+    kpis.provenance,
+    velocity.provenance,
+    actors.provenance,
+    feed.provenance,
+    analysisResult.provenance,
+  ];
 
-  // On-demand enrichment (issue #56): gh_repo_metadata only covers ~160 repos, so
-  // prolific repos routinely have no row here and the drilldown shows no
-  // description. When that happens, fetch the repo live via the shared
-  // fetch/mapping helper (same logic the refresh-repo-metadata Trigger.dev task
-  // uses) and use it in the payload. This must never block or fail the
-  // drilldown: no GITHUB_TOKEN, a fetch error, or an insert error all fall
-  // back to the pre-existing empty-description behavior. `{ fast: true }`
-  // skips the shared helper's rate-limit backoff sleep (up to ~2min worst
-  // case) so a user-facing request can't hang on it - the scheduled refresh
-  // task keeps the patient, retrying behavior.
   if (!meta && process.env.GITHUB_TOKEN) {
     try {
       const fetched = await fetchRepoRow(repoName, { fast: true });
@@ -544,28 +564,13 @@ export async function repoDrilldown(repoName: string): Promise<RepoDrilldownPayl
           open_issues: String(fetched.open_issues),
         };
 
-        // Only persist rows for repos that actually appear in our github_events
-        // firehose. Without this guard, drilling into ANY public repo name
-        // (even one we've never ingested an event for) would seed a
-        // gh_repo_metadata row that then qualifies forever for pickRepos()'s
-        // stale-refresh bucket - a slow, unbounded write amplification path.
-        // Always display the fetched description above regardless; only gate
-        // the write.
         try {
           const seenInFirehose = await repoSeenInGithubEvents(repoName);
           if (seenInFirehose) {
-            // Best-effort persistence via the batching insert client
-            // (CLAUDE.md gotcha #2 - never a plain HTTP bulk insert). An
-            // insert failure must not block returning the payload we already
-            // fetched.
             await clickhouseInsert.insert({
               table: "gh_repo_metadata",
               values: [fetched],
               format: "JSONEachRow",
-            });
-          } else {
-            console.log("[repoDrilldown] skipping gh_repo_metadata persistence - repo not seen in github_events", {
-              repoName,
             });
           }
         } catch (insertError) {
@@ -579,6 +584,38 @@ export async function repoDrilldown(repoName: string): Promise<RepoDrilldownPayl
       console.error("[repoDrilldown] on-demand GitHub fetch failed", { repoName, error: fetchError });
     }
   }
+
+  if (!analysisRow) {
+    try {
+      const generated = await analyzeAndStoreRepo(
+        repoName,
+        meta?.language,
+        meta?.topics,
+        { fast: true }
+      );
+      if (generated) {
+        analysisRow = {
+          overview: generated.overview,
+          tech_stack: generated.tech_stack,
+          key_files: generated.key_files,
+          architecture_summary: generated.architecture_summary,
+          analyzed_at: generated.analyzed_at,
+        };
+      }
+    } catch (analysisError) {
+      console.error("[repoDrilldown] on-demand repo analysis failed", { repoName, error: analysisError });
+    }
+  }
+
+  const analysisPayload = analysisRow
+    ? {
+        overview: analysisRow.overview,
+        techStack: analysisRow.tech_stack ?? [],
+        keyFiles: analysisRow.key_files ?? [],
+        architectureSummary: analysisRow.architecture_summary,
+        analyzedAt: analysisRow.analyzed_at,
+      }
+    : undefined;
 
   return {
     type: "repo-drilldown",
@@ -629,6 +666,7 @@ export async function repoDrilldown(repoName: string): Promise<RepoDrilldownPayl
       distinctCommits: Number(row.distinct_commits),
       merged: Number(row.merged) === 1,
     })),
+    analysis: analysisPayload,
     query: {
       sql: repoQuerySql(...provenances),
       rowsRead: provenances.reduce((sum, provenance) => sum + (provenance.rowsRead ?? 0), 0),
@@ -745,6 +783,10 @@ export interface RepoWindowRow {
   forks: number;
   prsOpened: number;
   prsMerged: number;
+  // Day-ordered per-day event counts across the window - drives the row
+  // sparkline on /trending. Windows shorter than 2 days yield <2 points
+  // (Sparkline renders nothing then, which the table handles gracefully).
+  spark: number[];
 }
 
 interface RepoWindowSqlRow {
@@ -762,32 +804,60 @@ interface RepoWindowSqlRow {
   forks: string;
   prs_opened: string;
   prs_merged: string;
+  // UInt64 array -> HTTP JSON returns each element as a string.
+  spark: string[];
 }
 
 // Repo activity + metadata for one of the fixed windows, ranked by event volume.
 // `gh_repo_metadata` is joined FINAL (ReplacingMergeTree - ungrouped parts can
 // hold stale duplicate rows pre-merge, same reasoning as `hackernews FINAL`).
 export async function repoActivityWindow(window: RepoWindow, limit = 20): Promise<QueryResult<RepoWindowRow[]>> {
+  // Two-level aggregation: the inner query rolls each repo up per day (so we can
+  // emit an ordered per-day event array for the sparkline), the outer collapses
+  // days into the window total. Additive metrics (events/pushes/.../prs) sum
+  // across days; `actors` is a uniq HLL state, so we carry it with
+  // uniqMergeState per day and union it with uniqMerge in the outer query -
+  // summing per-day uniqs would double-count anyone active on multiple days.
   const sql = `
     SELECT
-      d.repo_name AS repo_name,
-      any(m.owner) AS owner,
-      any(m.description) AS description,
-      any(m.language) AS language,
-      any(m.topics) AS topics,
-      any(m.github_stars) AS github_stars,
-      countMerge(d.events) AS events,
-      uniqMerge(d.actors) AS actors,
-      sum(d.pushes) AS pushes,
-      sum(d.commits) AS commits,
-      sum(d.stars) AS stars,
-      sum(d.forks) AS forks,
-      sum(d.prs_opened) AS prs_opened,
-      sum(d.prs_merged) AS prs_merged
-    FROM gh_repo_daily AS d
-    LEFT JOIN gh_repo_metadata FINAL AS m ON m.repo_name = d.repo_name
-    WHERE ${repoWindowClause(window)}
-    GROUP BY d.repo_name
+      repo_name,
+      any(owner) AS owner,
+      any(description) AS description,
+      any(language) AS language,
+      any(topics) AS topics,
+      any(github_stars) AS github_stars,
+      sum(day_events) AS events,
+      uniqMerge(actors_state) AS actors,
+      sum(day_pushes) AS pushes,
+      sum(day_commits) AS commits,
+      sum(day_stars) AS stars,
+      sum(day_forks) AS forks,
+      sum(day_prs_opened) AS prs_opened,
+      sum(day_prs_merged) AS prs_merged,
+      arrayMap(x -> x.2, arraySort(x -> x.1, groupArray((day, day_events)))) AS spark
+    FROM (
+      SELECT
+        d.repo_name AS repo_name,
+        d.day AS day,
+        any(m.owner) AS owner,
+        any(m.description) AS description,
+        any(m.language) AS language,
+        any(m.topics) AS topics,
+        any(m.github_stars) AS github_stars,
+        countMerge(d.events) AS day_events,
+        uniqMergeState(d.actors) AS actors_state,
+        sum(d.pushes) AS day_pushes,
+        sum(d.commits) AS day_commits,
+        sum(d.stars) AS day_stars,
+        sum(d.forks) AS day_forks,
+        sum(d.prs_opened) AS day_prs_opened,
+        sum(d.prs_merged) AS day_prs_merged
+      FROM gh_repo_daily AS d
+      LEFT JOIN gh_repo_metadata AS m FINAL ON m.repo_name = d.repo_name
+      WHERE ${repoWindowClause(window)}
+      GROUP BY d.repo_name, d.day
+    )
+    GROUP BY repo_name
     ORDER BY events DESC
     LIMIT {limit: UInt32}
   `.trim();
@@ -809,6 +879,7 @@ export async function repoActivityWindow(window: RepoWindow, limit = 20): Promis
     forks: Number(r.forks),
     prsOpened: Number(r.prs_opened),
     prsMerged: Number(r.prs_merged),
+    spark: (r.spark ?? []).map(Number),
   }));
 
   return toQueryResult(data, provenance);

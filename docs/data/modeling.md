@@ -56,6 +56,8 @@ The next step is to add an embeddings table keyed by `(source_id, document_id, e
 
 `gh_repo_hourly` remains the low-latency event-family rollup. `gh_repo_daily` and `gh_repo_monthly` add trend-oriented repo measures for longer windows: events, actors, pushes, commits, distinct commits, stars, forks, PRs opened/closed/merged, issues opened/closed, repository creates, branch/tag creates, and releases published.
 
+`gh_repo_activity_feed` is a thin compatibility view over `github_events` for repo drill-down and ad-hoc agent SQL. It exists to give prompt-generated queries a stable object name without introducing another physical storage layer.
+
 The dbt `mart_repo_activity_timeseries` model exposes those measures with a `day` or `month` grain, so product surfaces can switch time windows without rewriting measure logic.
 
 ## Repo Drill-Down Aggregates

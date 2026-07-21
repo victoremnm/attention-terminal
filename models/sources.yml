@@ -19,5 +19,7 @@ sources:
         description: "Incremental ClickHouse daily rollup of GitHub repo activity measures."
       - name: gh_repo_monthly
         description: "Incremental ClickHouse monthly rollup of GitHub repo activity measures."
+      - name: gh_repo_activity_feed
+        description: "Thin compatibility view over github_events for repo drill-down and ad-hoc agent SQL."
       - name: ingest_log
         description: "Ingestion watermarks and freshness metadata."
