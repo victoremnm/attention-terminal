@@ -3,8 +3,11 @@ import { chat } from "@trigger.dev/sdk/ai";
 import { openai } from "@ai-sdk/openai";
 import { createProviderRegistry, stepCountIs, streamText } from "ai";
 import { z } from "zod";
+import { attentionTelemetry, ensureAiSdkTelemetry } from "../lib/ai-telemetry";
 import { analystPromptTemplate, answerReference } from "../lib/agent-prompt";
 import { attentionTools } from "../lib/agent-tools";
+
+ensureAiSdkTelemetry("trigger");
 
 const registry = createProviderRegistry({ openai });
 
@@ -36,8 +39,14 @@ export const attentionAgent = chat.agent({
   },
 
   run: async ({ messages, tools, signal }) => {
+    const { telemetry, runtimeContext } = attentionTelemetry("worker");
+
     return streamText({
-      ...chat.toStreamTextOptions({ registry }),
+      ...chat.toStreamTextOptions({
+        registry,
+      }),
+      telemetry,
+      runtimeContext,
       model: openai("gpt-5.1"),
       messages,
       tools,
