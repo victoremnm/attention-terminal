@@ -34,9 +34,10 @@ export const attentionAgent = chat.agent({
   },
 
   onChatStart: async () => {
+    const catalogReference = await catalogPromptSection();
     const resolved = await systemPrompt.resolve({
       answerReference,
-      catalogReference: catalogPromptSection(),
+      catalogReference,
     });
     chat.prompt.set(resolved);
   },
