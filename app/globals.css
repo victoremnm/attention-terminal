@@ -1063,6 +1063,153 @@ a { color: inherit; }
   padding: 10px;
 }
 
+/* 30-day trend timeline + recent activity lists (issue #79 track #84) */
+.repo-trends {
+  margin-top: 12px;
+}
+.repo-trend {
+  margin: 0;
+}
+.legend-events {
+  color: var(--ink);
+  opacity: 0.7;
+}
+.legend-events::before {
+  content: "";
+  margin-left: 8px;
+}
+.repo-activity {
+  margin-top: 12px;
+}
+.repo-activity-list {
+  margin-bottom: 10px;
+}
+.repo-activity-label {
+  color: var(--muted);
+  font-size: 9.5px;
+  letter-spacing: .14em;
+  display: block;
+  margin-bottom: 4px;
+}
+.repo-activity-row {
+  display: grid;
+  grid-template-columns: 64px 56px minmax(80px, 1fr) minmax(0, 3fr) auto;
+  gap: 10px;
+  align-items: center;
+  border-top: 1px solid var(--line-soft);
+  padding: 6px 0;
+  color: var(--ink);
+  text-decoration: none;
+}
+.repo-activity-row:hover {
+  background: var(--surface-2);
+}
+.repo-activity-sha,
+.repo-activity-num,
+.repo-activity-tag,
+.repo-activity-date,
+.repo-activity-author,
+.repo-activity-state,
+.repo-activity-comments {
+  color: var(--muted);
+  font-size: 10px;
+  white-space: nowrap;
+}
+.repo-activity-sha,
+.repo-activity-num,
+.repo-activity-tag {
+  color: var(--cyan);
+}
+.repo-activity-state[data-state="open"] {
+  color: var(--amber);
+}
+.repo-activity-state[data-state="closed"] {
+  color: var(--mag);
+}
+.repo-activity-text {
+  color: var(--ink);
+  font-size: 11px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Pulse overview (issue #79): GitHub's /pulse page computed en-masse */
+.repo-pulse {
+  margin-top: 12px;
+}
+.repo-pulse-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.repo-pulse-stat {
+  border: 1px solid var(--line-soft);
+  border-radius: 5px;
+  padding: 8px;
+  text-align: center;
+}
+.repo-pulse-stat b {
+  display: block;
+  font-size: 18px;
+  color: var(--ink);
+}
+.repo-pulse-stat span {
+  font-size: 9.5px;
+  color: var(--muted);
+  letter-spacing: .1em;
+}
+.repo-pulse-summary {
+  color: var(--muted);
+  font-size: 11px;
+  margin: 6px 0;
+}
+.repo-pulse-summary b {
+  color: var(--ink);
+}
+.repo-pulse-committers {
+  margin-top: 8px;
+}
+.repo-pulse-subtitle {
+  color: var(--muted);
+  font-size: 9.5px;
+  letter-spacing: .14em;
+  margin-bottom: 4px;
+}
+.repo-pulse-committer-row {
+  display: grid;
+  grid-template-columns: minmax(80px, 1fr) minmax(0, 3fr) 40px;
+  gap: 8px;
+  align-items: center;
+  border-top: 1px solid var(--line-soft);
+  padding: 5px 0;
+}
+.repo-pulse-committer-name {
+  color: var(--ink);
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.repo-pulse-committer-bar {
+  height: 8px;
+  background: var(--surface-2);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.repo-pulse-committer-fill {
+  height: 100%;
+  background: var(--cyan);
+  border-radius: 4px;
+}
+.repo-pulse-committer-count {
+  color: var(--muted);
+  font-size: 10px;
+  text-align: right;
+}
+
 /* rankings (skills.sh-style dense ranked table) */
 .rankings {
   display: flex;

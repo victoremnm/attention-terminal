@@ -48,10 +48,11 @@ verdict-plus-one-visual composition · feed-with-pinning canvas · terminal-dark
 
 ### 5. Repo Drill-Down
 - **Intent:** double-click from the live ticker or ask about a specific `owner/repo`
-- **Visual:** repo context header, 24h KPI strip, hourly velocity chart for pushes/commits/stars, and a bounded latest push/PR event feed
-- **Data:** `gh_repo_drilldown_hourly` for 24h KPIs and the hourly velocity chart, `gh_repo_actor_hourly` for the contributor strip, `gh_repo_activity_feed` for latest push/PR rows, and `gh_repo_metadata` for description/language/topics/stars/forks/issues. Windows are anchored to the aggregate high-water mark.
-- **Constraint:** v1 only surfaces fields the current ingestion keeps. It does not show branch refs, LOC churn, author association, commit messages, or commit text.
-- **Payload sketch:** `{ type: "repo-drilldown", repoName, generatedAt, metadata, kpis24h, velocity, topActors24h, feed, query }`
+- **Visual:** repo context header, 24h KPI strip, hourly velocity chart for pushes/commits/stars, a bounded latest push/PR event feed, recent activity lists (commits/PRs/releases/issues), and a 30-day trend timeline with annotated content events
+- **Data:** `gh_repo_drilldown_hourly` for 24h KPIs and the hourly velocity chart, `gh_repo_actor_hourly` for the contributor strip, `gh_repo_activity_feed` for latest push/PR rows, `gh_repo_metadata` for description/language/topics/stars/forks/issues, `gh_repo_commits`/`gh_repo_prs`/`gh_repo_releases`/`gh_repo_issues` for REST-fetched activity (7-day window), and `gh_repo_daily` joined against the activity tables for the 30-day trend timeline. Windows are anchored to the aggregate high-water mark.
+- **v2 enrichment (issue #79):** adds optional `activity` (recent commit messages, PR titles/states, release tags/bodies, issue titles/labels — 7-day window) and `trends` (30-day star/fork timeline with release/PR-merge/issue-open event markers). Both fields are optional and omitted when the watchlist poller hasn't populated the REST-activity tables yet — the renderer degrades gracefully to the v1 layout.
+- **v1 constraint (lifted for v2):** v1 only surfaced fields the firehose ingestion keeps. v2 lifts this fence for commit messages, PR titles, release tags/bodies, and issue titles — fetched via Octokit REST by the watchlist poller (no git clone). It still does not show branch refs, LOC churn, or author association.
+- **Payload sketch:** `{ type: "repo-drilldown", repoName, generatedAt, metadata, kpis24h, velocity, topActors24h, feed, activity?, trends?, analysis?, query }`
 
 ### Verdict Tile (composes with every answer)
 - One glanceable state + evidence sparkline + the single load-bearing number
