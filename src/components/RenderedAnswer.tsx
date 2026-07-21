@@ -1,6 +1,6 @@
 "use client";
 
-import type { CandlesPayload, DigestPayload, DivergencePayload, MatrixPayload, MorphingCardPayload, RenderPayload, RepoDrilldownPayload, RepoDrilldownActivity, RepoDrilldownTrend, TickerPayload, VerdictTile } from "@/lib/render-payload";
+import type { CandlesPayload, DigestPayload, DivergencePayload, MatrixPayload, MorphingCardPayload, RenderPayload, RepoDrilldownPayload, RepoDrilldownActivity, RepoDrilldownPulse, RepoDrilldownTrend, TickerPayload, VerdictTile } from "@/lib/render-payload";
 import { VERDICT_COLOR } from "@/lib/verdict-color";
 import { AreaChart, DualLine, Sparkline } from "./charts";
 import { SkinnyDeck } from "./SkinnyDeck";
@@ -296,6 +296,63 @@ function RepoActivityLists({ activity, repoName }: { activity: RepoDrilldownActi
   );
 }
 
+function RepoPulseOverview({ pulse }: { pulse: RepoDrilldownPulse }) {
+  const hasData = pulse.prsActive || pulse.issuesActive || pulse.commitCount || pulse.topCommitters.length;
+  if (!hasData) return null;
+  // Top committers bar chart (Pulse's "Top committers" viz)
+  const maxCommits = Math.max(...pulse.topCommitters.map((c) => c.commits), 1);
+  return (
+    <div className="repo-pulse">
+      <div className="repo-section-title mono">PULSE · {pulse.windowDays}D OVERVIEW</div>
+      <div className="repo-pulse-stats">
+        <div className="repo-pulse-stat">
+          <b className="mono">{compact(pulse.prsMerged)}</b>
+          <span className="mono">PRs merged</span>
+        </div>
+        <div className="repo-pulse-stat">
+          <b className="mono">{compact(pulse.prsOpened)}</b>
+          <span className="mono">PRs opened</span>
+        </div>
+        <div className="repo-pulse-stat">
+          <b className="mono">{compact(pulse.prsOpen)}</b>
+          <span className="mono">PRs open</span>
+        </div>
+        <div className="repo-pulse-stat">
+          <b className="mono">{compact(pulse.issuesClosed)}</b>
+          <span className="mono">issues closed</span>
+        </div>
+        <div className="repo-pulse-stat">
+          <b className="mono">{compact(pulse.issuesOpened)}</b>
+          <span className="mono">issues opened</span>
+        </div>
+        <div className="repo-pulse-stat">
+          <b className="mono">{compact(pulse.issuesOpen)}</b>
+          <span className="mono">issues open</span>
+        </div>
+      </div>
+      {pulse.commitCount > 0 && (
+        <p className="repo-pulse-summary mono">
+          <b>{pulse.commitAuthors}</b> author{pulse.commitAuthors === 1 ? "" : "s"} pushed <b>{compact(pulse.commitCount)}</b> commit{pulse.commitCount === 1 ? "" : "s"}
+        </p>
+      )}
+      {pulse.topCommitters.length > 0 && (
+        <div className="repo-pulse-committers">
+          <div className="repo-pulse-subtitle mono">TOP COMMITTERS</div>
+          {pulse.topCommitters.map((c) => (
+            <div key={c.author} className="repo-pulse-committer-row">
+              <span className="repo-pulse-committer-name">{c.author}</span>
+              <div className="repo-pulse-committer-bar">
+                <div className="repo-pulse-committer-fill" style={{ width: `${(c.commits / maxCommits) * 100}%` }} />
+              </div>
+              <span className="repo-pulse-committer-count mono">{compact(c.commits)}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function RepoDrilldownAnswer({ payload }: { payload: RepoDrilldownPayload }) {
   const kpis = [
     ["pushes", payload.kpis24h.pushes],
@@ -414,6 +471,7 @@ function RepoDrilldownAnswer({ payload }: { payload: RepoDrilldownPayload }) {
           <RepoTrendChart trends={payload.trends} />
         </div>
       )}
+      {payload.pulse && <RepoPulseOverview pulse={payload.pulse} />}
       {payload.activity && <RepoActivityLists activity={payload.activity} repoName={payload.repoName} />}
       <details className="agent-query repo-sql">
         <summary className="mono">view SQL · {payload.query.rowsRead.toLocaleString()} rows · {payload.query.elapsedMs}ms</summary>

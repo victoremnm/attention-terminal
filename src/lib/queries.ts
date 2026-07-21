@@ -441,6 +441,30 @@ interface RepoDrilldownTrendSqlRow {
   event_url: string;
 }
 
+// Pulse overview (issue #79): GitHub's /pulse page computed en-masse from the
+// REST-activity tables. Three separate result shapes from three queries:
+//   1. PR/issue count breakdown (single row)
+//   2. Commit summary (single row: author count + commit count)
+//   3. Top committers (multiple rows, one per author)
+interface RepoDrilldownPulseCountSqlRow {
+  prs_merged: string;
+  prs_opened: string;
+  prs_open: string;
+  issues_closed: string;
+  issues_opened: string;
+  issues_open: string;
+}
+
+interface RepoDrilldownPulseCommitSummarySqlRow {
+  commit_authors: string;
+  commit_count: string;
+}
+
+interface RepoDrilldownPulseTopCommitterSqlRow {
+  author: string;
+  commits: string;
+}
+
 function repoQuerySql(...parts: Provenance[]) {
   return parts
     .map((part, index) => `-- repo drill-down query ${index + 1}\n${part.sql}`)
@@ -867,7 +891,53 @@ export async function repoDrilldown(repoName: string): Promise<RepoDrilldownPayl
     queryParams
   );
 
-  const [metadata, kpis, velocity, actors, feed, analysisResult, commitsR, prsR, releasesR, issuesR, trendsR] = await Promise.all([
+  // --- Pulse overview queries (issue #79) -----------------------------------
+  // GitHub's /pulse page computed en-masse from the REST-activity tables.
+  // 7-day window matches the activity lists. Three queries: PR/issue counts,
+  // commit summary, top committers. All degrade to zero/empty when the
+  // poller hasn't populated the tables.
+  const pulseWindowDays = 7;
+  const pulseSinceClause = `>= now() - INTERVAL ${pulseWindowDays} DAY`;
+
+  const pulseCountsQuery = q<RepoDrilldownPulseCountSqlRow>(
+    `SELECT
+       toString(countIf(merged_at ${pulseSinceClause})) AS prs_merged,
+       toString(countIf(created_at ${pulseSinceClause})) AS prs_opened,
+       toString(countIf(state = 'open')) AS prs_open,
+       toString(countIf(closed_at ${pulseSinceClause})) AS issues_closed,
+       toString(countIf(created_at ${pulseSinceClause})) AS issues_opened,
+       toString(countIf(state = 'open')) AS issues_open
+     FROM (
+       SELECT number, created_at, merged_at, closed_at, state FROM gh_repo_prs FINAL WHERE repo_name = {repoName: String}
+       UNION ALL
+       SELECT number, created_at, toDate('1970-01-01 00:00:00') AS merged_at, closed_at, state FROM gh_repo_issues FINAL WHERE repo_name = {repoName: String}
+     )`,
+    ["gh_repo_prs", "gh_repo_issues"],
+    queryParams
+  );
+
+  const pulseCommitSummaryQuery = q<RepoDrilldownPulseCommitSummarySqlRow>(
+    `SELECT
+       toString(uniqExact(author)) AS commit_authors,
+       toString(count()) AS commit_count
+     FROM gh_repo_commits FINAL
+     WHERE repo_name = {repoName: String} AND author_date ${pulseSinceClause}`,
+    ["gh_repo_commits"],
+    queryParams
+  );
+
+  const pulseTopCommittersQuery = q<RepoDrilldownPulseTopCommitterSqlRow>(
+    `SELECT author, toString(count()) AS commits
+     FROM gh_repo_commits FINAL
+     WHERE repo_name = {repoName: String} AND author_date ${pulseSinceClause}
+     GROUP BY author
+     ORDER BY commits DESC
+     LIMIT 8`,
+    ["gh_repo_commits"],
+    queryParams
+  );
+
+  const [metadata, kpis, velocity, actors, feed, analysisResult, commitsR, prsR, releasesR, issuesR, trendsR, pulseCountsR, pulseCommitSummaryR, pulseTopCommittersR] = await Promise.all([
     metadataQuery,
     kpiQuery,
     velocityQuery,
@@ -879,6 +949,9 @@ export async function repoDrilldown(repoName: string): Promise<RepoDrilldownPayl
     releasesQuery,
     issuesQuery,
     trendsQuery,
+    pulseCountsQuery,
+    pulseCommitSummaryQuery,
+    pulseTopCommittersQuery,
   ]);
 
   let meta = metadata.rows[0];
@@ -896,6 +969,9 @@ export async function repoDrilldown(repoName: string): Promise<RepoDrilldownPayl
     releasesR.provenance,
     issuesR.provenance,
     trendsR.provenance,
+    pulseCountsR.provenance,
+    pulseCommitSummaryR.provenance,
+    pulseTopCommittersR.provenance,
   ];
 
   if (!meta && process.env.GITHUB_TOKEN) {
@@ -1059,6 +1135,38 @@ export async function repoDrilldown(repoName: string): Promise<RepoDrilldownPayl
     // firehose signal).
     trends: trendsR.rows.length
       ? buildTrends(trendsR.rows)
+      : undefined,
+    // Pulse overview (issue #79): GitHub's /pulse page computed en-masse from
+    // the REST-activity tables. Omitted when the poller hasn't populated the
+    // tables yet (all counts zero + no top committers).
+    pulse: (pulseCommitSummaryR.rows.length || pulseTopCommittersR.rows.length)
+      ? (() => {
+          const pc = pulseCountsR.rows[0];
+          const cs = pulseCommitSummaryR.rows[0];
+          const prsMerged = Number(pc?.prs_merged ?? 0);
+          const prsOpened = Number(pc?.prs_opened ?? 0);
+          const prsOpen = Number(pc?.prs_open ?? 0);
+          const issuesClosed = Number(pc?.issues_closed ?? 0);
+          const issuesOpened = Number(pc?.issues_opened ?? 0);
+          const issuesOpen = Number(pc?.issues_open ?? 0);
+          return {
+            windowDays: 7,
+            prsMerged,
+            prsOpened,
+            prsOpen,
+            prsActive: prsMerged + prsOpened + prsOpen,
+            issuesClosed,
+            issuesOpened,
+            issuesOpen,
+            issuesActive: issuesClosed + issuesOpened + issuesOpen,
+            commitAuthors: Number(cs?.commit_authors ?? 0),
+            commitCount: Number(cs?.commit_count ?? 0),
+            topCommitters: pulseTopCommittersR.rows.map((row) => ({
+              author: row.author,
+              commits: Number(row.commits),
+            })),
+          };
+        })()
       : undefined,
     query: {
       sql: repoQuerySql(...provenances),

@@ -332,6 +332,33 @@ export const RepoDrilldownSchema = z.object({
       })),
     }))
     .optional(),
+  // Pulse-style overview (issue #79): GitHub's /pulse page computed en-masse
+  // from the REST-activity tables instead of on-demand per repo visit.
+  // 7-day window matches the activity lists. Optional — omitted when the
+  // poller hasn't populated the tables yet.
+  pulse: z
+    .object({
+      windowDays: z.number().int().positive(),
+      // PR breakdown
+      prsMerged: z.number().int().nonnegative(),
+      prsOpened: z.number().int().nonnegative(),
+      prsOpen: z.number().int().nonnegative(),
+      prsActive: z.number().int().nonnegative(), // merged + opened + still-open
+      // Issue breakdown
+      issuesClosed: z.number().int().nonnegative(),
+      issuesOpened: z.number().int().nonnegative(),
+      issuesOpen: z.number().int().nonnegative(),
+      issuesActive: z.number().int().nonnegative(), // closed + opened + still-open
+      // Commit summary (Pulse's "N authors pushed M commits")
+      commitAuthors: z.number().int().nonnegative(),
+      commitCount: z.number().int().nonnegative(),
+      // Top committers bar chart (Pulse's "Top committers" viz)
+      topCommitters: z.array(z.object({
+        author: z.string().max(120),
+        commits: z.number().int().nonnegative(),
+      })),
+    })
+    .optional(),
   query: CardQuerySchema,
 });
 
@@ -364,6 +391,7 @@ export type RepoDrilldownPayload = z.infer<typeof RepoDrilldownSchema>;
 export type RepoDrilldownActivity = NonNullable<RepoDrilldownPayload["activity"]>;
 export type RepoDrilldownTrend = NonNullable<RepoDrilldownPayload["trends"]>[number];
 export type RepoDrilldownTrendEvent = RepoDrilldownTrend["events"][number];
+export type RepoDrilldownPulse = NonNullable<RepoDrilldownPayload["pulse"]>;
 export type MorphingCardPayload = z.infer<typeof MorphingCardSchema>;
 export type VisualizationType = z.infer<typeof VisualizationTypeSchema>;
 export type RenderPayload = z.infer<typeof RenderPayloadSchema>;
