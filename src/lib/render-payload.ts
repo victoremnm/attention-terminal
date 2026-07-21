@@ -9,6 +9,30 @@ export const VerdictSchema = z.enum([
   "DIVERGENT",
 ]);
 
+export const VisualizationTypeSchema = z.enum([
+  "Line Graph",
+  "Area Chart",
+  "Slopegraph",
+  "Waterfall Chart",
+  "Gantt Chart",
+  "Bar Chart",
+  "Dot Plot",
+  "Bullet Graph",
+  "Data Table",
+  "Pie Chart",
+  "Stacked Bar Chart",
+  "Square Area Chart",
+  "Treemap",
+  "Unit Chart",
+  "Boxplot",
+  "Scatterplot",
+  "Bubble Chart",
+  "Spider Chart",
+  "Sankey Diagram",
+  "Flow Chart",
+  "Choropleth Map",
+]);
+
 export const VerdictTileSchema = z.object({
   state: VerdictSchema,
   metric: z.number(),
@@ -111,6 +135,14 @@ export const MatrixSchema = z.object({
     ghShare: z.number().min(0).max(1),
     verdict: VerdictSchema.optional(),
   })),
+});
+
+export const MorphingCardSchema = z.object({
+  type: z.literal("morphing-card"),
+  visualizationType: VisualizationTypeSchema,
+  generatedAt: z.string(),
+  chartConfig: z.record(z.string(), z.unknown()),
+  summary: z.string().optional(),
 });
 
 // --- Daily Skinny deck (tactile finishable card deck; see docs/architecture/AGENT-FLEET-PLAN.md §4.2) ---
@@ -239,6 +271,7 @@ export const RenderPayloadSchema = z.discriminatedUnion("type", [
   MatrixSchema,
   SkinnyDeckSchema,
   RepoDrilldownSchema,
+  MorphingCardSchema,
 ]);
 
 export type Verdict = z.infer<typeof VerdictSchema>;
@@ -256,4 +289,6 @@ export type CardQuery = z.infer<typeof CardQuerySchema>;
 export type SkinnyCard = z.infer<typeof SkinnyCardSchema>;
 export type SkinnyDeckPayload = z.infer<typeof SkinnyDeckSchema>;
 export type RepoDrilldownPayload = z.infer<typeof RepoDrilldownSchema>;
+export type MorphingCardPayload = z.infer<typeof MorphingCardSchema>;
+export type VisualizationType = z.infer<typeof VisualizationTypeSchema>;
 export type RenderPayload = z.infer<typeof RenderPayloadSchema>;

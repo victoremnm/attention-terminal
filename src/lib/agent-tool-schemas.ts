@@ -66,6 +66,23 @@ export const renderAnswerDef = {
 // Execute-less tool set for the head-start route. Step 1 runs in the Next.js
 // process and stops at the first tool call; the agent run executes the tools
 // after handover, so no execute functions are needed (or wanted) here.
+
+export const runDataRetrievalDef = {
+  description:
+    "Data Retrieval Agent: Translates semantic intent into ClickHouse SQL, executes the query, persists the raw result set to temporary storage, and returns schema metadata, summary statistics (variance, cardinality, data types), and a retrieval key.",
+  inputSchema: z.object({
+    intent: z.string().min(1).max(12_000),
+  }),
+} as const;
+
+export const runVisualizationMappingDef = {
+  description:
+    "Visualization Mapping Agent: Maps data metadata and semantic intent against the data storytelling taxonomy to return a UI configuration payload (chart type, axes mapping, stylistic overrides).",
+  inputSchema: z.object({
+    intent: z.string(),
+    metadata: z.record(z.string(), z.unknown()),
+  }),
+} as const;
 export const attentionToolSchemas = {
   listTables: tool(listTablesDef),
   describeTable: tool(describeTableDef),
@@ -74,4 +91,6 @@ export const attentionToolSchemas = {
   getRealBuilders: tool(getRealBuildersDef),
   getRepoDrilldown: tool(getRepoDrilldownDef),
   renderAnswer: tool(renderAnswerDef),
+  runDataRetrieval: tool(runDataRetrievalDef),
+  runVisualizationMapping: tool(runVisualizationMappingDef),
 };
