@@ -4,6 +4,8 @@ import { registerTelemetry, type Telemetry } from "ai";
 type RegistrationSurface = "next" | "trigger";
 type ChatPhase = "head-start" | "worker";
 
+export const attentionAgentFunctionId = "attention-agent";
+
 let initialized = false;
 
 export function ensureAiSdkTelemetry(surface: RegistrationSurface) {
@@ -16,9 +18,13 @@ export function ensureAiSdkTelemetry(surface: RegistrationSurface) {
     new OpenTelemetry({
       usage: true,
       providerMetadata: true,
-      enrichSpan: ({ spanType, operationId, callId }) => ({
+      runtimeContext: true,
+      enrichSpan: ({ spanType, operationId, callId, runtimeContext }) => ({
         "app.name": "attention-terminal",
-        "app.surface": surface,
+        "app.surface":
+          typeof runtimeContext?.surface === "string"
+            ? runtimeContext.surface
+            : surface,
         "app.span_type": spanType,
         "app.operation_id": operationId,
         "app.call_id": callId,
@@ -31,8 +37,15 @@ export function ensureAiSdkTelemetry(surface: RegistrationSurface) {
 
 export function attentionTelemetry(surface: ChatPhase) {
   return {
-    "app.name": "attention-terminal",
-    "app.surface": surface,
+    telemetry: {
+      functionId: attentionAgentFunctionId,
+      includeRuntimeContext: {
+        surface: true,
+      },
+    },
+    runtimeContext: {
+      surface,
+    },
   };
 }
 

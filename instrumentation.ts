@@ -1,5 +1,5 @@
-import { ensureAiSdkTelemetry } from "./src/lib/ai-telemetry";
-
-export function register() {
-  ensureAiSdkTelemetry("next");
+export async function register() {
+  if (process.env.NEXT_RUNTIME === "nodejs") {
+    await import("./instrumentation.node");
+  }
 }

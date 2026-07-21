@@ -39,11 +39,14 @@ export const attentionAgent = chat.agent({
   },
 
   run: async ({ messages, tools, signal }) => {
+    const { telemetry, runtimeContext } = attentionTelemetry("worker");
+
     return streamText({
       ...chat.toStreamTextOptions({
         registry,
-        telemetry: attentionTelemetry("worker"),
       }),
+      telemetry,
+      runtimeContext,
       model: openai("gpt-5.1"),
       messages,
       tools,
