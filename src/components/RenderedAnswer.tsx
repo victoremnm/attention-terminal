@@ -117,9 +117,9 @@ function compact(value: number) {
 }
 
 function shortTime(value: string) {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value.slice(11, 16);
-  return date.toISOString().slice(11, 16);
+  if (value.includes("T")) return value.slice(11, 16);
+  if (value.includes(" ")) return value.slice(11, 16);
+  return value.slice(0, 5);
 }
 
 function RepoVelocityChart({ payload }: { payload: RepoDrilldownPayload }) {

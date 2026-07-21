@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { TickerCard, TickerLanes } from "@/lib/queries";
 import type { RepoDrilldownPayload } from "@/lib/render-payload";
 import { RenderedAnswer } from "./RenderedAnswer";
@@ -96,6 +96,8 @@ export function TickerRail({ initial, ingestToken }: { initial: TickerLanes; ing
   const [drilldown, setDrilldown] = useState<RepoDrilldownPayload | undefined>();
   const [loadingRepo, setLoadingRepo] = useState<string | undefined>();
   const [drilldownError, setDrilldownError] = useState<string | undefined>();
+  const drilldownRequest = useRef(0);
+  const drilldownAbort = useRef<AbortController | undefined>(undefined);
   // Ticks as ingestion lands (Trigger.dev Realtime); 0 while no run completed yet.
   const { lastIngestAt } = useIngestPulse(ingestToken);
   const ingestKey = lastIngestAt?.getTime() ?? 0;
@@ -115,20 +117,29 @@ export function TickerRail({ initial, ingestToken }: { initial: TickerLanes; ing
     return () => clearInterval(t);
   }, [ingestKey]);
 
+  useEffect(() => () => drilldownAbort.current?.abort(), []);
+
   async function openRepo(repoName: string) {
+    const requestId = drilldownRequest.current + 1;
+    drilldownRequest.current = requestId;
+    drilldownAbort.current?.abort();
+    const controller = new AbortController();
+    drilldownAbort.current = controller;
     setSelectedRepo(repoName);
     setLoadingRepo(repoName);
     setDrilldownError(undefined);
     try {
-      const res = await fetch(`/api/repo-drilldown?repo=${encodeURIComponent(repoName)}`);
+      const res = await fetch(`/api/repo-drilldown?repo=${encodeURIComponent(repoName)}`, { signal: controller.signal });
       const body = await res.json();
       if (!res.ok) throw new Error(body.error ?? "repo drill-down failed");
+      if (drilldownRequest.current !== requestId) return;
       setDrilldown(body as RepoDrilldownPayload);
     } catch (error) {
+      if (controller.signal.aborted || drilldownRequest.current !== requestId) return;
       setDrilldown(undefined);
       setDrilldownError(error instanceof Error ? error.message : "repo drill-down failed");
     } finally {
-      setLoadingRepo(undefined);
+      if (drilldownRequest.current === requestId) setLoadingRepo(undefined);
     }
   }
 
