@@ -273,7 +273,15 @@ function RepoDrilldownAnswer({ payload }: { payload: RepoDrilldownPayload }) {
             <span className="mono">{shortTime(item.at)}</span>
             <b>{item.actor}</b>
             <i className="mono">{item.eventType === "PushEvent" ? "push" : item.merged ? "merged PR" : item.action || "PR"}</i>
-            <em className="mono">{item.commits ? `${item.commits} commits` : `${item.distinctCommits} distinct`}</em>
+            <em className="mono">
+              {item.eventType === "PushEvent"
+                ? item.distinctCommits > 0
+                  ? `${item.distinctCommits} distinct`
+                  : item.commits > 0
+                  ? `${item.commits} commit${item.commits === 1 ? "" : "s"}`
+                  : ""
+                : ""}
+            </em>
           </div>
         )) : <div className="repo-empty mono">no push or PR events in the latest 24h window</div>}
       </div>
