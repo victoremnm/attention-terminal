@@ -799,7 +799,10 @@ export async function repoDrilldown(repoName: string): Promise<RepoDrilldownPayl
      FROM (
        SELECT number, title, state, author, created_at, merged_at, closed_at, labels
        FROM gh_repo_prs FINAL
-       WHERE repo_name = {repoName: String} AND created_at >= now() - INTERVAL 7 DAY
+       WHERE repo_name = {repoName: String}
+         AND (created_at >= now() - INTERVAL 7 DAY
+              OR merged_at >= now() - INTERVAL 7 DAY
+              OR closed_at >= now() - INTERVAL 7 DAY)
        ORDER BY created_at DESC LIMIT 10
      )`,
     ["gh_repo_prs"],
@@ -811,6 +814,7 @@ export async function repoDrilldown(repoName: string): Promise<RepoDrilldownPayl
        SELECT tag, name, author, published_at, body
        FROM gh_repo_releases FINAL
        WHERE repo_name = {repoName: String}
+         AND published_at >= now() - INTERVAL 7 DAY
        ORDER BY published_at DESC LIMIT 10
      )`,
     ["gh_repo_releases"],

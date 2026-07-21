@@ -12,6 +12,7 @@
 //   GROUP BY model_name
 
 import { clickhouseInsert } from "./clickhouse";
+import { drilldownSpecHash } from "./agent-model";
 
 interface AgentRunRecord {
   agentType: string;
@@ -20,16 +21,21 @@ interface AgentRunRecord {
   inputTokens: number;
   outputTokens: number;
   costUsd: number;
+  // The user's question + repo context, so runs against the same question
+  // across different models share a spec_hash for comparison.
+  repoName?: string;
+  question?: string;
 }
 
 export async function logAgentRun(record: AgentRunRecord): Promise<void> {
   const now = new Date();
   const ts = now.toISOString().slice(0, 19).replace("T", " ");
-  // subagent_runs schema (migrations/20260720000010 + 20260720000013):
-  // ts, session_id, prompt_id, agent_id, agent_type, effort_level,
-  // permission_mode, cwd, model, latency_ms, input_tokens, output_tokens,
-  // cache_read_tokens, cache_creation_tokens, cost_usd, spec_hash,
-  // result_hash, result_preview, ok
+  // Populate spec_hash so the subagent_experiments view can GROUP BY
+  // task_hash to compare models on the same question. Falls back to a
+  // timestamp-based hash if repoName/question are absent (backward compat).
+  const spec_hash = record.repoName && record.question
+    ? drilldownSpecHash(record.repoName, record.question)
+    : `run_${now.getTime()}`;
   await clickhouseInsert.insert({
     table: "subagent_runs",
     values: [{
@@ -48,7 +54,7 @@ export async function logAgentRun(record: AgentRunRecord): Promise<void> {
       cache_read_tokens: 0,
       cache_creation_tokens: 0,
       cost_usd: record.costUsd,
-      spec_hash: "",
+      spec_hash,
       result_hash: "",
       result_preview: "",
       ok: 1,

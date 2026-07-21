@@ -64,6 +64,14 @@ export const attentionAgent = chat.agent({
 
     // Log the run to subagent_experiments (via subagent_runs) for cross-model
     // comparison (issue #79 track #85). usage resolves when the stream finishes.
+    // Extract the last user message text as the question for spec_hash grouping
+    // so the same question across models shares a task_hash.
+    const lastUserMessage = [...messages].reverse().find((m) => m.role === "user");
+    const userQuestion = typeof lastUserMessage?.content === "string"
+      ? lastUserMessage.content
+      : Array.isArray(lastUserMessage?.content)
+        ? lastUserMessage.content.map((p) => (typeof p === "object" && p !== null && "text" in p ? String(p.text) : "")).join(" ")
+        : "";
     Promise.resolve(result.usage).then((usage) => {
       const latencyMs = Date.now() - runStart;
       Promise.resolve(logAgentRun({
@@ -75,6 +83,7 @@ export const attentionAgent = chat.agent({
         // Vercel AI SDK usage doesn't carry cost; the subagent_experiments view
         // tolerates 0 cost (the OTel bridge or a pricing lookup can fill it later).
         costUsd: 0,
+        question: userQuestion,
       })).catch((err: unknown) => console.error("[attention-agent] telemetry log failed", { err }));
     }).catch(() => { /* never block the agent on telemetry */ });
 

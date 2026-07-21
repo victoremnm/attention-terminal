@@ -35,10 +35,10 @@ interface WatchlistRow {
 }
 
 async function watchlistCount(): Promise<number> {
-  const rows = await selectRows<{ c: number }>(
+  const rows = await selectRows<{ c: number | string }>(
     `SELECT count() AS c FROM watchlist`
   );
-  return rows[0]?.c ?? 0;
+  return Number(rows[0]?.c ?? 0);
 }
 
 // First-run auto-seed: 4 buckets (top-50 by stars/forks/pushes/commits over
