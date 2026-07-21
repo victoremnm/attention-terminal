@@ -1,6 +1,6 @@
 "use client";
 
-import type { CandlesPayload, DigestPayload, DivergencePayload, MatrixPayload, MorphingCardPayload, RenderPayload, RepoDrilldownPayload, TickerPayload, VerdictTile } from "@/lib/render-payload";
+import type { CandlesPayload, DigestPayload, DivergencePayload, MatrixPayload, MorphingCardPayload, RenderPayload, RepoDrilldownPayload, RepoDrilldownActivity, RepoDrilldownTrend, TickerPayload, VerdictTile } from "@/lib/render-payload";
 import { VERDICT_COLOR } from "@/lib/verdict-color";
 import { AreaChart, DualLine, Sparkline } from "./charts";
 import { SkinnyDeck } from "./SkinnyDeck";
@@ -173,6 +173,129 @@ function RepoVelocityChart({ payload }: { payload: RepoDrilldownPayload }) {
   );
 }
 
+function RepoTrendChart({ trends }: { trends: RepoDrilldownTrend[] }) {
+  const W = 640, H = 180, padL = 34, padR = 10, padT = 12, padB = 24;
+  const iw = W - padL - padR, ih = H - padT - padB;
+  if (trends.length < 2) {
+    return <div className="repo-empty mono">not enough trend data for a 30-day chart</div>;
+  }
+  const stars = trends.map((t) => t.stars);
+  const forks = trends.map((t) => t.forks);
+  const max = Math.max(...stars, ...forks, 1);
+  const x = (i: number) => padL + (i / (trends.length - 1)) * iw;
+  const y = (v: number) => padT + ih - (v / max) * ih;
+  const line = (values: number[]) => values.map((v, i) => `${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(" ");
+  const labelStep = Math.max(1, Math.floor((trends.length - 1) / 4));
+  const eventMarker = (type: RepoDrilldownTrend["events"][number]["type"]) =>
+    type === "release" ? "▲" : type === "pr_merged" ? "●" : "◆";
+  const eventColor = (type: RepoDrilldownTrend["events"][number]["type"]) =>
+    type === "release" ? "var(--amber)" : type === "pr_merged" ? "var(--cyan)" : "var(--mag)";
+
+  return (
+    <figure className="chart repo-trend">
+      <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`${trends.length}-day trend timeline with release, PR-merge, and issue-open event markers`}>
+        {[0, 0.5, 1].map((t) => (
+          <g key={t}>
+            <line x1={padL} x2={W - padR} y1={y(max * t)} y2={y(max * t)} stroke="var(--line)" strokeWidth="1" />
+            <text x={padL - 6} y={y(max * t) + 3} fontSize="9.5" fill="var(--muted)" textAnchor="end" className="mono">
+              {Math.round(max * t)}
+            </text>
+          </g>
+        ))}
+        {trends.map((row, i) => i % labelStep === 0 || i === trends.length - 1 ? (
+          <text key={row.date} x={x(i)} y={H - 6} fontSize="9.5" fill="var(--muted)" textAnchor="middle" className="mono">
+            {row.date.slice(5)}
+          </text>
+        ) : null)}
+        <polyline points={line(stars)} fill="none" stroke="var(--amber)" strokeWidth="2" strokeLinejoin="round" />
+        <polyline points={line(forks)} fill="none" stroke="var(--cyan)" strokeWidth="2" strokeLinejoin="round" />
+        {trends.map((row, i) => row.events.map((ev, j) => (
+          <text
+            key={`${row.date}-${ev.type}-${j}`}
+            x={x(i)}
+            y={padT + 10 + j * 11}
+            fontSize="11"
+            fill={eventColor(ev.type)}
+            textAnchor="middle"
+            className="mono"
+          >
+            {eventMarker(ev.type)}
+          </text>
+        )))}
+      </svg>
+      <figcaption className="legend">
+        <span><i className="swatch" style={{ background: "var(--amber)" }} /> stars</span>
+        <span><i className="swatch" style={{ background: "var(--cyan)" }} /> forks</span>
+        <span className="muted">▲ release · ● PR merged · ◆ issue opened</span>
+      </figcaption>
+    </figure>
+  );
+}
+
+function RepoActivityLists({ activity, repoName }: { activity: RepoDrilldownActivity; repoName: string }) {
+  const hasAny = activity.commits.length || activity.prs.length || activity.releases.length || activity.issues.length;
+  if (!hasAny) return null;
+  const gh = (path: string) => `https://github.com/${repoName}/${path}`;
+  return (
+    <div className="repo-activity">
+      <div className="repo-section-title mono">RECENT ACTIVITY · 7 DAYS</div>
+      {activity.commits.length > 0 && (
+        <div className="repo-activity-list">
+          <b className="mono repo-activity-label">COMMITS</b>
+          {activity.commits.map((c) => (
+            <a key={c.sha} className="repo-activity-row mono" href={gh(`commit/${c.sha}`)} target="_blank" rel="noreferrer">
+              <span className="repo-activity-sha">{c.sha.slice(0, 7)}</span>
+              <span className="repo-activity-date">{c.authorDate.slice(0, 10)}</span>
+              <span className="repo-activity-author">{c.author}</span>
+              <span className="repo-activity-text">{c.message}</span>
+            </a>
+          ))}
+        </div>
+      )}
+      {activity.prs.length > 0 && (
+        <div className="repo-activity-list">
+          <b className="mono repo-activity-label">PULL REQUESTS</b>
+          {activity.prs.map((p) => (
+            <a key={p.number} className="repo-activity-row mono" href={gh(`pull/${p.number}`)} target="_blank" rel="noreferrer">
+              <span className="repo-activity-num">#{p.number}</span>
+              <span className="repo-activity-state" data-state={p.state}>{p.state}</span>
+              <span className="repo-activity-author">{p.author}</span>
+              <span className="repo-activity-text">{p.title}</span>
+            </a>
+          ))}
+        </div>
+      )}
+      {activity.releases.length > 0 && (
+        <div className="repo-activity-list">
+          <b className="mono repo-activity-label">RELEASES</b>
+          {activity.releases.map((r) => (
+            <a key={r.tag} className="repo-activity-row mono" href={gh(`releases/tag/${r.tag}`)} target="_blank" rel="noreferrer">
+              <span className="repo-activity-tag">▲ {r.tag}</span>
+              <span className="repo-activity-date">{r.publishedAt.slice(0, 10)}</span>
+              <span className="repo-activity-author">{r.author}</span>
+              <span className="repo-activity-text">{r.name || r.tag}</span>
+            </a>
+          ))}
+        </div>
+      )}
+      {activity.issues.length > 0 && (
+        <div className="repo-activity-list">
+          <b className="mono repo-activity-label">ISSUES</b>
+          {activity.issues.map((i) => (
+            <a key={i.number} className="repo-activity-row mono" href={gh(`issues/${i.number}`)} target="_blank" rel="noreferrer">
+              <span className="repo-activity-num">#{i.number}</span>
+              <span className="repo-activity-state" data-state={i.state}>{i.state}</span>
+              <span className="repo-activity-author">{i.author}</span>
+              <span className="repo-activity-text">{i.title}</span>
+              <span className="repo-activity-comments">{i.comments}c</span>
+            </a>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function RepoDrilldownAnswer({ payload }: { payload: RepoDrilldownPayload }) {
   const kpis = [
     ["pushes", payload.kpis24h.pushes],
@@ -285,6 +408,13 @@ function RepoDrilldownAnswer({ payload }: { payload: RepoDrilldownPayload }) {
           </div>
         )) : <div className="repo-empty mono">no push or PR events in the latest 24h window</div>}
       </div>
+      {payload.trends && payload.trends.length > 0 && (
+        <div className="repo-trends">
+          <div className="repo-section-title mono">30-DAY TREND TIMELINE</div>
+          <RepoTrendChart trends={payload.trends} />
+        </div>
+      )}
+      {payload.activity && <RepoActivityLists activity={payload.activity} repoName={payload.repoName} />}
       <details className="agent-query repo-sql">
         <summary className="mono">view SQL · {payload.query.rowsRead.toLocaleString()} rows · {payload.query.elapsedMs}ms</summary>
         <pre className="mono">{payload.query.sql}</pre>
