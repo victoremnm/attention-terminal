@@ -12,7 +12,7 @@ export const answerReference = `Answer grammar:
 - Candles payload: { type: "candles", subject, verdict, days, values, caption }.
 - Matrix payload: { type: "matrix", generatedAt, topics }.
 - Skinny-deck payload: { type: "skinny-deck", dateStr, generatedAt, cards }. Each card carries its own verdict, metric, caption, sources, a visual (dev-scatter | divergence | candles), and a query { sql, rowsRead, elapsedMs } for the view-SQL flip.
-- Repo drill-down payload: { type: "repo-drilldown", repoName, generatedAt, metadata, kpis24h, velocity, feed, query }. Use it for specific GitHub owner/repo drill-downs.
+- Repo drill-down payload: { type: "repo-drilldown", repoName, generatedAt, metadata, kpis24h, velocity, topActors24h, feed, query }. Use it for specific GitHub owner/repo drill-downs.
 - Captions and skinny copy must stay within the schema limits.
 - Empty prompt, daily-open, "what's new", and broad daily triage should call getDailyDigest and then renderAnswer with that digest payload.
 - "Who are the real builders (this week/month)?" and similar builder-attribution prompts should call getRealBuilders (window "7d" or "30d") and then renderAnswer with the returned skinny-deck payload, unedited.

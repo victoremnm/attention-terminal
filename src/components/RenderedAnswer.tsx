@@ -221,6 +221,21 @@ function RepoDrilldownAnswer({ payload }: { payload: RepoDrilldownPayload }) {
         ))}
       </div>
       <RepoVelocityChart payload={payload} />
+      {payload.topActors24h.length > 0 && (
+        <div className="repo-actors">
+          <div className="repo-section-title mono">TOP CONTRIBUTORS 24H</div>
+          <div className="repo-actor-grid">
+            {payload.topActors24h.map((actor) => (
+              <div key={actor.actor} className="repo-actor-row">
+                <b>{actor.actor}</b>
+                <span className="mono">{compact(actor.commits)} commits</span>
+                <span className="mono">{compact(actor.pushes)} pushes</span>
+                <span className="mono">{compact(actor.prsMerged)} merged</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
       <div className="repo-feed">
         <div className="repo-section-title mono">LATEST PUSH / PR EVENTS</div>
         {payload.feed.length ? payload.feed.map((item) => (
