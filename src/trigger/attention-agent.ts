@@ -1,21 +1,20 @@
 import { prompts } from "@trigger.dev/sdk";
 import { chat } from "@trigger.dev/sdk/ai";
-import { openai } from "@ai-sdk/openai";
-import { createProviderRegistry, stepCountIs, streamText } from "ai";
+import { stepCountIs, streamText } from "ai";
 import { z } from "zod";
 import { attentionTelemetry, ensureAiSdkTelemetry } from "../lib/ai-telemetry";
 import { analystPromptTemplate, answerReference } from "../lib/agent-prompt";
+import { ATTENTION_AGENT_MODEL, attentionRegistry, resolveAgentModel } from "../lib/agent-model";
 import { attentionTools, resetCatalogState } from "../lib/agent-tools";
 import { catalogPromptSection } from "../lib/catalog";
+import { logAgentRun } from "../lib/agent-telemetry";
 
 ensureAiSdkTelemetry("trigger");
-
-const registry = createProviderRegistry({ openai });
 
 const systemPrompt = prompts.define({
   id: "attention-terminal-analyst",
   description: "System prompt for the Attention Terminal ClickHouse analyst agent",
-  model: "openai:gpt-5.1",
+  model: ATTENTION_AGENT_MODEL,
   config: { temperature: 0.2 },
   variables: z.object({
     answerReference: z.string(),
@@ -47,18 +46,47 @@ export const attentionAgent = chat.agent({
 
   run: async ({ messages, tools, signal }) => {
     const { telemetry, runtimeContext } = attentionTelemetry("worker");
+    const model = resolveAgentModel();
+    const runStart = Date.now();
 
-    return streamText({
+    const result = streamText({
       ...chat.toStreamTextOptions({
-        registry,
+        registry: attentionRegistry,
       }),
       telemetry,
       runtimeContext,
-      model: openai("gpt-5.1"),
+      model,
       messages,
       tools,
       stopWhen: stepCountIs(15),
       abortSignal: signal,
     });
+
+    // Log the run to subagent_experiments (via subagent_runs) for cross-model
+    // comparison (issue #79 track #85). usage resolves when the stream finishes.
+    // Extract the last user message text as the question for spec_hash grouping
+    // so the same question across models shares a task_hash.
+    const lastUserMessage = [...messages].reverse().find((m) => m.role === "user");
+    const userQuestion = typeof lastUserMessage?.content === "string"
+      ? lastUserMessage.content
+      : Array.isArray(lastUserMessage?.content)
+        ? lastUserMessage.content.map((p) => (typeof p === "object" && p !== null && "text" in p ? String(p.text) : "")).join(" ")
+        : "";
+    Promise.resolve(result.usage).then((usage) => {
+      const latencyMs = Date.now() - runStart;
+      Promise.resolve(logAgentRun({
+        agentType: "attention-agent",
+        model: ATTENTION_AGENT_MODEL,
+        latencyMs,
+        inputTokens: usage.inputTokens ?? 0,
+        outputTokens: usage.outputTokens ?? 0,
+        // Vercel AI SDK usage doesn't carry cost; the subagent_experiments view
+        // tolerates 0 cost (the OTel bridge or a pricing lookup can fill it later).
+        costUsd: 0,
+        question: userQuestion,
+      })).catch((err: unknown) => console.error("[attention-agent] telemetry log failed", { err }));
+    }).catch(() => { /* never block the agent on telemetry */ });
+
+    return result;
   },
 });

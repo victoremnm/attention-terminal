@@ -1,5 +1,9 @@
 # Attention Terminal — agent context
 
+> **See also: `AGENTS.md`** — mandatory agent conventions (subagent telemetry,
+> PR template, worktrees, migrations, secrets). Every agent working on this
+> repo must follow both files.
+
 Hackathon project (ClickHouse × Trigger.dev Summer 2026, deadline **July 23 midnight AoE**).
 A chat agent whose answers are rendered visuals over live HackerNews + GitHub attention
 data. Theme: "Beyond the Wall of Text" — if the best answer is a paragraph, we've failed.
@@ -73,3 +77,9 @@ demo video. All code must be written during July 17-23.
 - Git: feature branches + PRs only, never push to main. Commits: `feat:`/`fix:`/`docs:`.
 - Issues: #2 tracking checklist, #3 migrations/aggregates registry (update when adding
   DDL), #4 design record (append decisions there).
+- Subagent telemetry: every spawned subagent (Task tool, explore, general) must be logged
+  to `subagent_runs` via `./scripts/log-subagent-run.sh` — see `AGENTS.md` for the full
+  spec. This is how we compare models (glm-5.2 vs gpt-5.1) on the same specs.
+- PRs: follow `.github/PULL_REQUEST_TEMPLATE.md` — separate "what the agent verified"
+  from "what needs human verification". Agents never self-merge; a human reviews after
+  the verification checklist is satisfied.
