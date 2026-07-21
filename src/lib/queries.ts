@@ -258,10 +258,10 @@ export async function tickerLanes(): Promise<TickerLanes> {
       name: r.name,
       metric: `+${r.stars} stars`,
       delta: `x${r.surge} vs 30d avg`,
-      stats: [
-        stat("stars", r.stars, "hot"),
-        stat("vs 30d avg", `x${r.surge}`),
-      ],
+      // No `stats` here: unlike topForked/shippingVelocity (whose stats break out
+      // extra dimensions), the only two numbers are stars and surge, already shown
+      // by metric/delta. A stats array re-encoding them made every card render the
+      // same line twice ("+14 stars" then "14 stars").
       spark: r.spark,
       href: `https://github.com/${r.name}`,
     })),
