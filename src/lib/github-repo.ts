@@ -65,11 +65,33 @@ export function authHeaders(): HeadersInit {
   return headers;
 }
 
+// Request-time (drilldown) callers must not hang a user-facing request on
+// GitHub's rate-limit backoff window (up to 60s/attempt x 2 attempts = ~2min
+// worst case) or a slow/stalled connection - see FetchOptions.fast below.
+const FAST_MODE_TIMEOUT_MS = 3_000;
+
+export interface FetchOptions {
+  // When true: skip the rate-limit backoff sleep entirely (treat a
+  // rate-limited response as an immediate failure instead of sleeping and
+  // retrying) and bound each network call to FAST_MODE_TIMEOUT_MS. Used by
+  // the drilldown's on-demand path (issue #56); the scheduled refresh task
+  // leaves this unset and keeps the patient, retrying behavior.
+  fast?: boolean;
+}
+
 // Sleeps until the rate-limit window resets when GitHub reports we're out of
 // requests (secondary or primary rate limit), rather than hammering the API.
-export async function respectRateLimit(res: Response) {
+// In fast mode, never sleeps: returns false so the caller's `!res.ok` branch
+// treats the rate-limited response as an immediate (non-retried) failure.
+export async function respectRateLimit(res: Response, options?: FetchOptions) {
   const remaining = res.headers.get("x-ratelimit-remaining");
   if (res.status === 403 || res.status === 429 || remaining === "0") {
+    if (options?.fast) {
+      console.log("[github-repo] fast mode: rate limited, bailing out without sleeping", {
+        status: res.status,
+      });
+      return false;
+    }
     const retryAfter = res.headers.get("retry-after");
     const resetAt = res.headers.get("x-ratelimit-reset");
     let waitMs = 30_000;
@@ -83,11 +105,20 @@ export async function respectRateLimit(res: Response) {
   return false;
 }
 
-export async function fetchRepo(repoName: string): Promise<GitHubRepo | null> {
+export async function fetchRepo(repoName: string, options?: FetchOptions): Promise<GitHubRepo | null> {
   for (let attempt = 0; attempt < 2; attempt++) {
-    const res = await fetch(`${GITHUB_API}/repos/${repoName}`, { headers: authHeaders() });
+    let res: Response;
+    try {
+      res = await fetch(`${GITHUB_API}/repos/${repoName}`, {
+        headers: authHeaders(),
+        signal: options?.fast ? AbortSignal.timeout(FAST_MODE_TIMEOUT_MS) : undefined,
+      });
+    } catch (error) {
+      console.log("[github-repo] GitHub repo fetch errored", { repoName, error });
+      return null;
+    }
     if (res.status === 404 || res.status === 451) return null; // deleted, renamed, or DMCA-taken-down
-    if (await respectRateLimit(res)) continue;
+    if (await respectRateLimit(res, options)) continue;
     if (!res.ok) {
       console.log("[github-repo] GitHub repo fetch failed", { repoName, status: res.status });
       return null;
@@ -97,11 +128,20 @@ export async function fetchRepo(repoName: string): Promise<GitHubRepo | null> {
   return null;
 }
 
-export async function fetchTopics(repoName: string): Promise<string[]> {
+export async function fetchTopics(repoName: string, options?: FetchOptions): Promise<string[]> {
   for (let attempt = 0; attempt < 2; attempt++) {
-    const res = await fetch(`${GITHUB_API}/repos/${repoName}/topics`, { headers: authHeaders() });
+    let res: Response;
+    try {
+      res = await fetch(`${GITHUB_API}/repos/${repoName}/topics`, {
+        headers: authHeaders(),
+        signal: options?.fast ? AbortSignal.timeout(FAST_MODE_TIMEOUT_MS) : undefined,
+      });
+    } catch (error) {
+      console.log("[github-repo] GitHub topics fetch errored", { repoName, error });
+      return [];
+    }
     if (res.status === 404 || res.status === 451) return [];
-    if (await respectRateLimit(res)) continue;
+    if (await respectRateLimit(res, options)) continue;
     if (!res.ok) return [];
     const body = (await res.json()) as GitHubTopics;
     return body.names ?? [];
@@ -138,13 +178,15 @@ export function toRow(
 // Convenience wrapper for single-repo, end-to-end enrichment (used by the
 // drilldown's on-demand path). Batch callers (the scheduled refresh task) use
 // `fetchRepo`/`fetchTopics`/`toRow` directly so they can pipeline concurrency
-// across many repos.
+// across many repos. Pass `{ fast: true }` for request-time callers that must
+// not hang on GitHub's rate-limit backoff (see FetchOptions).
 export async function fetchRepoRow(
   repoName: string,
-  fetchedAt: Date = new Date()
+  options: FetchOptions & { fetchedAt?: Date } = {}
 ): Promise<GhRepoMetadataRow | null> {
-  const repo = await fetchRepo(repoName);
+  const { fetchedAt = new Date(), ...fetchOptions } = options;
+  const repo = await fetchRepo(repoName, fetchOptions);
   if (!repo) return null;
-  const topics = await fetchTopics(repoName);
+  const topics = await fetchTopics(repoName, fetchOptions);
   return toRow(repoName, repo, topics, fetchedAt);
 }

@@ -68,23 +68,28 @@ async function pickRepos(): Promise<string[]> {
     ),
     // Activity (issue #48, fixed in #56): rank by non-bot distinct actors
     // (collaboration signal), not push volume - ordering by sum(pushes) surfaces
-    // push-spam/data-dump repos, not genuinely prolific ones. `actors` is an
-    // AggregateFunction(uniq, String) on gh_repo_daily
-    // (migrations/20260718000008_github_repo_period_rollups.sql) and needs
-    // uniqMerge - same -Merge combinator pattern as repoActivityWindow() in
-    // src/lib/queries.ts. gh_repo_daily is pre-aggregated by repo, so [bot]
-    // actors can't be filtered out here (no per-actor rows to filter); ranking
-    // by distinct-actor count instead of push count is the fix - verified
+    // push-spam/data-dump repos, not genuinely prolific ones. This reads
+    // github_events directly rather than the gh_repo_daily rollup: that
+    // rollup's `actors` (migrations/20260718000008_github_repo_period_rollups.sql,
+    // gh_repo_daily_mv) is built as `uniqState(actor_login)` with no [bot]
+    // predicate, and once merged into an AggregateFunction state there's no way
+    // to exclude bots after the fact - the underlying per-actor rows are gone.
+    // A scoped 7-day scan over github_events is acceptable cost here since this
+    // is the occasional candidate-picker (runs hourly), not the hot /deck read
+    // path. uniqExactIf(...) counts only actors whose login doesn't look like a
+    // bot account; countIf(PushEvent) stays as a secondary tiebreaker. Verified
     // (issue #56) to surface PostHog/posthog, llvm/llvm-project, elastic/kibana
-    // instead of push-spam/data-dump repos. sum(pushes) stays as a tiebreaker.
+    // instead of push-spam/data-dump repos.
     selectRows<{ repo_name: string }>(
       `SELECT repo_name,
-              uniqMerge(actors) AS actor_count,
-              sum(pushes) AS push_count
-       FROM gh_repo_daily
-       WHERE day >= today() - ${ACTIVITY_WINDOW_DAYS} AND repo_name != ''
+              uniqExactIf(actor_login, NOT actor_login ILIKE '%[bot]%') AS human_actors,
+              countIf(event_type = 'PushEvent') AS push_count
+       FROM github_events
+       WHERE created_at > (SELECT max(created_at) FROM github_events) - INTERVAL ${ACTIVITY_WINDOW_DAYS} DAY
+         AND event_type IN ('PushEvent', 'PullRequestEvent', 'IssuesEvent')
+         AND repo_name != ''
        GROUP BY repo_name
-       ORDER BY actor_count DESC, push_count DESC
+       ORDER BY human_actors DESC, push_count DESC
        LIMIT ${ACTIVITY_LIMIT}`
     ),
     // Stale: repos whose LATEST metadata version is over a week old. Group by
