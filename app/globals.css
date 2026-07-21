@@ -186,6 +186,7 @@ a { color: inherit; }
   flex-wrap: wrap;
   gap: 4px;
   margin-top: auto;
+  padding-right: 34px;
 }
 .tk-stats span {
   border: 1px solid var(--line-soft);
