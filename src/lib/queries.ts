@@ -692,6 +692,10 @@ export interface RepoWindowRow {
   forks: number;
   prsOpened: number;
   prsMerged: number;
+  // Day-ordered per-day event counts across the window - drives the row
+  // sparkline on /trending. Windows shorter than 2 days yield <2 points
+  // (Sparkline renders nothing then, which the table handles gracefully).
+  spark: number[];
 }
 
 interface RepoWindowSqlRow {
@@ -709,32 +713,60 @@ interface RepoWindowSqlRow {
   forks: string;
   prs_opened: string;
   prs_merged: string;
+  // UInt64 array -> HTTP JSON returns each element as a string.
+  spark: string[];
 }
 
 // Repo activity + metadata for one of the fixed windows, ranked by event volume.
 // `gh_repo_metadata` is joined FINAL (ReplacingMergeTree - ungrouped parts can
 // hold stale duplicate rows pre-merge, same reasoning as `hackernews FINAL`).
 export async function repoActivityWindow(window: RepoWindow, limit = 20): Promise<QueryResult<RepoWindowRow[]>> {
+  // Two-level aggregation: the inner query rolls each repo up per day (so we can
+  // emit an ordered per-day event array for the sparkline), the outer collapses
+  // days into the window total. Additive metrics (events/pushes/.../prs) sum
+  // across days; `actors` is a uniq HLL state, so we carry it with
+  // uniqMergeState per day and union it with uniqMerge in the outer query -
+  // summing per-day uniqs would double-count anyone active on multiple days.
   const sql = `
     SELECT
-      d.repo_name AS repo_name,
-      any(m.owner) AS owner,
-      any(m.description) AS description,
-      any(m.language) AS language,
-      any(m.topics) AS topics,
-      any(m.github_stars) AS github_stars,
-      countMerge(d.events) AS events,
-      uniqMerge(d.actors) AS actors,
-      sum(d.pushes) AS pushes,
-      sum(d.commits) AS commits,
-      sum(d.stars) AS stars,
-      sum(d.forks) AS forks,
-      sum(d.prs_opened) AS prs_opened,
-      sum(d.prs_merged) AS prs_merged
-    FROM gh_repo_daily AS d
-    LEFT JOIN gh_repo_metadata FINAL AS m ON m.repo_name = d.repo_name
-    WHERE ${repoWindowClause(window)}
-    GROUP BY d.repo_name
+      repo_name,
+      any(owner) AS owner,
+      any(description) AS description,
+      any(language) AS language,
+      any(topics) AS topics,
+      any(github_stars) AS github_stars,
+      sum(day_events) AS events,
+      uniqMerge(actors_state) AS actors,
+      sum(day_pushes) AS pushes,
+      sum(day_commits) AS commits,
+      sum(day_stars) AS stars,
+      sum(day_forks) AS forks,
+      sum(day_prs_opened) AS prs_opened,
+      sum(day_prs_merged) AS prs_merged,
+      arrayMap(x -> x.2, arraySort(x -> x.1, groupArray((day, day_events)))) AS spark
+    FROM (
+      SELECT
+        d.repo_name AS repo_name,
+        d.day AS day,
+        any(m.owner) AS owner,
+        any(m.description) AS description,
+        any(m.language) AS language,
+        any(m.topics) AS topics,
+        any(m.github_stars) AS github_stars,
+        countMerge(d.events) AS day_events,
+        uniqMergeState(d.actors) AS actors_state,
+        sum(d.pushes) AS day_pushes,
+        sum(d.commits) AS day_commits,
+        sum(d.stars) AS day_stars,
+        sum(d.forks) AS day_forks,
+        sum(d.prs_opened) AS day_prs_opened,
+        sum(d.prs_merged) AS day_prs_merged
+      FROM gh_repo_daily AS d
+      LEFT JOIN gh_repo_metadata AS m FINAL ON m.repo_name = d.repo_name
+      WHERE ${repoWindowClause(window)}
+      GROUP BY d.repo_name, d.day
+    )
+    GROUP BY repo_name
     ORDER BY events DESC
     LIMIT {limit: UInt32}
   `.trim();
@@ -756,6 +788,7 @@ export async function repoActivityWindow(window: RepoWindow, limit = 20): Promis
     forks: Number(r.forks),
     prsOpened: Number(r.prs_opened),
     prsMerged: Number(r.prs_merged),
+    spark: (r.spark ?? []).map(Number),
   }));
 
   return toQueryResult(data, provenance);
