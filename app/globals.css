@@ -115,11 +115,54 @@ a { color: inherit; }
 .tk-lane-title { font-size: 9.5px; letter-spacing: .16em; color: var(--muted); margin-bottom: 6px; }
 .tk-scroll { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; scrollbar-width: thin; }
 .tk-card {
+  position: relative;
   flex: none; width: 232px; min-height: 116px; display: flex; flex-direction: column; gap: 6px;
   background: var(--panel-2); border: 1px solid var(--line-soft); border-radius: 6px;
   padding: 9px 10px; text-decoration: none;
 }
 .tk-card:hover, .tk-card:focus-visible { border-color: var(--line); }
+.tk-card-shell {
+  padding: 0;
+  overflow: hidden;
+}
+.tk-card-shell.is-selected {
+  border-color: color-mix(in srgb, var(--cyan) 56%, var(--line) 44%);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--cyan) 18%, transparent 82%);
+}
+.tk-card-button {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+  gap: 6px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  padding: 9px 10px;
+  text-align: left;
+  cursor: pointer;
+}
+.tk-card-button:focus-visible {
+  outline: 1px solid var(--cyan);
+  outline-offset: -2px;
+}
+.tk-card-external {
+  position: absolute;
+  right: 7px;
+  bottom: 6px;
+  border: 1px solid var(--line-soft);
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--panel-2) 88%, transparent 12%);
+  color: var(--muted);
+  font-size: 9px;
+  line-height: 1;
+  padding: 4px 5px;
+  text-decoration: none;
+}
+.tk-card-external:hover, .tk-card-external:focus-visible {
+  border-color: var(--cyan);
+  color: var(--cyan);
+}
 .tk-card-top {
   display: flex;
   min-height: 16px;
@@ -154,6 +197,11 @@ a { color: inherit; }
 .tk-stats b {
   color: var(--ink);
   font-weight: 700;
+}
+.ticker-drilldown {
+  margin-top: 14px;
+  border-top: 1px solid var(--line-soft);
+  padding-top: 12px;
 }
 
 /* answer feed */
@@ -771,6 +819,134 @@ a { color: inherit; }
   grid-column: 1 / -1;
   height: 2px;
   background: var(--cyan);
+}
+.repo-drilldown {
+  border-top: 0;
+  padding-top: 0;
+}
+.repo-drilldown-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 10px;
+}
+.repo-drilldown-head h3 {
+  margin: 0 0 4px;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: clamp(24px, 5vw, 42px);
+  font-weight: 500;
+  line-height: 1;
+  overflow-wrap: anywhere;
+}
+.repo-drilldown-head p {
+  max-width: 720px;
+  margin: 0;
+  color: rgba(255, 255, 255, .76);
+  font-size: 12px;
+}
+.repo-gh-link {
+  flex: none;
+  border: 1px solid var(--line-soft);
+  border-radius: 4px;
+  color: var(--cyan);
+  font-size: 10px;
+  padding: 5px 7px;
+  text-decoration: none;
+}
+.repo-meta,
+.repo-topics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-bottom: 10px;
+}
+.repo-meta span,
+.repo-topics span {
+  border: 1px solid var(--line-soft);
+  border-radius: 3px;
+  color: var(--muted);
+  font-size: 9.5px;
+  line-height: 1.35;
+  padding: 2px 6px;
+}
+.repo-topics span {
+  color: var(--cyan);
+}
+.repo-kpis {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(92px, 1fr));
+  gap: 7px;
+  margin: 12px 0;
+}
+.repo-kpi {
+  border: 1px solid var(--line-soft);
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--panel-2) 82%, transparent 18%);
+  padding: 8px;
+}
+.repo-kpi b {
+  display: block;
+  color: var(--ink);
+  font-size: 18px;
+  line-height: 1;
+}
+.repo-kpi span {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 9px;
+}
+.repo-feed {
+  margin-top: 12px;
+}
+.repo-section-title {
+  color: var(--muted);
+  font-size: 9.5px;
+  letter-spacing: .14em;
+  margin-bottom: 6px;
+}
+.repo-feed-row {
+  display: grid;
+  grid-template-columns: 48px minmax(90px, 1fr) 86px 92px;
+  gap: 10px;
+  align-items: center;
+  border-top: 1px solid var(--line-soft);
+  padding: 7px 0;
+}
+.repo-feed-row span,
+.repo-feed-row i,
+.repo-feed-row em {
+  color: var(--muted);
+  font-size: 10px;
+  font-style: normal;
+}
+.repo-feed-row b {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ink);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.repo-empty {
+  border: 1px solid var(--line-soft);
+  border-radius: 5px;
+  color: var(--muted);
+  font-size: 10px;
+  padding: 10px;
+}
+.repo-sql {
+  margin-top: 10px;
+}
+
+@media (max-width: 640px) {
+  .repo-drilldown-head {
+    flex-direction: column;
+  }
+  .repo-feed-row {
+    grid-template-columns: 46px minmax(0, 1fr);
+  }
 }
 /* Tactile Daily Skinny deck (issue #27). The ONLY place motion physics live —
    drag+spring on the card, a spring flip to view-SQL, a draggable discussion
