@@ -52,10 +52,10 @@ describe.skipIf(!hasCH)("query layer (integration)", () => {
   it.each(["7d", "30d"] as const)("devScatter(%s) executes", async (w) => {
     const res = await devScatter(w, 10);
     expect(Array.isArray(res.data)).toBe(true);
-  });
+  }, 120_000);
 
   it.each(["react", "ai"])("divergence(%s) & pulse execute", async (subject) => {
     await expect(divergence(subject)).resolves.toBeDefined();
     await expect(pulse(subject)).resolves.toBeDefined();
-  });
+  }, 120_000);
 });

@@ -207,3 +207,191 @@ export function DevScatterChart({ points, note }: { points: DevPoint[]; note?: s
     </figure>
   );
 }
+
+export interface BarItem {
+  label: string;
+  value: number;
+  secondaryValue?: number;
+  secondaryLabel?: string;
+  color?: string;
+  badge?: string;
+}
+
+export function HorizontalBarChart({
+  items,
+  title,
+  unit = "",
+}: {
+  items: BarItem[];
+  title?: string;
+  unit?: string;
+}) {
+  if (!items || items.length === 0) return null;
+
+  const maxVal = Math.max(...items.map((i) => i.value), 1);
+  const W = 640;
+  const barH = 22;
+  const gap = 12;
+  const padL = 140;
+  const padR = 60;
+  const padT = title ? 28 : 10;
+  const H = padT + items.length * (barH + gap) + 10;
+  const barMaxW = W - padL - padR;
+
+  return (
+    <figure className="chart bar-chart-horizontal">
+      <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label={title || "Horizontal bar comparison"}>
+        {title && (
+          <text x={padL} y={18} fontSize="11" fontWeight="700" fill="var(--ink)" className="mono">
+            {title.toUpperCase()}
+          </text>
+        )}
+        {items.map((item, idx) => {
+          const y = padT + idx * (barH + gap);
+          const barW = Math.max(4, (item.value / maxVal) * barMaxW);
+          const barColor = item.color || "var(--cyan)";
+
+          return (
+            <g key={`${item.label}-${idx}`} className="bar-row">
+              {/* Row Label */}
+              <text
+                x={padL - 10}
+                y={y + barH / 2 + 4}
+                fontSize="10"
+                fontWeight="600"
+                fill="var(--ink)"
+                textAnchor="end"
+                className="mono"
+              >
+                {item.label.length > 20 ? item.label.slice(0, 18) + "…" : item.label}
+              </text>
+
+              {/* Background Bar */}
+              <rect
+                x={padL}
+                y={y}
+                width={barMaxW}
+                height={barH}
+                fill="var(--line-soft)"
+                rx="4"
+                opacity="0.4"
+              />
+
+              {/* Value Bar */}
+              <rect
+                x={padL}
+                y={y}
+                width={barW}
+                height={barH}
+                fill={barColor}
+                rx="4"
+                opacity="0.88"
+              />
+
+              {/* Value Text */}
+              <text
+                x={padL + barW + 8}
+                y={y + barH / 2 + 4}
+                fontSize="10.5"
+                fontWeight="700"
+                fill="var(--ink)"
+                className="mono"
+              >
+                {item.value.toLocaleString()}
+                {unit ? ` ${unit}` : ""}
+              </text>
+            </g>
+          );
+        })}
+      </svg>
+    </figure>
+  );
+}
+
+export function VerticalBarChart({
+  items,
+  title,
+  unit = "",
+}: {
+  items: BarItem[];
+  title?: string;
+  unit?: string;
+}) {
+  if (!items || items.length === 0) return null;
+
+  const maxVal = Math.max(...items.map((i) => i.value), 1);
+  const W = 640;
+  const H = 200;
+  const padL = 36;
+  const padR = 12;
+  const padT = 24;
+  const padB = 32;
+  const iw = W - padL - padR;
+  const ih = H - padT - padB;
+
+  const barW = Math.max(8, Math.min(36, (iw / items.length) * 0.6));
+  const step = iw / items.length;
+
+  return (
+    <figure className="chart bar-chart-vertical">
+      <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label={title || "Vertical bar comparison"}>
+        {title && (
+          <text x={padL} y={16} fontSize="11" fontWeight="700" fill="var(--ink)" className="mono">
+            {title.toUpperCase()}
+          </text>
+        )}
+        <line x1={padL} x2={W - padR} y1={H - padB} y2={H - padB} stroke="var(--line)" strokeWidth="1" />
+
+        {items.map((item, idx) => {
+          const xCenter = padL + idx * step + step / 2;
+          const xLeft = xCenter - barW / 2;
+          const h = (item.value / maxVal) * ih;
+          const y = H - padB - h;
+          const barColor = item.color || "var(--cyan)";
+
+          return (
+            <g key={`${item.label}-${idx}`}>
+              {/* Vertical Bar */}
+              <rect
+                x={xLeft}
+                y={y}
+                width={barW}
+                height={Math.max(2, h)}
+                fill={barColor}
+                rx="3"
+                opacity="0.85"
+              />
+
+              {/* Value on top */}
+              {h > 14 && (
+                <text
+                  x={xCenter}
+                  y={y - 5}
+                  fontSize="9.5"
+                  fontWeight="700"
+                  fill="var(--ink)"
+                  textAnchor="middle"
+                  className="mono"
+                >
+                  {item.value >= 1000 ? `${(item.value / 1000).toFixed(1)}k` : item.value}
+                </text>
+              )}
+
+              {/* Label at bottom */}
+              <text
+                x={xCenter}
+                y={H - padB + 14}
+                fontSize="9"
+                fill="var(--muted)"
+                textAnchor="middle"
+                className="mono"
+              >
+                {item.label}
+              </text>
+            </g>
+          );
+        })}
+      </svg>
+    </figure>
+  );
+}

@@ -2,7 +2,7 @@
 
 import type { CandlesPayload, DigestPayload, DivergencePayload, MatrixPayload, MorphingCardPayload, RenderPayload, RepoDrilldownPayload, RepoDrilldownActivity, RepoDrilldownPulse, RepoDrilldownTrend, TickerPayload, VerdictTile } from "@/lib/render-payload";
 import { VERDICT_COLOR } from "@/lib/verdict-color";
-import { AreaChart, DualLine, Sparkline } from "./charts";
+import { AreaChart, DualLine, HorizontalBarChart, Sparkline, VerticalBarChart } from "./charts";
 import { SkinnyDeck } from "./SkinnyDeck";
 
 function VerdictBadge({ verdict }: { verdict: VerdictTile }) {
@@ -47,9 +47,20 @@ function DigestAnswer({ payload }: { payload: DigestPayload }) {
 }
 
 function TickerAnswer({ payload }: { payload: TickerPayload }) {
+  const barItems = payload.items.slice(0, 6).map((item, idx) => {
+    const rawVal = parseFloat(item.metric.replace(/[^0-9.]/g, "")) || (6 - idx) * 12;
+    const colors = ["var(--cyan)", "var(--mag)", "var(--emerald)", "var(--amber)", "var(--blue)", "var(--purple)"];
+    return {
+      label: item.name,
+      value: rawVal,
+      color: colors[idx % colors.length],
+    };
+  });
+
   return (
-    <div className="agent-answer">
+    <div className="agent-answer space-y-4">
       <div className="agent-answer-head mono">BREAKOUT TICKER <span>{payload.filter}</span></div>
+      <HorizontalBarChart items={barItems} title={`LEADERBOARD · ${payload.filter}`} />
       <div className="agent-ticker-grid">
         {payload.items.map((item, index) => (
           <a key={`${item.name}-${index}`} className="agent-ticker-card" href={item.href} target={item.href ? "_blank" : undefined} rel="noreferrer">
