@@ -168,6 +168,69 @@ in `2pgjlwxybaqvtrxjvlor5dkrsm`, OpenAI in `mfxzvdmx24qw74iue377jcflte`.
 `GITHUB_TOKEN` must be set in both the Next.js env and each Trigger.dev
 environment.
 
+## Pre-push telemetry (mandatory)
+
+Before every `git push`, the agent must report the current session's
+subagent activity to the PR as a comment. This makes every push traceable
+to the agent runs that produced it — run IDs, tokens used, model, latency.
+
+**How to report**: call the helper script before pushing:
+
+```bash
+./scripts/pre-push-telemetry.sh <PR_NUM> [session-id]
+```
+
+The script:
+1. Queries `subagent_runs` in ClickHouse for the current session
+2. Aggregates token counts, run counts, success rate
+3. Posts a telemetry table as a PR comment with the commit SHA
+
+If no subagent runs are found for the session, the script exits silently
+(non-blocking). Always exits 0 — telemetry must never block a push.
+
+**Convention**: set `ATTENTION_SESSION_ID` in the environment so all runs
+in a session share the same session ID. The pre-push script uses this to
+group runs. If unset, defaults to `opencode-session-YYYYMMDD`.
+
+## CI polling (mandatory)
+
+After pushing, the agent must poll the PR's CI checks until all are
+complete before the PR can be merged. Poll every 30 seconds, maximum 10
+iterations (5 minutes). If checks are still pending after 10 iterations,
+report the status and stop — let the user request more checks.
+
+```bash
+for i in $(seq 1 10); do
+  sleep 30
+  PENDING=$(gh pr view <PR_NUM> --repo <REPO> --json statusCheckRollup \
+    --jq '[.statusCheckRollup[]? | select(.name != null) | select(.conclusion == null or .conclusion == "")] | length')
+  echo "Poll $i: $PENDING pending checks"
+  if [ "$PENDING" = "0" ]; then
+    echo "All CI checks complete"
+    gh pr view <PR_NUM> --repo <REPO> --json statusCheckRollup \
+      --jq '[.statusCheckRollup[]? | select(.name != null) | "\(.name): \(.conclusion)"] | .[]'
+    break
+  fi
+done
+```
+
+Only after CI is green AND all review comments are addressed should the
+agent ask the human to approve + merge.
+
+## Review comments (mandatory)
+
+All automated review comments (CodeRabbit, Copilot, Codex, Claude Code
+Action) must be resolved before a PR can be merged:
+
+1. **Fix** — apply the fix if relevant and improving
+2. **Reply** — post an inline reply to the comment thread with the commit
+   SHA: `Fixed in <sha>\n\n<explanation>`
+3. **Defer** — if valid but out of scope, create a new issue and reply:
+   `Deferred to #N — <reason>`
+4. **Close** — if irrelevant, reply: `Not applicable — <reason>`
+
+Never leave a review comment unreplied.
+
 ## Skills mount (recommended)
 
 This repo's custom skills can be mounted with:
