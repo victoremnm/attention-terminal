@@ -514,6 +514,15 @@ async function hasAnalysisTable(): Promise<boolean> {
   }
 }
 
+async function hasActorActivityFeedTable(): Promise<boolean> {
+  try {
+    const missing = await missingTables(["gh_repo_actor_activity_feed"]);
+    return missing.length === 0;
+  } catch {
+    return false;
+  }
+}
+
 // Groups the trend UNION ALL rows (one row per day + one row per event) into
 // a per-date timeline with annotated events. Days with no event have an empty
 // `events` array. The trend chart renders star/fork lines + event markers.
@@ -549,9 +558,10 @@ function buildTrends(rows: RepoDrilldownTrendSqlRow[]): Array<{
 
 export async function repoDrilldown(repoName: string): Promise<RepoDrilldownPayload> {
   const queryParams = { repoName };
-  const [useAggregates, canQueryAnalysis] = await Promise.all([
+  const [useAggregates, canQueryAnalysis, canQueryActorFeed] = await Promise.all([
     hasSeededAggregates(),
     hasAnalysisTable(),
+    hasActorActivityFeedTable(),
   ]);
 
   const metadataQuery = q<RepoDrilldownMetadataSqlRow>(
@@ -716,44 +726,45 @@ export async function repoDrilldown(repoName: string): Promise<RepoDrilldownPayl
         queryParams
       );
 
-  const feedQuery = useAggregates
-    ? q<RepoDrilldownFeedSqlRow>(
-        `WITH (SELECT max(hour) FROM gh_repo_drilldown_hourly) AS high_water
-         SELECT
-           toString(created_at) AS at,
-           actor_login AS actor,
-           event_type,
-           action,
-           toString(commits) AS commits,
-           toString(distinct_commits) AS distinct_commits,
-           pr_merged AS merged
-         FROM gh_repo_activity_feed
-         WHERE repo_name = {repoName: String}
-           AND created_at > high_water - INTERVAL 24 HOUR
-         ORDER BY created_at DESC
-         LIMIT 12`,
-        ["gh_repo_activity_feed", "gh_repo_drilldown_hourly"],
-        queryParams
-      )
-    : q<RepoDrilldownFeedSqlRow>(
-        `WITH (SELECT max(created_at) FROM github_events) AS high_water
-         SELECT
-           toString(created_at) AS at,
-           actor_login AS actor,
-           event_type,
-           action,
-           toString(commit_count) AS commits,
-           toString(distinct_commit_count) AS distinct_commits,
-           pr_merged AS merged
-         FROM github_events
-         WHERE repo_name = {repoName: String}
-           AND created_at > high_water - INTERVAL 24 HOUR
-           AND event_type IN ('PushEvent', 'PullRequestEvent')
-         ORDER BY created_at DESC
-         LIMIT 12`,
-        ["github_events"],
-        queryParams
-      );
+  const feedQuery =
+    useAggregates && canQueryActorFeed
+      ? q<RepoDrilldownFeedSqlRow>(
+          `WITH (SELECT max(hour) FROM gh_repo_drilldown_hourly) AS high_water
+           SELECT
+             toString(created_at) AS at,
+             actor_login AS actor,
+             event_type,
+             action,
+             toString(commits) AS commits,
+             toString(distinct_commits) AS distinct_commits,
+             pr_merged AS merged
+           FROM gh_repo_actor_activity_feed FINAL
+           WHERE repo_name = {repoName: String}
+             AND created_at > high_water - INTERVAL 24 HOUR
+           ORDER BY created_at DESC
+           LIMIT 12`,
+          ["gh_repo_actor_activity_feed", "gh_repo_drilldown_hourly"],
+          queryParams
+        )
+      : q<RepoDrilldownFeedSqlRow>(
+          `WITH (SELECT max(created_at) FROM github_events) AS high_water
+           SELECT
+             toString(created_at) AS at,
+             actor_login AS actor,
+             event_type,
+             action,
+             toString(commit_count) AS commits,
+             toString(distinct_commit_count) AS distinct_commits,
+             pr_merged AS merged
+           FROM github_events
+           WHERE repo_name = {repoName: String}
+             AND created_at > high_water - INTERVAL 24 HOUR
+             AND event_type IN ('PushEvent', 'PullRequestEvent')
+           ORDER BY created_at DESC
+           LIMIT 12`,
+          ["github_events"],
+          queryParams
+        );
 
   const analysisQuery = canQueryAnalysis
     ? q<RepoDrilldownAnalysisSqlRow>(

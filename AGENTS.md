@@ -69,8 +69,33 @@ Every PR must follow `.github/PULL_REQUEST_TEMPLATE.md`. The key sections:
    verification, say "nothing — agent-verified end to end".
 5. **Graceful degradation** — how the system behaves when new optional
    surfaces are absent or empty.
-6. **Notes for review** — merge conflicts resolved, pre-existing bugs
+6. **Agent attribution** — identify the agent that authored the PR
+   (model ID or human name) and the count of subagent runs logged.
+7. **Notes for review** — merge conflicts resolved, pre-existing bugs
    fixed, env vars added, anything surprising.
+
+### Commit message convention (mandatory)
+
+Every commit authored by an agent must include a `Co-authored-by:` trailer
+identifying the agent. This is for traceability — when reviewing a PR, the
+reviewer needs to know who/what wrote each commit.
+
+Format:
+```
+<type>: <description>
+
+Co-authored-by: <model-id> <agent@attention-terminal>
+```
+
+Example:
+```
+feat: add Octokit activity client
+
+Co-authored-by: glm-5.2:cloud <agent@attention-terminal>
+```
+
+If a human authored a commit, no trailer is needed. If multiple agents
+worked on the PR, each agent's commits carry their own trailer.
 
 Agents must not self-merge. A human reviews and merges after the human
 verification checklist is satisfied.
