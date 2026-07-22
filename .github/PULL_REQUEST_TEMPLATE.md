@@ -12,6 +12,10 @@ Closes #N (if applicable).
 
 Preview/evidence link: [live preview URL or committed artifact]
 
+Agent identity: `[agent-id]` · `[model]` · `[agent-type]` · session `[session-id]`
+
+Review status: independent reviewer adds `lgtm` only after the merge gate; otherwise use `blocked` with an explanatory comment.
+
 ### Before / after proof
 
 - Before: [what was broken or missing]

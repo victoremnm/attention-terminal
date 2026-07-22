@@ -96,6 +96,25 @@ proof, or another directly inspectable artifact instead of inventing a UI
 screenshot. Agents must update the PR body after capturing evidence and must
 not claim an artifact is attached unless the link works from the PR page.
 
+## Agent identity and review status (mandatory)
+
+Every implementation or review agent must identify itself in the PR body or
+review comment with:
+
+- `Agent ID`: orchestrator/subagent ID
+- `Model`: model identifier used for the run
+- `Agent type`: explorer, reviewer, coder, or other role
+- `Session`: telemetry session ID
+- `Scope`: files, issue, or PR reviewed
+
+An independent reviewer may add the `lgtm` label only when the PR has current
+evidence, green CI, and no unresolved actionable review comments. The
+implementation agent must never apply `lgtm` to its own PR. If any blocking
+correctness, security, performance, evidence, or verification issue remains,
+the reviewer must add the `blocked` label and explain the blocker in a PR
+comment. These labels are review signals, not merge approval; the human merge
+gate still applies.
+
 Agents must not self-merge. A human reviews and merges after the human
 verification checklist is satisfied.
 
