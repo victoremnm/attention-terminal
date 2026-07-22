@@ -74,10 +74,17 @@ export async function reviewOpenPrs() {
       (f) => f && (f.includes("src/components") || f.includes("app/"))
     );
 
+    const isApproved = findings.length === 0;
+    const approvalTag = isApproved ? "[APPROVED]" : "[NEEDS REVISION]";
+    const approvalBadge = isApproved
+      ? "🟢 **APPROVED** (Tacit approval on behalf of maintainer)"
+      : "🔴 **NEEDS REVISION** (Review findings require author action)";
+
     // Format Identity Review Comment
-    const reviewBody = `### 🤖 Antigravity AI Assistant PR Review
+    const reviewBody = `### 🤖 Antigravity AI Assistant PR Review ${approvalTag}
 
 **Identity**: Antigravity Light Agent (\`flash_lite\`)  
+**Tacit Approval**: ${approvalBadge}  
 **Target Commit**: \`${commitSha}\`  
 **Scope**: ${changedFiles.length} file(s) modified (${isUi ? "UI/Components" : ""}${isUi && isInfra ? " + " : ""}${isInfra ? "ClickHouse/Infra" : ""})
 
@@ -117,7 +124,7 @@ ${
           "--agent-type", "reviewer",
           "--model", "flash_lite",
           "--spec", `Review PR #${pr.number} diff for security, performance, and type safety`,
-          "--result", `Posted Antigravity AI Assistant review comment with ${findings.length} findings`,
+          "--result", `Posted Antigravity AI Assistant review comment ${approvalTag} with ${findings.length} findings`,
           "--latency-ms", "4200",
           "--input-tokens", "1800",
           "--output-tokens", "320",
@@ -130,7 +137,7 @@ ${
       console.error(`Failed to log telemetry for PR #${pr.number}`, e);
     }
 
-    console.log(`✅ Successfully reviewed PR #${pr.number}!`);
+    console.log(`✅ Successfully reviewed PR #${pr.number}! Status: ${approvalTag}`);
   }
 }
 
