@@ -50,10 +50,15 @@ export async function logAgentRun(record: AgentRunRecord): Promise<void> {
       model: record.model,
       latency_ms: record.latencyMs,
       input_tokens: record.inputTokens,
+      input_tokens_provenance: record.inputTokens > 0 ? "measured" : "estimated",
       output_tokens: record.outputTokens,
+      output_tokens_provenance: record.outputTokens > 0 ? "measured" : "estimated",
       cache_read_tokens: 0,
       cache_creation_tokens: 0,
       cost_usd: record.costUsd,
+      // The AI SDK record does not include pricing, so a zero cost is not a
+      // provider-reported measurement and remains eligible for estimation.
+      cost_provenance: "estimated",
       spec_hash,
       result_hash: "",
       result_preview: "",
