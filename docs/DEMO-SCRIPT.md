@@ -7,7 +7,7 @@ Each query showcases a different answer type + both tools (ClickHouse + Trigger.
 
 ### 1. Daily Skinny Digest (0:00–0:45)
 
-**Ask**: "What's happening today?" (or just open the app — the digest auto-loads)
+**Ask**: "What's happening today?" (or navigate to `/skinny` or `/deck` — the digest auto-loads)
 
 **What shows**: The Daily Skinny deck — 6–8 clustered subjects in SHIPPING/DEBATED/HYPE bands,
 each as a tactile card with a verdict tile, sparkline, and top comment. The deck runs out
@@ -117,7 +117,7 @@ drilldown — the hackathon project is tracking itself in its own live data.
 ## Demo prerequisites
 
 - Trigger.dev tasks deployed to cloud (ingestion running 24/7)
-- `GITHUB_TOKEN` set in Trigger.dev dashboard (for the activity poller)
+- `GITHUB_TOKEN` set in **both** the Trigger.dev dashboard (for the activity poller) and the Vercel/Next.js env (for on-demand drilldown enrichment — see CLAUDE.md convention)
 - Vercel deployment live
 - Data freshness: `SELECT max(created_at) FROM github_events` should be < 1 hour old
 - Activity tables seeded: `SELECT count() FROM gh_repo_commits` should be > 0
