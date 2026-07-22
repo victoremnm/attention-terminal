@@ -75,6 +75,48 @@ Every PR must follow `.github/PULL_REQUEST_TEMPLATE.md`. The key sections:
 Agents must not self-merge. A human reviews and merges after the human
 verification checklist is satisfied.
 
+## CI polling (mandatory)
+
+After pushing, the agent must poll the PR's CI checks until all are
+complete before the PR can be merged. Poll every 30 seconds, maximum 10
+iterations (5 minutes). If checks are still pending after 10 iterations,
+report the status and stop — let the user request more checks.
+
+```bash
+# Poll CI until all checks complete
+for i in $(seq 1 10); do
+  sleep 30
+  PENDING=$(gh pr view <PR_NUM> --repo <REPO> --json statusCheckRollup \
+    --jq '[.statusCheckRollup[]? | select(.name != null) | select(.conclusion == null or .conclusion == "")] | length')
+  echo "Poll $i: $PENDING pending checks"
+  if [ "$PENDING" = "0" ]; then
+    echo "All CI checks complete"
+    gh pr view <PR_NUM> --repo <REPO> --json statusCheckRollup \
+      --jq '[.statusCheckRollup[]? | select(.name != null) | "\(.name): \(.conclusion)"] | .[]'
+    break
+  fi
+done
+```
+
+Only after CI is green AND all review comments are addressed (fixed +
+replied to) should the agent ask the human to approve + merge.
+
+## Review comments (mandatory)
+
+All automated review comments (CodeRabbit, Copilot, Codex, Claude Code
+Action) must be resolved before a PR can be merged:
+
+1. **Fix** — apply the fix if relevant and improving
+2. **Reply** — post an inline reply to the comment thread explaining what
+   was changed and the commit SHA: `Fixed in <sha>\n\n<explanation>`
+3. **Defer** — if the feedback is valid but out of scope, create a new
+   issue and reply with `Deferred to #N — <reason>`
+4. **Close** — if the feedback is irrelevant, reply with `Not applicable
+   — <reason>` and dismiss
+
+Never leave a review comment unreplied. The PR cannot merge with open
+threads.
+
 ## Worktrees (mandatory)
 
 Every agent works in a worktree, never directly on `main`. Create one
@@ -100,3 +142,16 @@ inline. ClickHouse creds in item `4innzk6cud7bz5v562i7tpgpki`, Trigger.dev
 in `2pgjlwxybaqvtrxjvlor5dkrsm`, OpenAI in `mfxzvdmx24qw74iue377jcflte`.
 `GITHUB_TOKEN` must be set in both the Next.js env and each Trigger.dev
 environment.
+
+## Skills mount (recommended)
+
+This repo's custom skills can be mounted with:
+
+```bash
+npx skills add victoremnm/skills
+```
+
+This installs the repo-scoped skills (address-feedback, agent-chain,
+background-runner, ci-check, multi-agent-pr-review, watch-pr, etc.) so
+agents have the right workflows for CI polling, review addressing, and
+multi-agent orchestration.
