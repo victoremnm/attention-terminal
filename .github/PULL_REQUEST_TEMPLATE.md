@@ -8,6 +8,16 @@ Bullet list of what changed. Concrete: file paths, table names, RPC signatures. 
 
 Closes #N (if applicable).
 
+## Review at a glance
+
+Preview/evidence link: [live preview URL or committed artifact]
+
+### Before / after proof
+
+- Before: [what was broken or missing]
+- After: [what the reviewer can now observe]
+- Evidence: [embedded screenshot, HTML preview, rendered query result, or build proof]
+
 ## What was verified (by the agent)
 
 What the agent actually ran and observed — not what it intended. Each bullet is a command + observed result. If the agent did NOT verify something, that fact appears here too.
