@@ -37,6 +37,7 @@
     "start": "next start",
     "release": "semantic-release",
     "test": "vitest run",
-    "log-telemetry": "tsx scripts/log-session-telemetry.ts"
+    "log-telemetry": "tsx scripts/log-session-telemetry.ts",
+    "review-prs": "tsx scripts/review-open-prs.ts"
   }
 }
