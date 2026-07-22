@@ -46,21 +46,38 @@ function DigestAnswer({ payload }: { payload: DigestPayload }) {
   );
 }
 
+function parseMetricValue(metric: string): number | null {
+  if (!metric) return null;
+  const lower = metric.toLowerCase();
+  if (lower.includes("utc") || lower.includes("born") || lower.includes("ago")) {
+    return null;
+  }
+  const cleaned = metric.replace(/\/(1h|24h|7d|30d)/gi, "").trim();
+  const match = cleaned.match(/[\d,]+(?:\.\d+)?/);
+  if (!match) return null;
+  const num = parseFloat(match[0].replace(/,/g, ""));
+  return isNaN(num) ? null : num;
+}
+
 function TickerAnswer({ payload }: { payload: TickerPayload }) {
-  const barItems = payload.items.slice(0, 6).map((item, idx) => {
-    const rawVal = parseFloat(item.metric.replace(/[^0-9.]/g, "")) || (6 - idx) * 12;
-    const colors = ["var(--cyan)", "var(--mag)", "var(--emerald)", "var(--amber)", "var(--blue)", "var(--purple)"];
-    return {
-      label: item.name,
-      value: rawVal,
-      color: colors[idx % colors.length],
-    };
-  });
+  const barItems = payload.items
+    .map((item, idx) => {
+      const val = parseMetricValue(item.metric);
+      if (val === null) return null;
+      const colors = ["var(--cyan)", "var(--mag)", "var(--emerald)", "var(--amber)", "var(--blue)", "var(--purple)"];
+      return {
+        label: item.name,
+        value: val,
+        color: colors[idx % colors.length],
+      };
+    })
+    .filter((item): item is NonNullable<typeof item> => item !== null)
+    .slice(0, 6);
 
   return (
     <div className="agent-answer space-y-4">
       <div className="agent-answer-head mono">BREAKOUT TICKER <span>{payload.filter}</span></div>
-      <HorizontalBarChart items={barItems} title={`LEADERBOARD · ${payload.filter}`} />
+      {barItems.length > 0 && <HorizontalBarChart items={barItems} title={`LEADERBOARD · ${payload.filter}`} />}
       <div className="agent-ticker-grid">
         {payload.items.map((item, index) => (
           <a key={`${item.name}-${index}`} className="agent-ticker-card" href={item.href} target={item.href ? "_blank" : undefined} rel="noreferrer">
