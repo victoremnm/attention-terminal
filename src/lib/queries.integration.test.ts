@@ -26,7 +26,7 @@ describe.skipIf(!hasCH)("query layer (integration)", () => {
       expect(Array.isArray(r.spark)).toBe(true);
       for (const v of r.spark) expect(typeof v).toBe("number");
     }
-  });
+  }, 120_000);
 
   it("tickerLanes executes all lanes", async () => {
     const lanes = await tickerLanes();
@@ -34,7 +34,7 @@ describe.skipIf(!hasCH)("query layer (integration)", () => {
       expect(Array.isArray(lanes[key])).toBe(true);
     }
     expect(Array.isArray(lanes.provenance)).toBe(true);
-  });
+  }, 120_000);
 
   it("repoDrilldown executes for a live repo", async () => {
     const { data } = await repoActivityWindow("30d", 1);
@@ -43,7 +43,7 @@ describe.skipIf(!hasCH)("query layer (integration)", () => {
     expect(payload.type).toBe("repo-drilldown");
     expect(payload.repoName).toBe(repoName);
     expect(payload.query.sql).toContain("gh_repo_analysis");
-  });
+  }, 120_000);
 
   it("freshness executes", async () => {
     await expect(freshness()).resolves.toBeTruthy();
