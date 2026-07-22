@@ -278,6 +278,56 @@ a { color: inherit; }
 }
 .chip:hover, .chip:focus-visible { border-color: var(--cyan); color: var(--cyan); }
 
+/* Lightweight CTA used when full chat is only available on /chat. */
+.chat-cta-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 24px 0;
+  padding: 16px;
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--panel) 84%, transparent 16%);
+}
+.chat-cta-content {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.chat-cta-icon {
+  flex: none;
+  font-size: 20px;
+  line-height: 1;
+}
+.chat-cta-copy { min-width: 0; }
+.chat-cta-title {
+  margin: 0;
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 600;
+}
+.chat-cta-copy p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+.chat-cta-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+  text-decoration: none;
+  white-space: nowrap;
+}
+@media (max-width: 640px) {
+  .chat-cta-banner {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
+
 /* SQL flip back */
 .card-back .back-head { font-size: 11px; letter-spacing: .1em; color: var(--muted); margin-bottom: 10px; }
 .back-query { border: 1px solid var(--line-soft); border-radius: 6px; background: var(--s); margin-bottom: 10px; }
@@ -2211,4 +2261,3 @@ a { color: inherit; }
   overflow-x: auto;
   line-height: 1.5;
 }
-
