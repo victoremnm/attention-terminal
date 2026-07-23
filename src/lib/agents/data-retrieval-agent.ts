@@ -33,18 +33,26 @@ function hasMultipleStatements(query: string) {
   return query.replace(/;+\s*$/, "").includes(";");
 }
 
+export function normalizeUnionQuery(query: string): string {
+  // Preserve single and double quoted string literals while normalizing bare UNION keywords
+  return query.replace(/(['"])(?:(?!\1)[^\\]|\\.)*\1|\bUNION\b(?!\s+(?:ALL|DISTINCT)\b)/gi, (match, quote) => {
+    if (quote) return match;
+    return "UNION ALL";
+  });
+}
+
 export async function runDataRetrievalAgent(intent: string) {
   // 1. Translate intent to SQL using LLM
   const { object } = await generateObject({
     model: openai("gpt-4o"),
-    system: "You are the Data Retrieval Agent. Your job is to translate a user's semantic intent into a single optimized read-only ClickHouse SQL query. Only SELECT statements are allowed.",
+    system: "You are the Data Retrieval Agent. Your job is to translate a user's semantic intent into a single optimized read-only ClickHouse SQL query. Only SELECT statements are allowed. Always use explicit UNION ALL or UNION DISTINCT instead of bare UNION.",
     prompt: `Intent: ${intent}`,
     schema: z.object({
       query: z.string().describe("The read-only ClickHouse SQL query"),
     }),
   });
 
-  const query = object.query;
+  const query = normalizeUnionQuery(object.query);
 
   if (!READ_ONLY_STATEMENTS.test(query) || hasMultipleStatements(query)) {
     throw new Error("Only one read-only SELECT-style statement is allowed.");
