@@ -5,6 +5,7 @@ import type { RepoWindow, RepoWindowRow } from "@/lib/queries";
 import type { RepoDrilldownPayload } from "@/lib/render-payload";
 import { RenderedAnswer } from "./RenderedAnswer";
 import { Sparkline } from "./charts";
+import { useChatContext } from "@/lib/chat-context";
 
 // skills.sh-style tabs, mapped to the fixed repoActivityWindow windows.
 const TABS: Array<{ key: RepoWindow; label: string }> = [
@@ -28,12 +29,15 @@ function RankRow({
 }) {
   const subline = [row.language, row.description].filter(Boolean).join(" · ");
   const sparkLabel = `${row.events} events over the selected window`;
+  const chat = useChatContext();
   return (
-    <button
-      type="button"
+    <div
       className="rank-row mono"
       data-state={state}
+      role="button"
+      tabIndex={0}
       onClick={() => onOpen(row.repo_name)}
+      onKeyDown={(e) => e.key === "Enter" && onOpen(row.repo_name)}
       aria-pressed={state === "selected"}
       aria-label={`${row.repo_name}. ${sparkLabel}. ${row.pushes} pushes, ${row.commits} commits, ${row.actors} actors.`}
     >
@@ -51,7 +55,18 @@ function RankRow({
         <span><b>{NUMBER.format(row.actors)}</b> actors</span>
       </span>
       <span className="rank-events">{NUMBER.format(row.events)}</span>
-    </button>
+      <button
+        type="button"
+        className="rank-ask"
+        onClick={(e) => { e.stopPropagation(); chat.ask(`tell me about ${row.repo_name}`); }}
+        aria-label={`Ask about ${row.repo_name}`}
+        title="Ask the terminal about this repo"
+      >
+        <svg width="14" height="14" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+          <path d="M2 2h16v12H6l-4 4V2z" stroke="currentColor" strokeWidth="1.5" fill="none" />
+        </svg>
+      </button>
+    </div>
   );
 }
 
@@ -207,6 +222,7 @@ export function RepoRankings({ windows }: { windows: Record<RepoWindow, RepoWind
         <span className="rank-spark">ACTIVITY</span>
         <span className="rank-stats">DETAILS</span>
         <span className="rank-events">EVENTS</span>
+        <span className="rank-ask" />
       </div>
 
       {rows.length === 0 ? (
