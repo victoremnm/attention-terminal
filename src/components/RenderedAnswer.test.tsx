@@ -3,8 +3,8 @@
  */
 
 import "@testing-library/jest-dom/vitest";
-import { cleanup, render, screen, within } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { RenderPayload } from "@/lib/render-payload";
 import { RenderedAnswer } from "./RenderedAnswer";
 
@@ -307,5 +307,67 @@ describe("RenderedAnswer", () => {
         expect(height).toBeGreaterThan(2);
       }
     });
+  });
+});
+
+describe("RenderedAnswer copy-as-HTML button", () => {
+  const tickerPayload: RenderPayload = {
+    type: "ticker",
+    filter: "repos",
+    generatedAt: "2026-07-23T08:00:00.000Z",
+    items: [
+      { kicker: "STARS", name: "alpha/repo", metric: "stars_24h: 42", href: "https://github.com/alpha/repo" },
+    ],
+  };
+
+  beforeEach(() => {
+    vi.stubGlobal("ClipboardItem", class {
+      constructor(items: Record<string, Blob>) {
+        Object.assign(this, items);
+      }
+    });
+    vi.stubGlobal("navigator", {
+      clipboard: {
+        write: vi.fn(() => Promise.resolve()),
+        writeText: vi.fn(() => Promise.resolve()),
+      },
+    });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("renders Copy as Markdown and Copy as HTML buttons", () => {
+    render(<RenderedAnswer payload={tickerPayload} />);
+    expect(screen.getAllByRole("button", { name: "Copy as Markdown" }).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole("button", { name: "Copy as HTML" }).length).toBeGreaterThan(0);
+  });
+
+  it("shows Copied MD! feedback after clicking Copy as Markdown", async () => {
+    render(<RenderedAnswer payload={tickerPayload} />);
+    const btns = screen.getAllByRole("button", { name: "Copy as Markdown" });
+    await act(() => fireEvent.click(btns[0]));
+    expect(screen.getByText("Copied MD!")).toBeInTheDocument();
+  });
+
+  it("calls clipboard.write with a ClipboardItem containing text/html for HTML copy", async () => {
+    const writeSpy = vi.fn(() => Promise.resolve());
+    vi.stubGlobal("navigator", {
+      clipboard: { write: writeSpy, writeText: vi.fn(() => Promise.resolve()) },
+    });
+    render(<RenderedAnswer payload={tickerPayload} />);
+    const btns = screen.getAllByRole("button", { name: "Copy as HTML" });
+    await act(() => fireEvent.click(btns[0]));
+    await waitFor(() => expect(writeSpy).toHaveBeenCalledTimes(1));
+    const items = (writeSpy.mock.calls[0] as unknown[])[0] as unknown[];
+    expect(items).toHaveLength(1);
+  });
+
+  it("reverts to Copy as Markdown label after 2 seconds", async () => {
+    render(<RenderedAnswer payload={tickerPayload} />);
+    const btns = screen.getAllByRole("button", { name: "Copy as Markdown" });
+    await act(() => fireEvent.click(btns[0]));
+    expect(screen.getByText("Copied MD!")).toBeInTheDocument();
   });
 });

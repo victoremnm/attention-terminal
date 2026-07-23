@@ -5,7 +5,12 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testi
 import "@testing-library/jest-dom/vitest";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ActiveContributionRow, RepoWindow, RepoWindowRow } from "@/lib/queries";
+import { ChatProvider } from "@/lib/chat-context";
 import { RepoRankings } from "./RepoRankings";
+
+function renderWithChat(ui: React.ReactElement) {
+  return render(<ChatProvider>{ui}</ChatProvider>);
+}
 
 function attentionRow(overrides: Partial<RepoWindowRow> = {}): RepoWindowRow {
   return {
@@ -98,14 +103,14 @@ describe("RepoRankings", () => {
   });
 
   it("renders the seeded attention-mode rows without an extra network round trip", async () => {
-    render(<RepoRankings windows={seedWindows()} />);
+    renderWithChat(<RepoRankings windows={seedWindows()} />);
     expect(await findRepoRow("acme/widgets")).toBeInTheDocument();
     expect(queryRepoRow("acme/gizmos")).toBeInTheDocument();
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("shows the ranking mode selector with attention active by default", async () => {
-    const { container } = render(<RepoRankings windows={seedWindows()} />);
+    const { container } = renderWithChat(<RepoRankings windows={seedWindows()} />);
     const attentionButton = await screen.findByRole("button", { name: "Attention" });
     expect(attentionButton).toHaveAttribute("aria-pressed", "true");
     const caption = container.querySelector(".rankings-mode-caption");
@@ -113,7 +118,7 @@ describe("RepoRankings", () => {
   });
 
   it("switching to Stars mode fetches the stars-sorted server ranking", async () => {
-    render(<RepoRankings windows={seedWindows()} />);
+    renderWithChat(<RepoRankings windows={seedWindows()} />);
     await findRepoRow("acme/widgets");
 
     await act(async () => {
@@ -131,7 +136,7 @@ describe("RepoRankings", () => {
   });
 
   it("switching to an active-contribution mode hides pagination and shows anti-noise columns", async () => {
-    render(<RepoRankings windows={seedWindows()} />);
+    renderWithChat(<RepoRankings windows={seedWindows()} />);
     await findRepoRow("acme/widgets");
 
     await act(async () => {
@@ -150,7 +155,7 @@ describe("RepoRankings", () => {
   });
 
   it("clicking a measure header toggles sort direction and re-queries the server", async () => {
-    const { container } = render(<RepoRankings windows={seedWindows()} />);
+    const { container } = renderWithChat(<RepoRankings windows={seedWindows()} />);
     await findRepoRow("acme/widgets");
 
     function commitsChipHeader() {
@@ -176,7 +181,7 @@ describe("RepoRankings", () => {
   });
 
   it("hides a column when unchecked in the Filters & Columns panel and persists the choice", async () => {
-    render(<RepoRankings windows={seedWindows()} />);
+    renderWithChat(<RepoRankings windows={seedWindows()} />);
     await findRepoRow("acme/widgets");
 
     expect(screen.getAllByText("commits").length).toBeGreaterThan(0);
@@ -193,7 +198,7 @@ describe("RepoRankings", () => {
   });
 
   it("moves a column up and reflects the new order in the header", async () => {
-    const { container } = render(<RepoRankings windows={seedWindows()} />);
+    const { container } = renderWithChat(<RepoRankings windows={seedWindows()} />);
     await findRepoRow("acme/widgets");
 
     fireEvent.click(screen.getByRole("button", { name: /filters & columns/i }));
@@ -218,7 +223,7 @@ describe("RepoRankings", () => {
   });
 
   it("filters rows client-side by search text", async () => {
-    render(<RepoRankings windows={seedWindows()} />);
+    renderWithChat(<RepoRankings windows={seedWindows()} />);
     await findRepoRow("acme/widgets");
     expect(queryRepoRow("acme/gizmos")).toBeInTheDocument();
 
@@ -235,14 +240,14 @@ describe("RepoRankings", () => {
       "attention-terminal:rankings-preferences:v1",
       JSON.stringify({ mode: "stars", sortField: "stars", sortDirection: "desc", attentionColumns: ["pushes", "commits", "actors"], activeColumns: ["distinctCommits", "substantivePushBuckets", "humanPushers"], minStars: 0, hideBotOnly: false, requireSubstantiveWork: true })
     );
-    render(<RepoRankings windows={seedWindows()} />);
+    renderWithChat(<RepoRankings windows={seedWindows()} />);
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
     const params = new URL(String(fetchMock.mock.calls[0][0]), "http://localhost").searchParams;
     expect(params.get("sort")).toBe("stars");
   });
 
   it("sorts an unsupported column client-side instead of sending it to the server", async () => {
-    render(<RepoRankings windows={seedWindows()} />);
+    renderWithChat(<RepoRankings windows={seedWindows()} />);
     await findRepoRow("acme/widgets");
 
     fireEvent.click(screen.getByRole("button", { name: /filters & columns/i }));
@@ -263,7 +268,7 @@ describe("RepoRankings", () => {
   });
 
   it("does not apply the min-stars filter to active-contribution rows", async () => {
-    render(<RepoRankings windows={seedWindows()} />);
+    renderWithChat(<RepoRankings windows={seedWindows()} />);
     await findRepoRow("acme/widgets");
 
     fireEvent.click(screen.getByRole("button", { name: /filters & columns/i }));
@@ -282,7 +287,7 @@ describe("RepoRankings", () => {
   });
 
   it("re-fetches when a filter changes instead of only narrowing the already-loaded page", async () => {
-    render(<RepoRankings windows={seedWindows()} />);
+    renderWithChat(<RepoRankings windows={seedWindows()} />);
     await findRepoRow("acme/widgets");
 
     fireEvent.click(screen.getByRole("button", { name: /filters & columns/i }));
