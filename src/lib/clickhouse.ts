@@ -85,6 +85,32 @@ export async function missingTables(tables: string[]) {
   return missing;
 }
 
+export async function missingColumns(table: string, columns: string[]) {
+  const { database, name } = splitTableName(table);
+  try {
+    const result = await clickhouse.query({
+      query: `
+        SELECT name
+        FROM system.columns
+        WHERE database = {database: String}
+          AND table = {name: String}
+          AND name IN ({columns: Array(String)})
+      `,
+      format: "JSONEachRow",
+      query_params: { database, name, columns },
+      clickhouse_settings: {
+        readonly: "2",
+        max_execution_time: 10,
+      },
+    });
+    const rows = await result.json<{ name: string }>();
+    const found = new Set(rows.map((r) => r.name));
+    return columns.filter((col) => !found.has(col));
+  } catch {
+    return columns;
+  }
+}
+
 export async function ensureTablesExist(tables: string[]) {
   const missing = await missingTables(tables);
 

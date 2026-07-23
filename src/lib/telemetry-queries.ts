@@ -1,4 +1,4 @@
-import { clickhouse, missingTables } from "./clickhouse";
+import { clickhouse, missingColumns, missingTables } from "./clickhouse";
 
 export type UsageProvenance = "measured" | "estimated";
 
@@ -235,6 +235,15 @@ export async function fetchTelemetryData(): Promise<TelemetryPayload> {
   const hasLearnings = missingLearnings.length === 0;
   const hasExperiments = missingExperiments.length === 0;
 
+  const missingProvCols = hasRuns
+    ? await missingColumns("subagent_runs", [
+        "input_tokens_provenance",
+        "output_tokens_provenance",
+        "cost_provenance",
+      ])
+    : [];
+  const hasProvCols = missingProvCols.length === 0;
+
   const runsQuery = hasRuns
     ? clickhouse
         .query({
@@ -251,11 +260,11 @@ export async function fetchTelemetryData(): Promise<TelemetryPayload> {
           result_preview,
           latency_ms,
           input_tokens,
-          input_tokens_provenance,
+          ${hasProvCols ? "input_tokens_provenance" : "'measured' AS input_tokens_provenance"},
           output_tokens,
-          output_tokens_provenance,
+          ${hasProvCols ? "output_tokens_provenance" : "'measured' AS output_tokens_provenance"},
           cost_usd,
-          cost_provenance,
+          ${hasProvCols ? "cost_provenance" : "'estimated' AS cost_provenance"},
           ok
         FROM subagent_runs FINAL
         ORDER BY ts DESC
