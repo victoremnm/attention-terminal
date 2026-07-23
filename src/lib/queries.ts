@@ -2065,7 +2065,16 @@ export async function topActorRepos(
         sum(prs_merged) AS prs_merged
       FROM gh_repo_actor_hourly
       WHERE hour > high_water - INTERVAL ${days} DAY
+        -- The '[bot]' bracket pattern only catches GitHub App accounts (e.g.
+        -- dependabot[bot]); it misses plain automation logins like 'Copilot'
+        -- and '-bot'-suffixed service accounts (regro-cf-autotick-bot) that
+        -- surfaced as top "contributors" in this leaderboard despite being
+        -- automated. Known limitation: this is still a name-pattern heuristic,
+        -- not a real bot classification -- see issue #200 for a proper fix
+        -- (GitHub's API-reported account type, not login-string guessing).
         AND NOT actor_login ILIKE '%[bot]%'
+        AND NOT actor_login ILIKE '%-bot'
+        AND lower(actor_login) NOT IN ('copilot', 'github-actions', 'dependabot', 'renovate')
       GROUP BY actor_login, repo_name
       HAVING commits > 0 OR prs_opened > 0 OR prs_merged > 0
     ),
