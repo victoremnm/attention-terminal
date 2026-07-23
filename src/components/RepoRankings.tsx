@@ -10,7 +10,9 @@ import {
   ATTENTION_COLUMNS,
   DEFAULT_PREFERENCES,
   RANKING_MODES,
+  activeMeasureValue,
   activeRowView,
+  attentionMeasureValue,
   attentionRowView,
   loadPreferences,
   modeConfig,
@@ -34,10 +36,11 @@ const TABS: Array<{ key: RepoWindow; label: string }> = [
 const NUMBER = new Intl.NumberFormat("en-US");
 const PAGE_SIZE = 100;
 const ACTIVE_LIMIT = 40;
+const ATTENTION_SERVER_SORTS = new Set(["events", "actors", "pushes", "commits", "stars", "forks", "prsOpened", "prsMerged"]);
+const ACTIVE_SERVER_SORTS = new Set(["commits", "pushes"]);
 
-function readInitialPrefs(): RankingsPreferences {
-  if (typeof window === "undefined") return DEFAULT_PREFERENCES;
-  return loadPreferences(window.localStorage);
+function isServerSortSupported(source: "attention" | "active", field: string): boolean {
+  return source === "attention" ? ATTENTION_SERVER_SORTS.has(field) : ACTIVE_SERVER_SORTS.has(field);
 }
 
 function RankRow({
@@ -134,8 +137,10 @@ export function RepoRankings({ windows }: { windows: Record<RepoWindow, RepoWind
   const source = modeConfig(prefs.mode).source;
 
   useEffect(() => {
-    if (isInitialRender.current) {
-      isInitialRender.current = false;
+    const isFirstRun = isInitialRender.current;
+    isInitialRender.current = false;
+    const isSeededDefault = prefs.mode === "attention" && prefs.sortField === "events" && prefs.sortDirection === "desc";
+    if (isFirstRun && isSeededDefault) {
       return;
     }
     const requestId = ++dataRequestId.current;
@@ -143,14 +148,13 @@ export function RepoRankings({ windows }: { windows: Record<RepoWindow, RepoWind
     setRowsLoading(true);
     setRowsError(undefined);
 
-    const apiSort =
-      source === "attention"
-        ? prefs.sortField === "githubStars"
-          ? "stars"
-          : prefs.sortField
-        : prefs.sortField === "commits" || prefs.sortField === "pushes"
-          ? prefs.sortField
-          : modeConfig(prefs.mode).querySort;
+    const serverSortSupported = isServerSortSupported(source, prefs.sortField);
+    if (!serverSortSupported) {
+      // Don't fetch when sorting by an unsupported field - just apply client-side sort to existing data
+      return;
+    }
+    const serverSort = prefs.sortField;
+    const serverDirection = prefs.sortDirection;
 
     const url =
       source === "attention"
@@ -158,12 +162,12 @@ export function RepoRankings({ windows }: { windows: Record<RepoWindow, RepoWind
             window: activeWindowTab,
             limit: String(PAGE_SIZE),
             offset: String(page * PAGE_SIZE),
-            sort: apiSort,
-            direction: prefs.sortDirection,
+            sort: serverSort,
+            direction: serverDirection,
           }).toString()}`
         : `/api/trending-active?${new URLSearchParams({
             window: activeWindowTab,
-            sort: apiSort,
+            sort: serverSort,
             limit: String(ACTIVE_LIMIT),
           }).toString()}`;
 
@@ -227,35 +231,24 @@ export function RepoRankings({ windows }: { windows: Record<RepoWindow, RepoWind
     [activeRawRows, prefs.requireSubstantiveWork]
   );
 
-  const rows = useMemo<RankingRowView[]>(() => {
-    let rawViews: RankingRowView[];
-    if (source === "attention") {
-      rawViews = attentionRowsFiltered.map((r) => attentionRowView(r, prefs.sortField, prefs.attentionColumns));
-    } else {
-      rawViews = activeRowsFiltered.map((r) => activeRowView(r, prefs.sortField, prefs.activeColumns));
-    }
-
-    const isDesc = prefs.sortDirection === "desc";
-    const key = prefs.sortField;
-    return [...rawViews].sort((a, b) => {
-      let valA = a.primaryValue;
-      let valB = b.primaryValue;
-
-      if (key === "githubStars") {
-        valA = a.githubStars;
-        valB = b.githubStars;
-      } else {
-        const chipA = a.chips.find((c) => c.key === key);
-        const chipB = b.chips.find((c) => c.key === key);
-        if (chipA && chipB) {
-          valA = chipA.value;
-          valB = chipB.value;
-        }
-      }
-
-      if (valA === valB) return 0;
-      return isDesc ? (valB > valA ? 1 : -1) : (valA > valB ? 1 : -1);
+  function clientSort<T>(items: T[], valueOf: (item: T, field: string) => number): T[] {
+    if (isServerSortSupported(source, prefs.sortField)) return items;
+    const sign = prefs.sortDirection === "asc" ? 1 : -1;
+    return [...items].sort((a, b) => {
+      const av = valueOf(a, prefs.sortField);
+      const bv = valueOf(b, prefs.sortField);
+      if (av === bv) return 0;
+      return av < bv ? -sign : sign;
     });
+  }
+
+  const rows = useMemo<RankingRowView[]>(() => {
+    if (source === "attention") {
+      const sorted = clientSort(attentionRowsFiltered, attentionMeasureValue);
+      return sorted.map((r) => attentionRowView(r, prefs.sortField, prefs.attentionColumns));
+    }
+    const sorted = clientSort(activeRowsFiltered, activeMeasureValue);
+    return sorted.map((r) => activeRowView(r, prefs.sortField, prefs.activeColumns));
   }, [source, attentionRowsFiltered, activeRowsFiltered, prefs.sortField, prefs.sortDirection, prefs.attentionColumns, prefs.activeColumns]);
 
   const filteredRows = useMemo(() => {

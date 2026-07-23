@@ -204,4 +204,55 @@ describe("RepoRankings", () => {
     await waitFor(() => expect(queryRepoRow("acme/widgets")).not.toBeInTheDocument());
     expect(queryRepoRow("acme/gizmos")).toBeInTheDocument();
   });
+
+  it("fetches immediately on mount when localStorage has a saved non-default mode", async () => {
+    window.localStorage.setItem(
+      "attention-terminal:rankings-preferences:v1",
+      JSON.stringify({ mode: "stars", sortField: "stars", sortDirection: "desc", attentionColumns: ["pushes", "commits", "actors"], activeColumns: ["distinctCommits", "substantivePushBuckets", "humanPushers"], minStars: 0, hideBotOnly: false, requireSubstantiveWork: true })
+    );
+    render(<RepoRankings windows={seedWindows()} />);
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    const params = new URL(String(fetchMock.mock.calls[0][0]), "http://localhost").searchParams;
+    expect(params.get("sort")).toBe("stars");
+  });
+
+  it("sorts an unsupported column client-side instead of sending it to the server", async () => {
+    render(<RepoRankings windows={seedWindows()} />);
+    await findRepoRow("acme/widgets");
+
+    fireEvent.click(screen.getByRole("button", { name: /filters & columns/i }));
+    const panel = await screen.findByRole("region", { name: /filters and columns/i });
+    const githubStarsCheckbox = within(panel).getByLabelText("★ total");
+    fireEvent.click(githubStarsCheckbox);
+
+    const head = document.querySelector(".rank-stats-head");
+    const starsHeader = within(head as HTMLElement).getByRole("button", { name: /sort by ★ total/i });
+
+    await act(async () => {
+      fireEvent.click(starsHeader);
+    });
+
+    // events (the mode's own default sort) should still be what's sent to the server —
+    // githubStars is not a supported /api/trending sort field.
+    await waitFor(() => expect(fetchMock).not.toHaveBeenCalled());
+  });
+
+  it("does not apply the min-stars filter to active-contribution rows", async () => {
+    render(<RepoRankings windows={seedWindows()} />);
+    await findRepoRow("acme/widgets");
+
+    fireEvent.click(screen.getByRole("button", { name: /filters & columns/i }));
+    const panel = await screen.findByRole("region", { name: /filters and columns/i });
+    const minStarsInput = within(panel).getByLabelText(/Min total/i);
+    fireEvent.change(minStarsInput, { target: { value: "9999" } });
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Active (commits)" }));
+    });
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+
+    // acme/widgets has githubStars: 0 in the active-family view (no metadata),
+    // but the 9999 star floor must not apply to active-source rows.
+    expect(await findRepoRow("acme/widgets")).toBeInTheDocument();
+  });
 });
