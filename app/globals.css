@@ -188,8 +188,8 @@ a { color: inherit; }
 }
 .tk-card-copy {
   position: absolute;
-  right: 32px;
-  bottom: 6px;
+  top: 6px;
+  right: 7px;
   border: 1px solid var(--line-soft);
   border-radius: 3px;
   background: color-mix(in srgb, var(--panel-2) 88%, transparent 12%);
@@ -203,6 +203,12 @@ a { color: inherit; }
   cursor: pointer;
   transition: all 0.15s ease;
   z-index: 2;
+  opacity: 0;
+  pointer-events: none;
+}
+.tk-card-shell:hover .tk-card-copy, .tk-card-copy:focus-visible, .tk-card-copy.copied {
+  opacity: 1;
+  pointer-events: auto;
 }
 .tk-card-copy:hover, .tk-card-copy:focus-visible, .tk-card-copy.copied {
   border-color: var(--cyan);
