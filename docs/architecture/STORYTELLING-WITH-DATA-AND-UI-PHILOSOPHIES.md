@@ -57,3 +57,16 @@ Attention Terminal adapts Vercel's Geist design language:
 1. **Accessibility**: All SVG chart elements include standard `role="img"` and descriptive `aria-label` attributes for screen readers.
 2. **Dual-Encoding**: Charts rely on distinct color hues combined with explicit numeric text callouts, shapes, or legend labels so information is clear regardless of vision modality or display hardware.
 3. **Dark Mode Calibration**: SVG fill opacities (`0.82` - `0.88`) and de-saturated HSL colors prevent visual vibration against dark terminal surfaces.
+
+---
+
+## 5. Reference Open-Source Tufte Tooling & Ecosystem
+
+The following open-source repositories provide foundational patterns for automated Tufte compliance and SVG visualization primitives:
+
+- **`caylent/tufte-data-viz`**: Enforces Tufte rules across Recharts, ECharts, Plotly, and D3. Strips top/right borders, deletes legends in favor of direct labeling, generates range-frame axes, and enforces semantic dark modes.
+- **`nteract/semiotic`**: React-based data visualization framework shipping built-in minimalist "tufte" theme presets for network graphs and statistical summaries.
+- **Tufte CSS (`edwardtufte.github.io`)**: Layout principles for Tufte-inspired web documents, integrated side notes, inline sparklines, and serif typography.
+- **`gnurio/tufte-vdqi-plugin` (Chartwright)**: AI workflow tool scoring generated graphics against Tufte's 9 criteria (lie factor, chartjunk stripping, range-frame scatter plots, quartile plots).
+- **`aref-vc/tufte-claude-skill`**: Pipeline converting basic chart requests into Tufte-compliant SVGs by automatically applying erasure principles and enforcing small multiples when comparing overlapping data sets.
+
