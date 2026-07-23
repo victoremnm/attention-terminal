@@ -123,12 +123,13 @@ describe("RenderedAnswer", () => {
     expect(screen.queryByText(/previewing .* markup/i)).not.toBeInTheDocument();
   });
 
-  it("falls back to the data table for unsupported visualization types (e.g. Pie Chart)", () => {
+  it("renders a PieChart for Pie Chart visualizationType", () => {
     const payload: RenderPayload = {
       type: "morphing-card",
       visualizationType: "Pie Chart",
       generatedAt: "2026-07-23T08:27:40.000Z",
       chartConfig: {
+        title: "github_forks",
         encoding: {
           x: { field: "repo", type: "nominal" },
           y: { field: "github_forks", type: "quantitative" },
@@ -145,9 +146,8 @@ describe("RenderedAnswer", () => {
 
     const { container } = render(<RenderedAnswer payload={payload} />);
 
-    expect(container.querySelector("figure.chart")).not.toBeInTheDocument();
-    expect(screen.getByText(/previewing arc markup/i)).toBeInTheDocument();
-    expect(screen.getByText("alpha/repo")).toBeInTheDocument();
+    expect(container.querySelector("figure.chart.pie-chart")).toBeInTheDocument();
+    expect(screen.getAllByText("alpha/repo").length).toBeGreaterThan(0);
   });
 
   it("charts a tool-built Bar Chart card whose metric field is a numeric string with only a tooltip encoding", () => {
@@ -175,10 +175,7 @@ describe("RenderedAnswer", () => {
     expect(container.querySelectorAll("figure.chart svg rect").length).toBeGreaterThan(0);
   });
 
-  it("falls back to the data table for a Stacked Bar Chart even though its Vega mark is \"bar\"", () => {
-    // Vega-Lite expresses stacking via encoding, not a distinct mark type, so a
-    // Stacked Bar Chart config also has mark.type === "bar". Gating on markType
-    // alone would misrender it as a simplified single-series bar chart.
+  it("renders an SVG chart for Stacked Bar Chart visualizationType", () => {
     const payload: RenderPayload = {
       type: "morphing-card",
       visualizationType: "Stacked Bar Chart",
@@ -200,8 +197,8 @@ describe("RenderedAnswer", () => {
 
     const { container } = render(<RenderedAnswer payload={payload} />);
 
-    expect(container.querySelector("figure.chart")).not.toBeInTheDocument();
-    expect(screen.getByText("alpha/repo")).toBeInTheDocument();
+    expect(container.querySelector("figure.chart")).toBeInTheDocument();
+    expect(screen.getAllByText("alpha/repo").length).toBeGreaterThan(0);
   });
 
   it("does not crash and does not chart when data.values is empty or insufficient", () => {
@@ -307,6 +304,115 @@ describe("RenderedAnswer", () => {
         const width = Number(rects[rects.length - 1]?.getAttribute("width"));
         expect(width).toBeGreaterThan(2);
       }
+    });
+
+    it("renders SVG PieChart for Pie Chart morphing cards", () => {
+      const payload: RenderPayload = {
+        type: "morphing-card",
+        visualizationType: "Pie Chart",
+        generatedAt: "2026-07-23T09:00:00.000Z",
+        chartConfig: {
+          title: "Share of Activity by Category",
+          encoding: {
+            x: { field: "category", type: "nominal" },
+            y: { field: "share", type: "quantitative" },
+          },
+          data: {
+            values: [
+              { category: "React Ecosystem", share: 450 },
+              { category: "AI & ML", share: 320 },
+              { category: "Databases & Storage", share: 210 },
+            ],
+          },
+          mark: { type: "arc" },
+        },
+      } as RenderPayload;
+
+      const { container } = render(<RenderedAnswer payload={payload} />);
+      expect(container.querySelector("figure.chart.pie-chart svg")).toBeInTheDocument();
+      expect(container.querySelectorAll("figure.chart.pie-chart path").length).toBe(3);
+    });
+
+    it("renders SVG StackedBarChart for Stacked Bar Chart morphing cards", () => {
+      const payload: RenderPayload = {
+        type: "morphing-card",
+        visualizationType: "Stacked Bar Chart",
+        generatedAt: "2026-07-23T09:00:00.000Z",
+        chartConfig: {
+          title: "Commits vs Pushes by Repo",
+          encoding: {
+            x: { field: "repo", type: "nominal" },
+            y: { field: "count", type: "quantitative" },
+            color: { field: "metric", type: "nominal" },
+          },
+          data: {
+            values: [
+              { repo: "clickhouse/clickhouse", metric: "commits", count: 120 },
+              { repo: "clickhouse/clickhouse", metric: "pushes", count: 45 },
+              { repo: "vercel/next.js", metric: "commits", count: 90 },
+              { repo: "vercel/next.js", metric: "pushes", count: 30 },
+            ],
+          },
+          mark: { type: "bar" },
+        },
+      } as RenderPayload;
+
+      const { container } = render(<RenderedAnswer payload={payload} />);
+      expect(container.querySelector("figure.chart.stacked-bar-chart svg")).toBeInTheDocument();
+    });
+
+    it("renders SVG WaterfallChart for Waterfall Chart morphing cards", () => {
+      const payload: RenderPayload = {
+        type: "morphing-card",
+        visualizationType: "Waterfall Chart",
+        generatedAt: "2026-07-23T09:00:00.000Z",
+        chartConfig: {
+          title: "Activity Progression",
+          encoding: {
+            x: { field: "step", type: "nominal" },
+            y: { field: "delta", type: "quantitative" },
+            color: { field: "type", type: "nominal" },
+          },
+          data: {
+            values: [
+              { step: "Start", delta: 0, type: "baseline" },
+              { step: "Pushes", delta: 120, type: "change" },
+              { step: "PRs", delta: 45, type: "change" },
+              { step: "Total", delta: 165, type: "total" },
+            ],
+          },
+          mark: { type: "bar" },
+        },
+      } as RenderPayload;
+
+      const { container } = render(<RenderedAnswer payload={payload} />);
+      expect(container.querySelector("figure.chart.waterfall-chart svg")).toBeInTheDocument();
+    });
+
+    it("renders SVG TreemapChart for Treemap morphing cards", () => {
+      const payload: RenderPayload = {
+        type: "morphing-card",
+        visualizationType: "Treemap",
+        generatedAt: "2026-07-23T09:00:00.000Z",
+        chartConfig: {
+          title: "Topic Volume Heatmap",
+          encoding: {
+            x: { field: "topic", type: "nominal" },
+            y: { field: "volume", type: "quantitative" },
+          },
+          data: {
+            values: [
+              { topic: "vector-search", volume: 850 },
+              { topic: "llm-inference", volume: 620 },
+              { topic: "sql-engine", volume: 410 },
+            ],
+          },
+          mark: { type: "rect" },
+        },
+      } as RenderPayload;
+
+      const { container } = render(<RenderedAnswer payload={payload} />);
+      expect(container.querySelector("figure.chart.treemap-chart svg")).toBeInTheDocument();
     });
   });
 });

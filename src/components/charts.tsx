@@ -251,7 +251,8 @@ export function HorizontalBarChart({
         )}
         {items.map((item, idx) => {
           const y = padT + idx * (barH + gap);
-          const barW = Math.max(4, (item.value / maxVal) * barMaxW);
+          const val = Number.isFinite(item.value) && item.value > 0 ? item.value : 0;
+          const barW = Math.max(4, (val / maxVal) * barMaxW);
           const barColor = item.color || "var(--cyan)";
 
           return (
@@ -401,6 +402,310 @@ export function VerticalBarChart({
             </g>
           );
         })}
+      </svg>
+    </figure>
+  );
+}
+
+export interface PieItem {
+  label: string;
+  value: number;
+  color?: string;
+}
+
+export function PieChart({ items, title }: { items: PieItem[]; title?: string }) {
+  if (!items || items.length === 0) return null;
+  const total = items.reduce((sum, item) => sum + item.value, 0);
+  if (total <= 0) return null;
+
+  const W = 640, H = 220;
+  const cx = 140, cy = 110, r = 75, innerR = 40;
+  const colors = ["var(--cyan)", "var(--mag)", "var(--amber)", "var(--blue)", "var(--emerald)", "#a855f7", "#ec4899"];
+
+  const displayItems = items.length > 7
+    ? [
+        ...items.slice(0, 6),
+        { label: "Other", value: items.slice(6).reduce((sum, item) => sum + item.value, 0), color: "var(--muted)" },
+      ]
+    : items;
+
+  let cumulativeAngle = 0;
+  const slices = displayItems.map((item, idx) => {
+    const angle = (item.value / total) * 2 * Math.PI;
+    const startAngle = cumulativeAngle;
+    const endAngle = cumulativeAngle + angle;
+    cumulativeAngle += angle;
+
+    const x1 = cx + r * Math.sin(startAngle);
+    const y1 = cy - r * Math.cos(startAngle);
+    const x2 = cx + r * Math.sin(endAngle);
+    const y2 = cy - r * Math.cos(endAngle);
+
+    const ix1 = cx + innerR * Math.sin(endAngle);
+    const iy1 = cy - innerR * Math.cos(endAngle);
+    const ix2 = cx + innerR * Math.sin(startAngle);
+    const iy2 = cy - innerR * Math.cos(startAngle);
+
+    const largeArc = angle > Math.PI ? 1 : 0;
+    const d = [
+      `M ${x1} ${y1}`,
+      `A ${r} ${r} 0 ${largeArc} 1 ${x2} ${y2}`,
+      `L ${ix1} ${iy1}`,
+      `A ${innerR} ${innerR} 0 ${largeArc} 0 ${ix2} ${iy2}`,
+      `Z`,
+    ].join(" ");
+
+    const color = item.color || colors[idx % colors.length];
+    const pct = ((item.value / total) * 100).toFixed(1);
+
+    return { label: item.label, value: item.value, pct, color, d };
+  });
+
+  return (
+    <figure className="chart pie-chart">
+      <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label={title || "Pie chart distribution"}>
+        {title && (
+          <text x={20} y={20} fontSize="11" fontWeight="700" fill="var(--ink)" className="mono">
+            {title.toUpperCase()}
+          </text>
+        )}
+        {slices.length === 1 ? (
+          <circle cx={cx} cy={cy} r={(r + innerR) / 2} fill="none" stroke={slices[0].color} strokeWidth={r - innerR} opacity="0.88" />
+        ) : (
+          slices.map((slice, idx) => (
+            <path key={`${slice.label}-${idx}`} d={slice.d} fill={slice.color} opacity="0.88" stroke="var(--s)" strokeWidth="1.5" />
+          ))
+        )}
+        <text x={cx} y={cy - 2} fontSize="13" fontWeight="800" fill="var(--ink)" textAnchor="middle" className="mono">
+          {total >= 1000 ? `${(total / 1000).toFixed(1)}k` : total.toLocaleString()}
+        </text>
+        <text x={cx} y={cy + 14} fontSize="9" fill="var(--muted)" textAnchor="middle" className="mono">
+          TOTAL
+        </text>
+        {/* Legend */}
+        {slices.map((slice, idx) => (
+          <g key={`leg-${slice.label}-${idx}`} transform={`translate(280, ${35 + idx * 24})`}>
+            <rect x={0} y={0} width={12} height={12} rx={2} fill={slice.color} />
+            <text x={20} y={10} fontSize="10.5" fontWeight="600" fill="var(--ink)" className="mono">
+              {slice.label.length > 22 ? slice.label.slice(0, 20) + "…" : slice.label}
+            </text>
+            <text x={320} y={10} fontSize="10.5" fontWeight="700" fill="var(--muted)" textAnchor="end" className="mono">
+              {slice.value.toLocaleString()} ({slice.pct}%)
+            </text>
+          </g>
+        ))}
+      </svg>
+    </figure>
+  );
+}
+
+export interface StackedSegment {
+  key: string;
+  label: string;
+  value: number;
+  color?: string;
+}
+
+export interface StackedBarItem {
+  category: string;
+  segments: StackedSegment[];
+}
+
+export function StackedBarChart({ items, title }: { items: StackedBarItem[]; title?: string }) {
+  if (!items || items.length === 0) return null;
+  const W = 640;
+  const barH = 24, gap = 14, padL = 130, padR = 60, padT = title ? 28 : 10;
+  const H = padT + items.length * (barH + gap) + 30;
+  const barMaxW = W - padL - padR;
+
+  const maxTotal = Math.max(
+    ...items.map((item) => item.segments.reduce((acc, seg) => acc + seg.value, 0)),
+    1
+  );
+
+  const colors = ["var(--cyan)", "var(--mag)", "var(--amber)", "var(--blue)", "var(--emerald)", "#a855f7"];
+  const segmentKeys = Array.from(new Set(items.flatMap((i) => i.segments.map((s) => s.key))));
+
+  return (
+    <figure className="chart stacked-bar-chart">
+      <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label={title || "Stacked bar chart"}>
+        {title && (
+          <text x={padL} y={18} fontSize="11" fontWeight="700" fill="var(--ink)" className="mono">
+            {title.toUpperCase()}
+          </text>
+        )}
+        {items.map((item, idx) => {
+          const y = padT + idx * (barH + gap);
+          let currentX = padL;
+          const totalVal = item.segments.reduce((sum, s) => sum + s.value, 0);
+
+          return (
+            <g key={`${item.category}-${idx}`}>
+              <text x={padL - 10} y={y + barH / 2 + 4} fontSize="10" fontWeight="600" fill="var(--ink)" textAnchor="end" className="mono">
+                {item.category.length > 18 ? item.category.slice(0, 16) + "…" : item.category}
+              </text>
+              {item.segments.map((seg, sIdx) => {
+                const segW = (seg.value / maxTotal) * barMaxW;
+                const segX = currentX;
+                currentX += segW;
+                const keyIdx = segmentKeys.indexOf(seg.key);
+                const segColor = seg.color || colors[(keyIdx >= 0 ? keyIdx : sIdx) % colors.length];
+
+                return (
+                  <rect key={`${seg.key}-${sIdx}`} x={segX} y={y} width={Math.max(0, segW)} height={barH} fill={segColor} opacity="0.88" />
+                );
+              })}
+              <text x={currentX + 8} y={y + barH / 2 + 4} fontSize="10" fontWeight="700" fill="var(--ink)" className="mono">
+                {totalVal.toLocaleString()}
+              </text>
+            </g>
+          );
+        })}
+        {/* Legend */}
+        <g transform={`translate(${padL}, ${H - 12})`}>
+          {segmentKeys.slice(0, 5).map((key, i) => (
+            <g key={key} transform={`translate(${i * 100}, 0)`}>
+              <rect x={0} y={-8} width={10} height={10} rx={2} fill={colors[i % colors.length]} />
+              <text x={14} y={0} fontSize="9.5" fill="var(--muted)" className="mono">{key}</text>
+            </g>
+          ))}
+        </g>
+      </svg>
+    </figure>
+  );
+}
+
+export interface WaterfallStep {
+  label: string;
+  delta: number;
+  type?: "baseline" | "change" | "total";
+}
+
+export function WaterfallChart({ steps, title }: { steps: WaterfallStep[]; title?: string }) {
+  if (!steps || steps.length === 0) return null;
+  const W = 640, H = 220, padL = 40, padR = 20, padT = title ? 28 : 14, padB = 36;
+  const iw = W - padL - padR, ih = H - padT - padB;
+
+  let cumulative = 0;
+  const computed = steps.map((s) => {
+    const isTotal = s.type === "total";
+    const start = isTotal ? 0 : cumulative;
+    const end = isTotal ? s.delta : cumulative + s.delta;
+    if (!isTotal) cumulative = end;
+    return { ...s, start, end, isTotal };
+  });
+
+  const maxVal = Math.max(...computed.flatMap((c) => [c.start, c.end]), 1);
+  const minVal = Math.min(...computed.flatMap((c) => [c.start, c.end]), 0);
+  const range = maxVal - minVal || 1;
+
+  const y = (v: number) => padT + ih - ((v - minVal) / range) * ih;
+  const barW = Math.max(12, Math.min(45, (iw / steps.length) * 0.65));
+  const stepW = iw / steps.length;
+
+  return (
+    <figure className="chart waterfall-chart">
+      <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label={title || "Waterfall chart"}>
+        {title && (
+          <text x={padL} y={16} fontSize="11" fontWeight="700" fill="var(--ink)" className="mono">
+            {title.toUpperCase()}
+          </text>
+        )}
+        <line x1={padL} x2={W - padR} y1={y(0)} y2={y(0)} stroke="var(--line)" strokeWidth="1" />
+
+        {computed.map((step, idx) => {
+          const xCenter = padL + idx * stepW + stepW / 2;
+          const xLeft = xCenter - barW / 2;
+          const yTop = y(Math.max(step.start, step.end));
+          const yBot = y(Math.min(step.start, step.end));
+          const h = Math.max(3, yBot - yTop);
+
+          const isPositive = step.delta >= 0;
+          const color = step.isTotal
+            ? "var(--blue)"
+            : isPositive
+            ? "var(--cyan)"
+            : "var(--mag)";
+
+          return (
+            <g key={`${step.label}-${idx}`}>
+              <rect x={xLeft} y={yTop} width={barW} height={h} fill={color} rx="3" opacity="0.88" />
+              <text x={xCenter} y={yTop - 5} fontSize="9.5" fontWeight="700" fill="var(--ink)" textAnchor="middle" className="mono">
+                {isPositive && !step.isTotal ? `+${step.delta}` : step.delta}
+              </text>
+              <text x={xCenter} y={H - padB + 14} fontSize="9" fill="var(--muted)" textAnchor="middle" className="mono">
+                {step.label.length > 10 ? step.label.slice(0, 8) + "…" : step.label}
+              </text>
+            </g>
+          );
+        })}
+      </svg>
+    </figure>
+  );
+}
+
+export interface TreemapTile {
+  label: string;
+  value: number;
+  category?: string;
+}
+
+export function TreemapChart({ items, title }: { items: TreemapTile[]; title?: string }) {
+  if (!items || items.length === 0) return null;
+  const W = 640, H = 220, padT = title ? 26 : 8;
+  const chartH = H - padT;
+
+  const total = items.reduce((sum, item) => sum + item.value, 0);
+  if (total <= 0) return null;
+
+  const colors = ["var(--cyan)", "var(--mag)", "var(--amber)", "var(--blue)", "var(--emerald)", "#a855f7"];
+
+  const displayItems = items.length > 8
+    ? [
+        ...items.slice(0, 7),
+        { label: "Other", value: items.slice(7).reduce((sum, item) => sum + item.value, 0) },
+      ]
+    : items;
+
+  let currentX = 0;
+  const tiles = displayItems.map((item, idx) => {
+    const w = (item.value / total) * W;
+    const tile = {
+      label: item.label,
+      value: item.value,
+      x: currentX,
+      y: padT,
+      w,
+      h: chartH,
+      color: colors[idx % colors.length],
+    };
+    currentX += w;
+    return tile;
+  });
+
+  return (
+    <figure className="chart treemap-chart">
+      <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label={title || "Treemap grid"}>
+        {title && (
+          <text x={0} y={16} fontSize="11" fontWeight="700" fill="var(--ink)" className="mono">
+            {title.toUpperCase()}
+          </text>
+        )}
+        {tiles.map((tile, idx) => (
+          <g key={`${tile.label}-${idx}`}>
+            <rect x={tile.x} y={tile.y} width={Math.max(0, tile.w - 2)} height={tile.h - 2} fill={tile.color} rx="4" opacity="0.82" />
+            {tile.w > 40 && (
+              <>
+                <text x={tile.x + 8} y={tile.y + 20} fontSize="10.5" fontWeight="700" fill="var(--s)" className="mono">
+                  {tile.label.length > 12 ? tile.label.slice(0, 10) + "…" : tile.label}
+                </text>
+                <text x={tile.x + 8} y={tile.y + 36} fontSize="9.5" fill="var(--s)" opacity="0.9" className="mono">
+                  {tile.value.toLocaleString()}
+                </text>
+              </>
+            )}
+          </g>
+        ))}
       </svg>
     </figure>
   );
