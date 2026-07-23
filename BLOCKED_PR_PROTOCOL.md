@@ -139,9 +139,9 @@ report whether it is merged. Do not comment, rebase, push, or change labels.
    - Add a comment: "Waiting for #X to merge (dependency)"
    - Mark as blocked
 4. If merged:
-   - Rebase your branch onto the merged changes
-   - Verify CI passes
-   - Remove blocked label
+    - Rebase your branch onto the merged changes
+    - Verify CI passes
+    - An independent reviewer or human removes the `blocked` label once clean
 
 **Example:**
 ```bash
@@ -208,7 +208,7 @@ If you receive a `blocked` label:
    - Issue #1: [Fixed by commit XYZ - explanation]
    - Issue #2: [Verified with evidence - link]
 
-   Removed `blocked` label.
+    Human or independent reviewer requested to remove the `blocked` label.
    ```
 
 3. The primary or explicitly invoked feedback workflow pushes changes and
