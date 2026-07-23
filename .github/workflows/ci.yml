@@ -78,7 +78,7 @@ jobs:
       - name: Apply ClickHouse migrations
         run: ./scripts/migrate.sh up
         env:
-          CLICKHOUSE_URL: ${{ secrets.CLICKHOUSE_URL }}
+          CLICKHOUSE_HOST: ${{ secrets.CLICKHOUSE_HOST }}
           CLICKHOUSE_USER: ${{ secrets.CLICKHOUSE_USER }}
           CLICKHOUSE_PASSWORD: ${{ secrets.CLICKHOUSE_PASSWORD }}
           CLICKHOUSE_DATABASE: ${{ secrets.CLICKHOUSE_DATABASE }}

@@ -11,9 +11,8 @@ if [ -f .env ]; then
 fi
 
 export GOOSE_DRIVER=clickhouse
-if [ -n "${CLICKHOUSE_URL:-}" ]; then
-  export GOOSE_DBSTRING="$CLICKHOUSE_URL"
-else
-  export GOOSE_DBSTRING="clickhouse://${CLICKHOUSE_USER}:${CLICKHOUSE_PASSWORD}@${CLICKHOUSE_HOST}:9440/${CLICKHOUSE_DATABASE:-default}?secure=true"
-fi
+# GOOSE_DBSTRING needs the native clickhouse:// protocol on port 9440 -- CLICKHOUSE_URL
+# (used elsewhere for HTTP/curl inserts) is an https://...:8443 REST endpoint and is
+# not a valid goose DSN, so always build it from the individual HOST/USER/PASSWORD parts.
+export GOOSE_DBSTRING="clickhouse://${CLICKHOUSE_USER}:${CLICKHOUSE_PASSWORD}@${CLICKHOUSE_HOST}:9440/${CLICKHOUSE_DATABASE:-default}?secure=true"
 exec goose -dir migrations "$@"
