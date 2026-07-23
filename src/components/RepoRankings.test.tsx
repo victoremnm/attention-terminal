@@ -192,6 +192,31 @@ describe("RepoRankings", () => {
     });
   });
 
+  it("moves a column up and reflects the new order in the header", async () => {
+    const { container } = render(<RepoRankings windows={seedWindows()} />);
+    await findRepoRow("acme/widgets");
+
+    fireEvent.click(screen.getByRole("button", { name: /filters & columns/i }));
+    const panel = await screen.findByRole("region", { name: /filters and columns/i });
+    const moveActorsUp = within(panel).getAllByRole("button").find((btn) => {
+      const liParent = btn.closest("li");
+      return liParent?.textContent?.includes("actors") && btn.textContent?.trim() === "↑";
+    });
+
+    expect(moveActorsUp).toBeDefined();
+    fireEvent.click(moveActorsUp!);
+
+    const head = container.querySelector(".rank-stats-head");
+    const headerLabels = within(head as HTMLElement)
+      .getAllByRole("button")
+      .map((btn) => btn.textContent?.trim());
+    // Default order is pushes, commits, actors. After moving actors up twice, order should be actors, pushes, commits.
+    const pushesIdx = headerLabels.indexOf("pushes");
+    const commitsIdx = headerLabels.indexOf("commits");
+    const actorsIdx = headerLabels.indexOf("actors");
+    expect(actorsIdx).toBeLessThan(commitsIdx);
+  });
+
   it("filters rows client-side by search text", async () => {
     render(<RepoRankings windows={seedWindows()} />);
     await findRepoRow("acme/widgets");

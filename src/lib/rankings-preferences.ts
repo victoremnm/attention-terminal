@@ -60,7 +60,7 @@ export const RANKING_MODES: readonly RankingModeConfig[] = [
     label: "Active (pushes)",
     source: "active",
     querySort: "pushes",
-    description: "Substantive push activity only — zero-commit and default-branch noise excluded.",
+    description: "Substantive push activity only — zero-commit pushes excluded (branch scope isn't tracked by this data source).",
   },
 ] as const;
 

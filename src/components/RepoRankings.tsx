@@ -341,8 +341,12 @@ export function RepoRankings({ windows }: { windows: Record<RepoWindow, RepoWind
 
   const headerColumns =
     source === "attention"
-      ? ATTENTION_COLUMNS.filter((c) => prefs.attentionColumns.includes(c.key))
-      : ACTIVE_COLUMNS.filter((c) => prefs.activeColumns.includes(c.key));
+      ? prefs.attentionColumns
+          .map((key) => ATTENTION_COLUMNS.find((c) => c.key === key))
+          .filter((c): c is (typeof ATTENTION_COLUMNS)[number] => c !== undefined)
+      : prefs.activeColumns
+          .map((key) => ACTIVE_COLUMNS.find((c) => c.key === key))
+          .filter((c): c is (typeof ACTIVE_COLUMNS)[number] => c !== undefined);
 
   const primaryHeaderLabel = (filteredRows[0]?.primaryLabel ?? rows[0]?.primaryLabel ?? prefs.sortField).toUpperCase();
 
