@@ -116,6 +116,7 @@ export function RepoRankings({ windows }: { windows: Record<RepoWindow, RepoWind
 
   const dataRequestId = useRef(0);
   const isInitialRender = useRef(true);
+  const filtersMounted = useRef(false);
   const [refreshNonce, setRefreshNonce] = useState(0);
 
   useEffect(() => () => drilldownAbort.current?.abort(), []);
@@ -195,6 +196,15 @@ export function RepoRankings({ windows }: { windows: Record<RepoWindow, RepoWind
     return () => controller.abort();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [prefs.mode, prefs.sortField, prefs.sortDirection, activeWindowTab, page, refreshNonce]);
+
+  useEffect(() => {
+    if (!filtersMounted.current) {
+      filtersMounted.current = true;
+      return;
+    }
+    setPage(0);
+    setRefreshNonce((n) => n + 1);
+  }, [prefs.minStars, prefs.hideBotOnly, prefs.requireSubstantiveWork]);
 
   function handleSelectMode(mode: RankingMode) {
     setPage(0);
@@ -500,9 +510,14 @@ export function RepoRankings({ windows }: { windows: Record<RepoWindow, RepoWind
                   ))}
             </ul>
           </div>
-          <button type="button" className="rankings-reset-button" onClick={handleResetDefaults}>
-            Reset to defaults
-          </button>
+          <div className="rankings-controls-actions">
+            <button type="button" className="rankings-refresh-button" onClick={handleRefresh}>
+              Refresh
+            </button>
+            <button type="button" className="rankings-reset-button" onClick={handleResetDefaults}>
+              Reset to defaults
+            </button>
+          </div>
         </div>
       ) : null}
 

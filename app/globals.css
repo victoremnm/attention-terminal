@@ -1739,6 +1739,11 @@ a { color: inherit; }
   color: var(--ink);
 }
 
+.rankings-controls-actions {
+  display: flex;
+  gap: 8px;
+}
+
 @media (min-width: 960px) {
   .tk-scroll {
     display: grid;

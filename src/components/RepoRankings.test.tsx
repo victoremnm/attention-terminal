@@ -280,4 +280,20 @@ describe("RepoRankings", () => {
     // but the 9999 star floor must not apply to active-source rows.
     expect(await findRepoRow("acme/widgets")).toBeInTheDocument();
   });
+
+  it("re-fetches when a filter changes instead of only narrowing the already-loaded page", async () => {
+    render(<RepoRankings windows={seedWindows()} />);
+    await findRepoRow("acme/widgets");
+
+    fireEvent.click(screen.getByRole("button", { name: /filters & columns/i }));
+    const panel = await screen.findByRole("region", { name: /filters and columns/i });
+    const minStarsInput = within(panel).getByLabelText(/Min total/i);
+
+    fetchMock.mockClear();
+    await act(async () => {
+      fireEvent.change(minStarsInput, { target: { value: "1000" } });
+    });
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+  });
 });
