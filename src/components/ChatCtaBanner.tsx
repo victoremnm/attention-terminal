@@ -50,16 +50,8 @@ export function ChatCtaBanner() {
       </div>
       <Link
         href="/chat"
-        className="mono"
+        className="chat-cta-link mono"
         style={linkStyle}
-        onMouseEnter={(e) => {
-          e.currentTarget.style.background = "rgba(0, 200, 240, 0.15)";
-          e.currentTarget.style.borderColor = "var(--cyan)";
-        }}
-        onMouseLeave={(e) => {
-          e.currentTarget.style.background = "rgba(0, 200, 240, 0.08)";
-          e.currentTarget.style.borderColor = "rgba(56, 205, 236, 0.3)";
-        }}
       >
         Open Terminal Chat →
       </Link>
