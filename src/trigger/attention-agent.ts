@@ -79,7 +79,9 @@ export const attentionAgent = chat.agent({
         model: ATTENTION_AGENT_MODEL,
         latencyMs,
         inputTokens: usage.inputTokens ?? 0,
+        inputTokensProvenance: usage.inputTokens === undefined ? "estimated" : "measured",
         outputTokens: usage.outputTokens ?? 0,
+        outputTokensProvenance: usage.outputTokens === undefined ? "estimated" : "measured",
         // Vercel AI SDK usage doesn't carry cost; the subagent_experiments view
         // tolerates 0 cost (the OTel bridge or a pricing lookup can fill it later).
         costUsd: 0,

@@ -109,6 +109,10 @@ function normalizeProvenance(value: unknown, fallback: UsageProvenance): UsagePr
   return value === "measured" || value === "estimated" ? value : fallback;
 }
 
+export function provenanceColumn(column: string, availableColumns: ReadonlySet<string>): string {
+  return availableColumns.has(column) ? column : `'estimated' AS ${column}`;
+}
+
 /**
  * Fill only values explicitly marked as estimated. A provider-reported zero is
  * meaningful and must not be replaced by a presentation-layer estimate.
@@ -235,14 +239,20 @@ export async function fetchTelemetryData(): Promise<TelemetryPayload> {
   const hasLearnings = missingLearnings.length === 0;
   const hasExperiments = missingExperiments.length === 0;
 
-  const missingProvCols = hasRuns
-    ? await missingColumns("subagent_runs", [
-        "input_tokens_provenance",
-        "output_tokens_provenance",
-        "cost_provenance",
-      ])
-    : [];
-  const hasProvCols = missingProvCols.length === 0;
+  const [missingRunColumns, missingEventColumns, missingExperimentColumns] = await Promise.all([
+    hasRuns
+      ? missingColumns("subagent_runs", ["input_tokens_provenance", "output_tokens_provenance", "cost_provenance"])
+      : Promise.resolve([]),
+    hasEvents
+      ? missingColumns("subagent_api_events", ["input_tokens_provenance", "output_tokens_provenance", "cost_provenance"])
+      : Promise.resolve([]),
+    hasExperiments
+      ? missingColumns("subagent_experiments", ["input_tokens_provenance", "output_tokens_provenance", "cost_provenance"])
+      : Promise.resolve([]),
+  ]);
+  const runColumns = new Set(["input_tokens_provenance", "output_tokens_provenance", "cost_provenance"].filter((column) => !missingRunColumns.includes(column)));
+  const eventColumns = new Set(["input_tokens_provenance", "output_tokens_provenance", "cost_provenance"].filter((column) => !missingEventColumns.includes(column)));
+  const experimentColumns = new Set(["input_tokens_provenance", "output_tokens_provenance", "cost_provenance"].filter((column) => !missingExperimentColumns.includes(column)));
 
   const runsQuery = hasRuns
     ? clickhouse
@@ -260,11 +270,11 @@ export async function fetchTelemetryData(): Promise<TelemetryPayload> {
           result_preview,
           latency_ms,
           input_tokens,
-          ${hasProvCols ? "input_tokens_provenance" : "'measured' AS input_tokens_provenance"},
+          ${provenanceColumn("input_tokens_provenance", runColumns)},
           output_tokens,
-          ${hasProvCols ? "output_tokens_provenance" : "'measured' AS output_tokens_provenance"},
+          ${provenanceColumn("output_tokens_provenance", runColumns)},
           cost_usd,
-          ${hasProvCols ? "cost_provenance" : "'estimated' AS cost_provenance"},
+          ${provenanceColumn("cost_provenance", runColumns)},
           ok
         FROM subagent_runs FINAL
         ORDER BY ts DESC
@@ -287,11 +297,11 @@ export async function fetchTelemetryData(): Promise<TelemetryPayload> {
           agent_name,
           model,
           input_tokens,
-          input_tokens_provenance,
+          ${provenanceColumn("input_tokens_provenance", eventColumns)},
           output_tokens,
-          output_tokens_provenance,
+          ${provenanceColumn("output_tokens_provenance", eventColumns)},
           cost_usd,
-          cost_provenance,
+          ${provenanceColumn("cost_provenance", eventColumns)},
           duration_ms
         FROM subagent_api_events
         ORDER BY ts DESC
@@ -314,11 +324,11 @@ export async function fetchTelemetryData(): Promise<TelemetryPayload> {
           model_name,
           latency_ms,
           input_tokens,
-          input_tokens_provenance,
+          ${provenanceColumn("input_tokens_provenance", experimentColumns)},
           output_tokens,
-          output_tokens_provenance,
+          ${provenanceColumn("output_tokens_provenance", experimentColumns)},
           total_cost_usd,
-          cost_provenance,
+          ${provenanceColumn("cost_provenance", experimentColumns)},
           result_preview,
           ok,
           eval_score,

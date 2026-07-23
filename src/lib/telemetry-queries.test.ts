@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { enrichTelemetryRun, type SubagentRunRow } from "./telemetry-queries";
+import { enrichTelemetryRun, provenanceColumn, type SubagentRunRow } from "./telemetry-queries";
 
 const logger = fileURLToPath(new URL("../../scripts/log-subagent-run.sh", import.meta.url));
 
@@ -43,6 +43,13 @@ function fixture(overrides: Partial<SubagentRunRow> = {}): SubagentRunRow {
 }
 
 describe("telemetry usage provenance", () => {
+  it("falls back to a literal when a legacy table lacks provenance columns", () => {
+    const available = new Set(["input_tokens_provenance"]);
+
+    expect(provenanceColumn("input_tokens_provenance", available)).toBe("input_tokens_provenance");
+    expect(provenanceColumn("output_tokens_provenance", available)).toBe("'estimated' AS output_tokens_provenance");
+  });
+
   it("does not replace provider-reported zeroes with estimates", () => {
     const result = enrichTelemetryRun(
       fixture({
