@@ -8,14 +8,6 @@ type TableRow = {
   size?: string;
 };
 
-type DescribeRow = {
-  name: string;
-  type: string;
-  default_type?: string;
-  default_expression?: string;
-  comment?: string;
-};
-
 const RELEVANT_TABLES = new Set([
   "hackernews",
   "github_events",
@@ -31,24 +23,7 @@ const RELEVANT_TABLES = new Set([
   "ingest_log",
 ]);
 
-function compactSchema(columns: DescribeRow[], maxChars = 500) {
-  const rendered: string[] = [];
-  let length = 0;
-
-  for (const column of columns) {
-    const part = `${column.name} ${column.type}${column.default_expression ? ` DEFAULT ${column.default_expression}` : ""}`;
-    const next = rendered.length === 0 ? part.length : part.length + 2;
-    if (length + next > maxChars) break;
-    rendered.push(part);
-    length += next;
-  }
-
-  if (rendered.length < columns.length) {
-    rendered.push(`… (+${columns.length - rendered.length} more)`);
-  }
-
-  return rendered.join(", ");
-}
+const TABLE_LIST_LIMIT = 50;
 
 function summarizeEngine(engine: string) {
   if (engine.includes("View")) return "view";
@@ -56,53 +31,48 @@ function summarizeEngine(engine: string) {
   return engine;
 }
 
-export async function catalogPromptSection() {
-  let tables: TableRow[] = [];
+export function formatTableRow(table: TableRow): string {
+  const rowHint = table.total_rows ? ` (~${Number(table.total_rows).toLocaleString()} rows)` : "";
+  return `- \`${table.database}.${table.name}\` (${summarizeEngine(table.engine)})${rowHint}`;
+}
+
+/** Fallback catalog text when metadata queries fail. */
+export function fallbackCatalog(): string {
+  return `ClickHouse catalog:
+
+⚠️ Catalog metadata unavailable at this time. The agent can still query known tables; call listTables and describeTable to discover the schema at query time.
+
+Known tables: ${[...RELEVANT_TABLES].sort().join(", ")}.`;
+}
+
+export async function catalogPromptSection(): Promise<string> {
   try {
-    tables = await clickhouse.query({
+    const tables = await clickhouse.query({
       query: `
-        SELECT database, name, engine
+        SELECT database, name, engine, total_rows
         FROM system.tables
         WHERE database NOT IN ('system', 'information_schema', 'INFORMATION_SCHEMA')
         ORDER BY database, name
-        LIMIT 50
+        LIMIT {limit: UInt32}
       `,
       format: "JSONEachRow",
+      query_params: { limit: TABLE_LIST_LIMIT },
       clickhouse_settings: {
         readonly: "2",
-        max_execution_time: 5,
+        max_execution_time: 10,
       },
     }).then((result) => result.json<TableRow>());
-  } catch {
-    tables = [
-      { database: "default", name: "github_events", engine: "MergeTree" },
-      { database: "default", name: "gh_repo_metadata", engine: "ReplacingMergeTree" },
-      { database: "default", name: "gh_repo_daily", engine: "SummingMergeTree" },
-      { database: "default", name: "gh_repo_hourly", engine: "SummingMergeTree" },
-      { database: "default", name: "gh_actor_daily", engine: "SummingMergeTree" },
-    ];
-  }
 
-  const lines = await Promise.all(
-    tables.filter((table) => RELEVANT_TABLES.has(table.name)).map(async (table) => {
-      const rows = await clickhouse.query({
-        query: "DESCRIBE TABLE {database: Identifier}.{name: Identifier}",
-        query_params: { database: table.database, name: table.name },
-        format: "JSONEachRow",
-        clickhouse_settings: {
-          readonly: "2",
-          max_execution_time: 10,
-        },
-      }).then((result) => result.json<DescribeRow>());
+    const lines = tables
+      .filter((table) => RELEVANT_TABLES.has(table.name))
+      .map(formatTableRow);
 
-      const schema = compactSchema(rows);
-      return `- \`${table.database}.${table.name}\` (${summarizeEngine(table.engine)}) — ${schema}`;
-    })
-  );
-
-  return `ClickHouse catalog:
+    return `ClickHouse catalog:
 
 This catalog is generated live from ClickHouse at chat start and narrowed to the agent-relevant tables. If a table is missing here, call listTables and describeTable before writing SQL.
 
 ${lines.join("\n")}`;
+  } catch {
+    return fallbackCatalog();
+  }
 }
