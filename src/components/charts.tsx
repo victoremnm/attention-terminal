@@ -251,7 +251,8 @@ export function HorizontalBarChart({
         )}
         {items.map((item, idx) => {
           const y = padT + idx * (barH + gap);
-          const barW = Math.max(4, (item.value / maxVal) * barMaxW);
+          const val = Number.isFinite(item.value) && item.value > 0 ? item.value : 0;
+          const barW = Math.max(4, (val / maxVal) * barMaxW);
           const barColor = item.color || "var(--cyan)";
 
           return (
@@ -421,8 +422,15 @@ export function PieChart({ items, title }: { items: PieItem[]; title?: string })
   const cx = 140, cy = 110, r = 75, innerR = 40;
   const colors = ["var(--cyan)", "var(--mag)", "var(--amber)", "var(--blue)", "var(--emerald)", "#a855f7", "#ec4899"];
 
+  const displayItems = items.length > 7
+    ? [
+        ...items.slice(0, 6),
+        { label: "Other", value: items.slice(6).reduce((sum, item) => sum + item.value, 0), color: "var(--muted)" },
+      ]
+    : items;
+
   let cumulativeAngle = 0;
-  const slices = items.slice(0, 7).map((item, idx) => {
+  const slices = displayItems.map((item, idx) => {
     const angle = (item.value / total) * 2 * Math.PI;
     const startAngle = cumulativeAngle;
     const endAngle = cumulativeAngle + angle;
@@ -461,9 +469,13 @@ export function PieChart({ items, title }: { items: PieItem[]; title?: string })
             {title.toUpperCase()}
           </text>
         )}
-        {slices.map((slice, idx) => (
-          <path key={`${slice.label}-${idx}`} d={slice.d} fill={slice.color} opacity="0.88" stroke="var(--s)" strokeWidth="1.5" />
-        ))}
+        {slices.length === 1 ? (
+          <circle cx={cx} cy={cy} r={(r + innerR) / 2} fill="none" stroke={slices[0].color} strokeWidth={r - innerR} opacity="0.88" />
+        ) : (
+          slices.map((slice, idx) => (
+            <path key={`${slice.label}-${idx}`} d={slice.d} fill={slice.color} opacity="0.88" stroke="var(--s)" strokeWidth="1.5" />
+          ))
+        )}
         <text x={cx} y={cy - 2} fontSize="13" fontWeight="800" fill="var(--ink)" textAnchor="middle" className="mono">
           {total >= 1000 ? `${(total / 1000).toFixed(1)}k` : total.toLocaleString()}
         </text>
@@ -536,7 +548,8 @@ export function StackedBarChart({ items, title }: { items: StackedBarItem[]; tit
                 const segW = (seg.value / maxTotal) * barMaxW;
                 const segX = currentX;
                 currentX += segW;
-                const segColor = seg.color || colors[sIdx % colors.length];
+                const keyIdx = segmentKeys.indexOf(seg.key);
+                const segColor = seg.color || colors[(keyIdx >= 0 ? keyIdx : sIdx) % colors.length];
 
                 return (
                   <rect key={`${seg.key}-${sIdx}`} x={segX} y={y} width={Math.max(0, segW)} height={barH} fill={segColor} opacity="0.88" />
@@ -647,8 +660,15 @@ export function TreemapChart({ items, title }: { items: TreemapTile[]; title?: s
 
   const colors = ["var(--cyan)", "var(--mag)", "var(--amber)", "var(--blue)", "var(--emerald)", "#a855f7"];
 
+  const displayItems = items.length > 8
+    ? [
+        ...items.slice(0, 7),
+        { label: "Other", value: items.slice(7).reduce((sum, item) => sum + item.value, 0) },
+      ]
+    : items;
+
   let currentX = 0;
-  const tiles = items.slice(0, 8).map((item, idx) => {
+  const tiles = displayItems.map((item, idx) => {
     const w = (item.value / total) * W;
     const tile = {
       label: item.label,
