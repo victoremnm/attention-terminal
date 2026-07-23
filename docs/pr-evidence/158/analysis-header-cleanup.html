@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Analysis header cleanup evidence</title>
+  <style>
+    :root { color-scheme: dark; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+    body { margin: 0; padding: 32px; background: #0d1117; color: #d1d9e0; }
+    main { max-width: 1280px; margin: auto; }
+    h1 { color: #7ee787; font-size: 24px; }
+    .card { border: 1px solid #30363d; border-radius: 8px; padding: 18px; background: #161b22; }
+    .ok { color: #7ee787; }
+    .muted { color: #8b949e; }
+    img { display: block; width: 100%; margin-top: 18px; border: 1px solid #30363d; border-radius: 6px; }
+    code { color: #ffa657; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Analysis header cleanup</h1>
+    <section class="card">
+      <p class="ok">✓ Verified in the local rendered /analysis page.</p>
+      <p>Removed the “CLICKHOUSE CLOUD ACTIVE”, “OTEL TRACES ENABLED”, and “VIOLIN / BOXPLOT VISUALS” pillboxes. The page title, subtitle, refresh action, KPI cards, and tabs remain visible.</p>
+      <p class="muted">Captured with agent-browser against the follow-up PR worktree.</p>
+      <img src="analysis-header-cleanup.png" alt="Analysis page with a clean header and no pillboxes">
+    </section>
+  </main>
+</body>
+</html>

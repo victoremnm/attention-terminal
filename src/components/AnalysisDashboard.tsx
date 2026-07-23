@@ -56,13 +56,6 @@ export function AnalysisDashboard({ initialData }: AnalysisDashboardProps) {
       {/* Header */}
       <header className="telemetry-header">
         <div className="header-titles">
-          <div className="badge-row">
-            <span className="live-badge pulse-dot">
-              <span className="dot" /> CLICKHOUSE CLOUD ACTIVE
-            </span>
-            <span className="tech-badge">OTEL TRACES ENABLED</span>
-            <span className="tech-badge">VIOLIN / BOXPLOT VISUALS</span>
-          </div>
           <h1>Agent Telemetry & Session Learnings</h1>
           <p className="subtitle">
             Autonomous multi-agent execution metrics, model latency distributions, token cost analytics, and durable engineering learnings stored in ClickHouse.

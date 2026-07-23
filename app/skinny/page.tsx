@@ -1,4 +1,4 @@
-import { AttentionChat } from "@/components/AttentionChat";
+import { ChatCtaBanner } from "@/components/ChatCtaBanner";
 import { DailySkinny } from "@/components/DailySkinny";
 import { SurfaceNav } from "@/components/SurfaceNav";
 import { dailyDigest } from "@/lib/digest";
@@ -17,7 +17,7 @@ export default async function SkinnyPage() {
     <>
       <SurfaceNav active="skinny" />
       <DailySkinny initial={digest} ingestToken={token} />
-      <AttentionChat />
+      <ChatCtaBanner />
     </>
   );
 }

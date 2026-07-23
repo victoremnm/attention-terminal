@@ -1,0 +1,48 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>PR 150 — chat handover runtime evidence</title>
+<style>
+  :root { color-scheme: dark; font: 15px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; }
+  body { max-width: 960px; margin: 40px auto; padding: 0 24px; background: #0d1117; color: #e6edf3; }
+  section { margin: 24px 0; padding: 20px; border: 1px solid #30363d; border-radius: 8px; }
+  h1, h2 { font-family: system-ui, sans-serif; }
+  code, pre { color: #a5d6ff; }
+  pre { overflow: auto; padding: 14px; background: #161b22; border-radius: 6px; }
+  .ok { color: #3fb950; }
+  .before { color: #ff7b72; }
+</style>
+<h1>Chat handover runtime repair</h1>
+<p>PR 150 preview evidence for the failure reported from the Vercel deployment.</p>
+
+<section>
+  <h2>Observed failure</h2>
+  <p class="before">Before the fix, <code>POST /api/chat</code> returned 500 and the UI showed <code>chat.handover endpoint returned 500</code>.</p>
+  <pre>Error [TriggerApiError]: No matching branch env
+status: 401
+branch=fix/146-chat-markdown</pre>
+  <p>The Vercel runtime log identified the cause: the Trigger SDK inherited the Vercel preview branch, but that Trigger project had no matching preview branch environment.</p>
+</section>
+
+<section>
+  <h2>Repair</h2>
+  <p><code>attentionTriggerApiClient</code> explicitly uses <code>TRIGGER_PREVIEW_BRANCH</code> when configured; otherwise it passes an empty preview branch so the SDK uses the default development environment instead of inferring <code>VERCEL_GIT_COMMIT_REF</code>.</p>
+  <p>The same client is now used by session creation, public-token minting, and the head-start route.</p>
+</section>
+
+<section>
+  <h2>Automated proof</h2>
+  <p class="ok">PASS — <code>src/lib/chat-actions.integration.test.ts</code></p>
+  <p>The test sets <code>VERCEL_GIT_COMMIT_REF=fix/146-chat-markdown</code>, leaves <code>TRIGGER_PREVIEW_BRANCH</code> unset, intercepts the Trigger session request, and asserts that no <code>x-trigger-branch</code> header is sent.</p>
+  <pre>npx vitest run src/lib/chat-actions.integration.test.ts --reporter=dot
+Test Files  1 passed (1)
+Tests       1 passed (1)
+
+npx tsc --noEmit --incremental false
+exit 0</pre>
+</section>
+
+<section>
+  <h2>Deployment proof</h2>
+  <p class="ok">PASS — deployment <code>dpl_4FBN5zUowcK7ZGbQfgTR3sydHNH3</code> is Ready.</p>
+  <p>Vercel runtime logs for the deployment show no errors after the repair. Direct anonymous HTTP checks are blocked by the project’s Vercel Authentication layer (401), so the browser-side interaction still needs to be checked through the authenticated preview URL.</p>
+</section>

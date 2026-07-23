@@ -8,6 +8,20 @@ Bullet list of what changed. Concrete: file paths, table names, RPC signatures. 
 
 Closes #N (if applicable).
 
+## Review at a glance
+
+Preview/evidence link: [live preview URL or committed artifact]
+
+Agent identity: `[agent-id]` · `[model]` · `[agent-type]` · session `[session-id]`
+
+Review status: independent reviewer adds `lgtm` only after the merge gate; otherwise use `blocked` with an explanatory comment.
+
+### Before / after proof
+
+- Before: [what was broken or missing]
+- After: [what the reviewer can now observe]
+- Evidence: [embedded screenshot, HTML preview, rendered query result, or build proof]
+
 ## What was verified (by the agent)
 
 What the agent actually ran and observed — not what it intended. Each bullet is a command + observed result. If the agent did NOT verify something, that fact appears here too.
@@ -28,6 +42,27 @@ What a human must check that the agent cannot. Be specific — name the UI eleme
 ## Graceful degradation
 
 If this PR adds new optional fields/tables/endpoints, how does the system behave when they're absent or empty? If not applicable, say "n/a — no new optional surfaces".
+
+## Agent attribution
+
+Every PR must identify the agent (or human) that authored it. This is for
+traceability — when reviewing a PR, the reviewer needs to know who/what
+wrote the code.
+
+- **Authored by**: [agent name or model ID, e.g. `glm-5.2:cloud` or `human: victoremnm`]
+- **Subagent runs**: [count of subagent runs logged to `subagent_runs` for this PR, or `0` if none]
+
+Commit messages must include a `Co-authored-by:` trailer identifying the
+agent. Example:
+
+```
+feat: add Octokit activity client
+
+Co-authored-by: glm-5.2:cloud <agent@attention-terminal>
+```
+
+If multiple agents worked on the PR, each agent's commits must carry their
+own trailer. If a human authored a commit, no trailer is needed.
 
 ## Notes for review
 
