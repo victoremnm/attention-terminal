@@ -13,6 +13,7 @@ interface TaxonomyRow {
   display_name: string;
   hn_tokens: string[];
   gh_repo_patterns: string[];
+  rank: number;
 }
 
 // Cache for taxonomy, fetched once per process
@@ -26,7 +27,7 @@ async function getTaxonomy(): Promise<Topic[]> {
 
   try {
     const { rows } = await q<TaxonomyRow>(
-      "SELECT key, display_name, hn_tokens, gh_repo_patterns FROM daily_skinny_taxonomy ORDER BY key",
+      "SELECT key, display_name, hn_tokens, gh_repo_patterns, rank FROM daily_skinny_taxonomy ORDER BY rank",
       ["daily_skinny_taxonomy"]
     );
 
