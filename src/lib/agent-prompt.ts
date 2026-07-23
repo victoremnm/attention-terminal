@@ -12,16 +12,13 @@ export const answerReference = `Answer grammar:
 - Candles payload: { type: "candles", subject, verdict, days, values, caption, freshness? }.
 - Matrix payload: { type: "matrix", generatedAt, topics }.
 - Skinny-deck payload: { type: "skinny-deck", dateStr, generatedAt, cards }. Each card carries its own verdict, metric, caption, sources, a visual (dev-scatter | divergence | candles), and a query { sql, rowsRead, elapsedMs } for the view-SQL flip.
-- Morphing-card payload: { type: "morphing-card", visualizationType, generatedAt, chartConfig, summary?, query? }.
-  Prefer including query provenance (rowsRead/elapsedMs) when available, and include chartConfig.data.values
-  so the UI can render a readable table fallback while the visualization is still being built.
+- Morphing-card payload: { type: "morphing-card", visualizationType, generatedAt, chartConfig, summary?, query? }. Used both for the fixed chart types and as the fallback for ad-hoc/custom questions the other payload types don't cover.
+  - \`visualizationType\` (required): one of the fixed taxonomy strings. Only "Line Graph", "Area Chart", and "Bar Chart" actually render as a chart on the client — every other taxonomy entry still validates and still shows the data table, but never renders as a chart, so never describe a chart in prose for any other visualizationType.
+  - \`chartConfig\` (required): a Vega-Lite-shaped object: { data: { values: <row objects, up to 50> }, encoding: { tooltip: [{ field, title }, ...] } }. The always-shown table fallback reads \`chartConfig.data.values\` for its rows and \`chartConfig.encoding.tooltip\` for column labels (falling back to the row objects' own keys if \`tooltip\` is omitted). Row values may be numbers, strings, booleans, arrays, or nested objects — the table renderer stringifies non-scalar cells, so never pre-serialize array/object values yourself.
+  - When using runDataRetrieval + runVisualizationMapping for ad-hoc questions: put runDataRetrieval's \`sampleRows\` directly into \`chartConfig.data.values\` unmodified, set the top-level \`visualizationType\` from runVisualizationMapping's \`chartType\`, and build \`chartConfig.encoding.tooltip\` as one \`{ field, title }\` entry per column named in runVisualizationMapping's \`axesMapping\` (title = a human-readable label for that field).
+  - \`summary\` (optional): a 1-2 sentence takeaway, rendered immediately above the table.
+  - \`query\` (optional): { sql, rowsRead, elapsedMs } — include when available for the view-SQL provenance disclosure.
 - Repo drill-down payload: { type: "repo-drilldown", repoName, generatedAt, metadata, kpis24h, velocity, topActors24h, feed, query }. Use it for specific GitHub owner/repo drill-downs.
-- Morphing-card payload (fallback for ad-hoc/custom questions the fixed types above don't cover): { type: "morphing-card", generatedAt, summary, data, visualization?, freshness? }.
-  - \`summary\`: a 1-2 sentence takeaway, rendered immediately.
-  - \`data\`: a flat array of row objects (<=50 rows) — always populate this, even when you also set \`visualization\`, because it renders as a table immediately and is the only thing that renders for chart types the client doesn't implement.
-  - \`visualization\` (optional): { visualizationType, chartConfig } from runVisualizationMapping. It only actually renders as a chart for visualizationType Line Graph, Area Chart, or Bar Chart — for every other taxonomy entry, only \`summary\` and \`data\` render, so never describe a chart in prose that isn't one of those three.
-  - \`freshness\` (optional): a short string describing the data's source and age, e.g. "github_events · 12m old".
-  - When using runDataRetrieval + runVisualizationMapping, pass runDataRetrieval's \`sampleRows\` straight into \`data\` unmodified.
 - Captions and skinny copy must stay within the schema limits.
 - Empty prompt, daily-open, "what's new", and broad daily triage should call getDailyDigest and then renderAnswer with that digest payload.
 - "Who are the real builders (this week/month)?" and similar builder-attribution prompts should call getRealBuilders (window "7d" or "30d") and then renderAnswer with the returned skinny-deck payload, unedited.

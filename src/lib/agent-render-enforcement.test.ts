@@ -4,7 +4,14 @@ import { shouldForceRenderAnswer } from "./agent-render-enforcement";
 describe("shouldForceRenderAnswer", () => {
   it("never forces a turn that hasn't fetched any data (idle chit-chat)", () => {
     expect(shouldForceRenderAnswer([], 5)).toBe(false);
-    expect(shouldForceRenderAnswer(["listTables"], 1)).toBe(false); // listTables alone, too early
+    expect(shouldForceRenderAnswer(["listTables"], 1)).toBe(false);
+  });
+
+  it("does not count schema-inspection tools as fetched data, even across many steps", () => {
+    // listTables + two describeTable calls (the normal multi-table exploration
+    // flow) must never alone trigger a forced renderAnswer -- the model hasn't
+    // run its actual query yet.
+    expect(shouldForceRenderAnswer(["listTables", "describeTable", "describeTable"], 5)).toBe(false);
   });
 
   it("does not force before renderAnswer has had a fair chance (early steps)", () => {

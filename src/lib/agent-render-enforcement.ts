@@ -2,11 +2,13 @@
 // prepareStep) so it can be unit tested without mocking the full AI SDK
 // streamText/multi-step machinery.
 
+// Only tools that actually produce result ROWS count as "fetched data" here.
+// listTables/describeTable are schema-inspection steps the model runs before
+// a query, not the query itself -- counting them would force renderAnswer
+// before a multi-table join/comparison ever executes its actual SQL.
 const DATA_FETCH_TOOL_NAMES = new Set([
   "runReadOnlyQuery",
   "runDataRetrieval",
-  "listTables",
-  "describeTable",
   "getDailyDigest",
   "getRealBuilders",
   "getRepoDrilldown",

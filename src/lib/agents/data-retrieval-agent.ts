@@ -103,7 +103,7 @@ export async function runDataRetrievalAgent(intent: string) {
     metadata,
     queryExecuted: query,
     // Bounded sample the model can pass straight into a morphing-card
-    // payload's `data` field (see runVisualizationMappingDef / MorphingCardSchema).
+    // payload's chartConfig.data.values (see MorphingCardSchema in render-payload.ts).
     sampleRows: rows.slice(0, MAX_SAMPLE_ROWS),
   };
 }
