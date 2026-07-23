@@ -99,7 +99,7 @@ export const ingestHackernews = schedules.task({
 
     const rows = await fetchItems(ids);
     if (rows.length > 0) {
-      await clickhouseInsert.insert({ table: "raw.hackernews", values: rows, format: "JSONEachRow" });
+      await clickhouseInsert.insert({ table: "default.hackernews", values: rows, format: "JSONEachRow" });
       await logIngest({
         source: "hackernews",
         chunk_key: `items:${ids[0]}-${ids[ids.length - 1]}`,
