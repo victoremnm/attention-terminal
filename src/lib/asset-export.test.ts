@@ -281,3 +281,47 @@ describe("copyToClipboard", () => {
     await expect(copyToClipboard("<p>hello</p>")).rejects.toThrow("Clipboard API unavailable");
   });
 });
+
+const tablePayload: RenderPayload = {
+  type: "table",
+  columns: [
+    { key: "repo", label: "Repository", type: "string" },
+    { key: "stars", label: "Stars", type: "number" },
+    { key: "forks", label: "Forks", type: "number" },
+    { key: "url", label: "URL", type: "link" },
+  ],
+  rows: [
+    { repo: "acme/widgets", stars: 1500, forks: 300, url: "https://github.com/acme/widgets" },
+    { repo: "acme/tools", stars: 800, forks: 120, url: "https://github.com/acme/tools" },
+    { repo: "acme/libs", stars: 250, forks: 45, url: "https://github.com/acme/libs" },
+  ],
+  totals: { stars: 2550, forks: 465 },
+  summary: "Top ACME repositories by engagement",
+  query: { sql: "SELECT repo, stars, forks FROM repos ORDER BY stars DESC", rowsRead: 500, elapsedMs: 30 },
+};
+
+describe("table payload export", () => {
+  it("exports table payload to self-contained HTML with column types and alignment", () => {
+    const html = exportAssetAsHTML(tablePayload);
+    expect(html).toContain("DATA TABLE");
+    expect(html).toContain("Repository");
+    expect(html).toContain("Stars");
+    expect(html).toContain("acme/widgets");
+    expect(html).toContain("1,500");
+    expect(html).toContain("<a href=");
+    expect(html).toContain("Total");
+    expect(html).toContain("2,550");
+    expect(html).toContain("Top ACME");
+  });
+
+  it("exports table payload to Markdown table with right-aligned number columns", () => {
+    const md = exportAssetAsMarkdown(tablePayload);
+    expect(md).toContain("DATA TABLE");
+    expect(md).toContain("Repository");
+    expect(md).toContain("acme/widgets");
+    expect(md).toContain("1,500");
+    expect(md).toContain("---:");
+    expect(md).toContain("**Total**");
+    expect(md).toContain("**2,550**");
+  });
+});
