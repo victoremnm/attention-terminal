@@ -409,6 +409,8 @@ interface RepoDrilldownFeedSqlRow {
   commits: string;
   distinct_commits: string;
   merged: number | string;
+  title?: string;
+  labels?: string[];
 }
 
 interface RepoDrilldownAnalysisSqlRow {
@@ -829,7 +831,9 @@ export async function repoDrilldown(repoName: string): Promise<RepoDrilldownPayl
              action,
              toString(commits) AS commits,
              toString(distinct_commits) AS distinct_commits,
-             pr_merged AS merged
+             pr_merged AS merged,
+             title,
+             labels
            FROM gh_repo_actor_activity_feed FINAL
            WHERE repo_name = {repoName: String}
              AND created_at > {highWater: DateTime} - INTERVAL 24 HOUR
@@ -848,7 +852,9 @@ export async function repoDrilldown(repoName: string): Promise<RepoDrilldownPayl
                action,
                toString(commits) AS commits,
                toString(distinct_commits) AS distinct_commits,
-               pr_merged AS merged
+               pr_merged AS merged,
+               title,
+               labels
              FROM gh_repo_activity_feed
              WHERE repo_name = {repoName: String}
                AND created_at > {highWater: DateTime} - INTERVAL 24 HOUR
@@ -866,11 +872,13 @@ export async function repoDrilldown(repoName: string): Promise<RepoDrilldownPayl
                action,
                toString(commit_count) AS commits,
                toString(distinct_commit_count) AS distinct_commits,
-               pr_merged AS merged
+               pr_merged AS merged,
+               title,
+               labels
              FROM github_events
              WHERE repo_name = {repoName: String}
                AND created_at > {highWater: DateTime} - INTERVAL 24 HOUR
-               AND event_type IN ('PushEvent', 'PullRequestEvent')
+               AND event_type IN ('PushEvent', 'PullRequestEvent', 'IssuesEvent')
              ORDER BY created_at DESC
              LIMIT 12`,
             ["github_events"],
@@ -1255,11 +1263,13 @@ export async function repoDrilldown(repoName: string): Promise<RepoDrilldownPayl
     feed: feed.rows.map((row) => ({
       at: row.at,
       actor: row.actor,
-      eventType: row.event_type === "PullRequestEvent" ? "PullRequestEvent" : "PushEvent",
+      eventType: (row.event_type as "PushEvent" | "PullRequestEvent" | "IssuesEvent"),
       action: row.action || (row.event_type === "PushEvent" ? "pushed" : "updated"),
       commits: Number(row.commits),
       distinctCommits: Number(row.distinct_commits),
       merged: Number(row.merged) === 1,
+      ...(row.title ? { title: row.title } : {}),
+      ...(row.labels ? { labels: row.labels } : {}),
     })),
     analysis: analysisPayload,
     // REST-activity enrichment (issue #79 track #83). Omitted when the poller

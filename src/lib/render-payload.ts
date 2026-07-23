@@ -278,11 +278,13 @@ export const RepoDrilldownSchema = z.object({
   feed: z.array(z.object({
     at: z.string(),
     actor: z.string().max(120),
-    eventType: z.enum(["PushEvent", "PullRequestEvent"]),
+    eventType: z.enum(["PushEvent", "PullRequestEvent", "IssuesEvent"]),
     action: z.string().max(80),
     commits: z.number().int().nonnegative(),
     distinctCommits: z.number().int().nonnegative(),
     merged: z.boolean(),
+    title: z.string().optional(),
+    labels: z.array(z.string()).optional(),
   })),
   analysis: z
     .object({
