@@ -52,6 +52,7 @@ export async function catalogPromptSection(): Promise<string> {
         SELECT database, name, engine, total_rows
         FROM system.tables
         WHERE database NOT IN ('system', 'information_schema', 'INFORMATION_SCHEMA')
+          AND name IN (${[...RELEVANT_TABLES].map((t) => `'${t}'`).join(", ")})
         ORDER BY database, name
         LIMIT {limit: UInt32}
       `,
@@ -63,9 +64,7 @@ export async function catalogPromptSection(): Promise<string> {
       },
     }).then((result) => result.json<TableRow>());
 
-    const lines = tables
-      .filter((table) => RELEVANT_TABLES.has(table.name))
-      .map(formatTableRow);
+    const lines = tables.map(formatTableRow);
 
     return `ClickHouse catalog:
 
