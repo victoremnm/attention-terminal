@@ -39,7 +39,8 @@ function RankRow({
   onOpen: (repo: string) => void;
 }) {
   const subline = [row.language, row.description].filter(Boolean).join(" · ");
-  const sparkLabel = `${row.events} events over the selected window`;
+  const spark = row.spark;
+  const trend = spark.length >= 2 ? (spark[spark.length - 1] > spark[0] ? "trending up" : spark[spark.length - 1] < spark[0] ? "trending down" : "stable") : "";
   return (
     <button
       type="button"
@@ -47,7 +48,7 @@ function RankRow({
       data-state={state}
       onClick={() => onOpen(row.repo_name)}
       aria-pressed={state === "selected"}
-      aria-label={`${row.repo_name}. ${sparkLabel}. ${row.pushes} pushes, ${row.commits} commits, ${row.actors} actors.`}
+      aria-label={`${row.repo_name}. ${row.events} events, ${trend}. ${row.pushes} pushes, ${row.commits} commits, ${row.actors} actors, ${row.stars} stars, ${row.forks} forks.`}
     >
       <span className="rank-num">{rank}</span>
       <span className="rank-repo">
@@ -55,7 +56,7 @@ function RankRow({
         {subline ? <em>{subline}</em> : null}
       </span>
       <span className="rank-spark">
-        <Sparkline data={row.spark} color="var(--cyan)" w={148} h={24} />
+        <Sparkline data={spark} color="var(--cyan)" w={148} h={24} />
       </span>
       <span className="rank-stats">
         <span><b>{NUMBER.format(row.pushes)}</b> pushes</span>
@@ -249,6 +250,10 @@ export function RepoRankings({ windows }: { windows: Record<RepoWindow, RepoWind
         ))}
       </div>
 
+      <p className="rankings-context mono" aria-live="polite">
+        <b>{active}</b> window · {NUMBER.format(summary.visible)} of {NUMBER.format(summary.total)} repos
+        {query.trim() ? <> · filtered by &ldquo;{query.trim()}&rdquo;</> : <> · ranked by event volume</>}
+      </p>
       <div className="rank-head mono">
         <span className="rank-num">#</span>
         <span className="rank-repo">REPO</span>
@@ -257,8 +262,12 @@ export function RepoRankings({ windows }: { windows: Record<RepoWindow, RepoWind
         <span className="rank-events">EVENTS</span>
       </div>
 
-      {rows.length === 0 ? (
-        <div className="repo-empty mono">No repos match &ldquo;{query}&rdquo;.</div>
+      {source.length === 0 && !query ? (
+        <div className="rankings-loading mono" role="status">
+          No ranking data available for the <b>{active}</b> window. Data appears after the first ingestion run populates per-day aggregates.
+        </div>
+      ) : rows.length === 0 ? (
+        <div className="repo-empty mono" role="status">No repos match &ldquo;{query}&rdquo; in the <b>{active}</b> window.</div>
       ) : (
         rows.map((row, i) => (
           <RankRow

@@ -13,13 +13,13 @@ export async function TrendingSurface() {
 
   return (
     <>
-      <SurfaceNav active="trending" />
+      <SurfaceNav active="home" />
       <main className="trending-shell">
         <header className="trending-head">
-          <p className="skinny-kicker mono">LIVE_GITHUB_HN</p>
-          <h1>Trending</h1>
+          <p className="skinny-kicker mono">LIVE_FEED</p>
+          <h1>Live Feed</h1>
           <p className="trending-copy">
-            Breakout repo, fork, shipping, star, and story signals from the latest feed windows.
+            Breakout repositories, fork activity, shipping velocity, and Hacker News stories from live attention feed windows.
           </p>
         </header>
         <TickerRail initial={lanes} ingestToken={token} />
