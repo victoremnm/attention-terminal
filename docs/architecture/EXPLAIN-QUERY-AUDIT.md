@@ -61,9 +61,26 @@ An empirical performance audit was conducted against `system.query_log` and usin
   ALTER TABLE gh_repo_activity_feed ADD INDEX idx_feed_created created_at TYPE minmax GRANULARITY 4;
   ```
 
+#### D. `github_events` — actor_login / owner (PR #192, issue #61)
+
+Post-apply verification of `20260723000003_github_events_data_skipping_indices.sql` against production (mutations confirmed `is_done = 1`, `owner` backfilled to 100% of 142,603,030 rows):
+
+- **Actual production predicate**: `actor_login ILIKE '%[bot]%'` (`src/lib/queries.ts:1742-1743,1884`)
+  ```text
+  EXPLAIN indexes = 1 SELECT count() FROM github_events WHERE actor_login ILIKE '%[bot]%'
+  Indexes:
+    PrimaryKey: Condition true, Granules 17420/17420
+    (no Skip section — idx_github_events_actor_login is not consulted at all)
+  ```
+- **Root cause**: ClickHouse bloom-filter indices (`tokenbf_v1`/`ngrambf_v1`) only support `equals`/`notEquals`/`in`/`notIn`/`has`/`like`/`notLike` — **not `ILIKE`**. The index is defined on `lower(actor_login)`, but the query uses `ILIKE` directly, so it's structurally incompatible with this index regardless of case.
+- **Control query** (`lower(actor_login) LIKE '%bot%'`, matching the index's exact key expression) *does* invoke the Skip index, but still prunes **0%** (17420/17420 granules) — bot-authored events are dense across essentially every time-ordered granule in this table, so even a compatible predicate wouldn't benefit from this index today.
+- **`owner` set(100) index** (`owner = 'golang'`): prunes 17180/17420 granules (**~1.4%**) — GH Archive data isn't clustered by owner, so a set index doesn't discriminate well here either.
+- **Conclusion**: both new indices are currently inert for their intended query patterns. Tracked in issue #201 with rewrite/drop/re-architecture options.
+
 ---
 
 ## Verified Results & Next Steps
 - Production Next.js build: **SUCCESS**
 - Full test suite execution: **100% PASSED**
 - `tickerLanes` integration test latency: Reduced from **2177ms to 1002ms**
+- Follow-up: issue #201 (github_events actor_login/owner indices don't prune granules)
