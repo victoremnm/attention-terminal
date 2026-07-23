@@ -647,11 +647,19 @@ function RepoDrilldownAnswer({ payload }: { payload: RepoDrilldownPayload }) {
           <div className="repo-section-title mono">TOP CONTRIBUTORS 24H</div>
           <div className="repo-actor-grid">
             {payload.topActors24h.map((actor) => (
-              <div key={actor.actor} className="repo-actor-row">
-                <b>{actor.actor}</b>
-                <span className="mono">{compact(actor.commits)} commits</span>
-                <span className="mono">{compact(actor.pushes)} pushes</span>
-                <span className="mono">{compact(actor.prsMerged)} merged</span>
+              <div key={actor.actor} className={`repo-actor-row ${actor.isBot ? 'is-bot' : ''}`}>
+                <div className="repo-actor-header">
+                  <b>{actor.actor}</b>
+                  {actor.isBot && <span className="actor-bot-badge">[bot]</span>}
+                </div>
+                <div className="repo-actor-metrics">
+                  <span className="mono">{compact(actor.distinctCommits)} commits</span>
+                  <span className="mono">{compact(actor.pushes)} pushes</span>
+                  <span className="mono">{compact(actor.prsOpened)} PRs opened</span>
+                  <span className="mono">{compact(actor.prsMerged)} merged</span>
+                  {actor.issuesOpened > 0 && <span className="mono">{compact(actor.issuesOpened)} issues</span>}
+                  {actor.releasesPublished > 0 && <span className="mono">{compact(actor.releasesPublished)} releases</span>}
+                </div>
               </div>
             ))}
           </div>

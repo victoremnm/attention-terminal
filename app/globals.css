@@ -1073,16 +1073,24 @@ a { color: inherit; }
 }
 .repo-actor-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
   gap: 6px;
 }
 .repo-actor-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto auto;
-  gap: 8px;
-  align-items: center;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
   border-top: 1px solid var(--line-soft);
-  padding: 7px 0;
+  padding: 9px 0;
+}
+.repo-actor-row.is-bot {
+  opacity: 0.75;
+}
+.repo-actor-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
 }
 .repo-actor-row b {
   min-width: 0;
@@ -1092,10 +1100,24 @@ a { color: inherit; }
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.repo-actor-row span {
+.actor-bot-badge {
   color: var(--muted);
-  font-size: 9.5px;
+  font-size: 8px;
+  letter-spacing: .08em;
+  font-weight: 400;
+  flex-shrink: 0;
+}
+.repo-actor-metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px 8px;
+}
+.repo-actor-metrics span {
+  color: var(--muted);
+  font-size: 9px;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .repo-section-title {
   color: var(--muted);

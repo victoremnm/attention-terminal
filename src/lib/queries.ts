@@ -407,6 +407,9 @@ interface RepoDrilldownActorSqlRow {
   distinct_commits: string;
   prs_opened: string;
   prs_merged: string;
+  issues_opened: string;
+  releases_count: string;
+  is_bot: number | string;
 }
 
 interface RepoDrilldownFeedSqlRow {
@@ -774,7 +777,10 @@ export async function repoDrilldown(repoName: string): Promise<RepoDrilldownPayl
            toString(commit_total) AS commits,
            toString(distinct_commit_total) AS distinct_commits,
            toString(pr_opened_total) AS prs_opened,
-           toString(pr_merged_total) AS prs_merged
+           toString(pr_merged_total) AS prs_merged,
+           toString(issues_opened_total) AS issues_opened,
+           toString(releases_total) AS releases_count,
+           actor ILIKE '%[bot]%' AS is_bot
          FROM (
            SELECT
               actor_login AS actor,
@@ -783,16 +789,24 @@ export async function repoDrilldown(repoName: string): Promise<RepoDrilldownPayl
               sum(distinct_commits) AS distinct_commit_total,
               sum(prs_opened) AS pr_opened_total,
               sum(prs_merged) AS pr_merged_total,
+              sum(issues_opened) AS issues_opened_total,
+              countIf(tag != '') AS releases_total,
               (commit_total * 3) + (distinct_commit_total * 2) + (pr_opened_total * 3) + (pr_merged_total * 5) + least(push_total, commit_total) AS activity_score
             FROM gh_repo_actor_hourly
-            WHERE repo_name = {repoName: String}
-              AND hour > {highWater: DateTime} - INTERVAL 24 HOUR
+            LEFT JOIN (
+              SELECT author, tag
+              FROM gh_repo_releases FINAL
+              WHERE repo_name = {repoName: String}
+                AND published_at > {highWater: DateTime} - INTERVAL 24 HOUR
+            ) AS releases ON gh_repo_actor_hourly.actor_login = releases.author
+            WHERE gh_repo_actor_hourly.repo_name = {repoName: String}
+              AND gh_repo_actor_hourly.hour > {highWater: DateTime} - INTERVAL 24 HOUR
             GROUP BY actor_login
-            HAVING commit_total > 0 OR pr_opened_total > 0 OR pr_merged_total > 0
+            HAVING commit_total > 0 OR pr_opened_total > 0 OR pr_merged_total > 0 OR issues_opened_total > 0
           )
           ORDER BY activity_score DESC, actor
           LIMIT 8`,
-        ["gh_repo_actor_hourly"],
+        ["gh_repo_actor_hourly", "gh_repo_releases"],
         { ...queryParams, highWater: anchor },
         request
       ))
@@ -803,7 +817,10 @@ export async function repoDrilldown(repoName: string): Promise<RepoDrilldownPayl
            toString(commit_total) AS commits,
            toString(distinct_commit_total) AS distinct_commits,
            toString(pr_opened_total) AS prs_opened,
-           toString(pr_merged_total) AS prs_merged
+           toString(pr_merged_total) AS prs_merged,
+           toString(issues_opened_total) AS issues_opened,
+           toString(releases_total) AS releases_count,
+           actor ILIKE '%[bot]%' AS is_bot
          FROM (
            SELECT
              actor_login AS actor,
@@ -812,17 +829,25 @@ export async function repoDrilldown(repoName: string): Promise<RepoDrilldownPayl
              sum(distinct_commit_count) AS distinct_commit_total,
              countIf(event_type = 'PullRequestEvent' AND action = 'opened') AS pr_opened_total,
              countIf(event_type = 'PullRequestEvent' AND action = 'closed' AND pr_merged = 1) AS pr_merged_total,
+             countIf(event_type = 'IssuesEvent' AND action = 'opened') AS issues_opened_total,
+             countIf(tag != '') AS releases_total,
              (commit_total * 3) + (distinct_commit_total * 2) + (pr_opened_total * 3) + (pr_merged_total * 5) + least(push_total, commit_total) AS activity_score
            FROM github_events
+           LEFT JOIN (
+             SELECT author, tag
+             FROM gh_repo_releases FINAL
+             WHERE repo_name = {repoName: String}
+               AND published_at > {highWater: DateTime} - INTERVAL 24 HOUR
+           ) AS releases ON github_events.actor_login = releases.author
            WHERE repo_name = {repoName: String}
              AND created_at > {highWater: DateTime} - INTERVAL 24 HOUR
-             AND event_type IN ('PushEvent', 'PullRequestEvent')
+             AND event_type IN ('PushEvent', 'PullRequestEvent', 'IssuesEvent')
            GROUP BY actor_login
-           HAVING commit_total > 0 OR pr_opened_total > 0 OR pr_merged_total > 0
+           HAVING commit_total > 0 OR pr_opened_total > 0 OR pr_merged_total > 0 OR issues_opened_total > 0
          )
          ORDER BY activity_score DESC, actor
          LIMIT 8`,
-        ["github_events"],
+        ["github_events", "gh_repo_releases"],
         { ...queryParams, highWater: anchor },
         request
       ));
@@ -1251,6 +1276,9 @@ export async function repoDrilldown(repoName: string): Promise<RepoDrilldownPayl
       distinctCommits: Number(row.distinct_commits),
       prsOpened: Number(row.prs_opened),
       prsMerged: Number(row.prs_merged),
+      issuesOpened: Number(row.issues_opened),
+      releasesPublished: Number(row.releases_count),
+      isBot: Number(row.is_bot) === 1,
     })),
     feed: feed.rows.map((row) => ({
       at: row.at,
