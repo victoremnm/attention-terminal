@@ -154,7 +154,7 @@ const repoDrilldownPayload: RenderPayload = {
     { hour: "2026-01-01T01:00:00Z", pushes: 2, commits: 3, forks: 1, stars: 1, issuesOpened: 0, prsOpened: 1 },
   ],
   topActors24h: [
-    { actor: "alice", pushes: 5, commits: 10, distinctCommits: 8, prsOpened: 2, prsMerged: 1 },
+    { actor: "alice", pushes: 5, commits: 10, distinctCommits: 8, prsOpened: 2, prsMerged: 1, issuesOpened: 0, releasesPublished: 0, isBot: false },
   ],
   feed: [
     { at: "2026-01-01T00:00:00Z", actor: "alice", eventType: "PushEvent", action: "", commits: 2, distinctCommits: 2, merged: false },
