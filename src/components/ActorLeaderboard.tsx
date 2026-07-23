@@ -77,3 +77,5 @@ export function ActorLeaderboardCard({
     </div>
   );
 }
+
+export const ActorLeaderboardSurface = ActorLeaderboardCard;
