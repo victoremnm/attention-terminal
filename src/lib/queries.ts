@@ -94,23 +94,23 @@ function activityDelta(parts: Array<[string, string | number]>) {
 
 async function assembleTickerLanes(): Promise<TickerLanes> {
   const [repos, forks, shipping, stars, stories] = await Promise.all([
-    q<{ name: string; at: string }>(
+    q<{ name: string; at: string; spark: number[] }>(
       // Window anchored to the feed's own high-water mark, not wall clock -
       // GH Archive is hourly and may lag during catch-up; the freshness strip
       // tells the user exactly how far behind the feed is.
-      `SELECT repo_name AS name, max(created_at) AS at
-       FROM github_events
-       WHERE event_type = 'CreateEvent'
-         AND ref_type = 'repository'
-         AND created_at > (SELECT max(created_at) FROM github_events) - INTERVAL 6 HOUR
-       GROUP BY repo_name ORDER BY at DESC LIMIT 20`,
+      `SELECT repo_name AS name, max(h) AS at,
+              groupArray(6)(cnt) AS spark
+       FROM (
+         SELECT repo_name, toStartOfHour(created_at) AS h, count() AS cnt
+         FROM github_events
+         WHERE event_type = 'CreateEvent'
+           AND ref_type = 'repository'
+           AND created_at > (SELECT max(created_at) FROM github_events) - INTERVAL 6 HOUR
+         GROUP BY repo_name, h ORDER BY repo_name, h
+       ) GROUP BY repo_name ORDER BY at DESC LIMIT 20`,
       ["github_events"]
     ),
-    // Read the pre-aggregated hourly table instead of grouping the raw event
-    // firehose for every page request. The aggregate table does not retain
-    // actor names, so the bot filter is intentionally limited to the lanes
-    // that still read actor-level activity from gh_repo_activity_feed.
-    q<{ name: string; forks: string; stars: string; pushes: string; prs: string; issues: string }>(
+    q<{ name: string; forks: string; stars: string; pushes: string; prs: string; issues: string; spark: number[] }>(
       `WITH per_repo_event AS (
          SELECT repo_name, event_type, countMerge(events) AS event_count
          FROM gh_repo_hourly
@@ -119,26 +119,38 @@ async function assembleTickerLanes(): Promise<TickerLanes> {
          GROUP BY repo_name, event_type
        ),
        per_repo AS (
-         SELECT
-           repo_name,
-           sumIf(event_count, event_type = 'ForkEvent') AS fork_count,
-           sumIf(event_count, event_type = 'WatchEvent') AS star_count,
-           sumIf(event_count, event_type = 'PushEvent') AS push_count,
-           sumIf(event_count, event_type = 'PullRequestEvent') AS pr_count,
-           sumIf(event_count, event_type = 'IssuesEvent') AS issue_count
+         SELECT repo_name,
+                sumIf(event_count, event_type = 'ForkEvent') AS fork_count,
+                sumIf(event_count, event_type = 'WatchEvent') AS star_count,
+                sumIf(event_count, event_type = 'PushEvent') AS push_count,
+                sumIf(event_count, event_type = 'PullRequestEvent') AS pr_count,
+                sumIf(event_count, event_type = 'IssuesEvent') AS issue_count
          FROM per_repo_event
          GROUP BY repo_name
          HAVING fork_count > 0 AND push_count + pr_count + issue_count > 0
+       ),
+       fork_spark AS (
+          SELECT repo_name, reverse(groupArray(8)(cnt)) AS spark
+          FROM (
+            SELECT repo_name, hour, countMerge(events) AS cnt
+            FROM gh_repo_hourly
+            WHERE hour > (SELECT max(hour) FROM gh_repo_hourly) - INTERVAL 24 HOUR
+              AND event_type = 'ForkEvent'
+            GROUP BY repo_name, hour
+            ORDER BY repo_name, hour DESC
+          ) GROUP BY repo_name
        )
-       SELECT repo_name AS name,
-              toString(fork_count) AS forks,
-              toString(star_count) AS stars,
-              toString(push_count) AS pushes,
-              toString(pr_count) AS prs,
-              toString(issue_count) AS issues
-       FROM per_repo
-       ORDER BY pr_count * 5 + issue_count * 3 + push_count * 2 + least(fork_count, 20) DESC,
-                fork_count DESC
+       SELECT p.repo_name AS name,
+              toString(p.fork_count) AS forks,
+              toString(p.star_count) AS stars,
+              toString(p.push_count) AS pushes,
+              toString(p.pr_count) AS prs,
+              toString(p.issue_count) AS issues,
+              fs.spark
+       FROM per_repo p
+       LEFT JOIN fork_spark fs ON p.repo_name = fs.repo_name
+       ORDER BY p.pr_count * 5 + p.issue_count * 3 + p.push_count * 2 + least(p.fork_count, 20) DESC,
+                p.fork_count DESC
        LIMIT 20`,
       ["gh_repo_hourly"]
     ),
@@ -152,10 +164,8 @@ async function assembleTickerLanes(): Promise<TickerLanes> {
       fork_count: string;
       actor_count: string;
       events: string;
+      spark: number[];
     }>(
-      // The activity feed is a recent, denormalized slice of github_events.
-      // It retains actor and commit fields needed for the bot/substance gate
-      // without rereading the entire raw firehose on every page request.
       `SELECT repo_name AS name,
               sum(commits) AS commit_total,
               countIf(event_type = 'PushEvent') AS push_count,
@@ -167,8 +177,19 @@ async function assembleTickerLanes(): Promise<TickerLanes> {
               sum(commits) + countIf(event_type = 'PushEvent')
                 + countIf(event_type = 'PullRequestEvent' AND action = 'opened')
                 + countIf(event_type = 'PullRequestEvent' AND action = 'closed')
-                + countIf(event_type = 'IssuesEvent' AND action = 'opened') AS events
+                + countIf(event_type = 'IssuesEvent' AND action = 'opened') AS events,
+              any(ps.spark) AS spark
        FROM gh_repo_activity_feed
+       LEFT JOIN (
+          SELECT repo_name, reverse(groupArray(8)(cnt)) AS spark
+          FROM (
+            SELECT repo_name, toStartOfHour(created_at) AS h, sum(commits) AS cnt
+            FROM gh_repo_activity_feed
+            WHERE created_at > (SELECT max(created_at) FROM gh_repo_activity_feed) - INTERVAL 24 HOUR
+              AND event_type = 'PushEvent'
+            GROUP BY repo_name, h ORDER BY repo_name, h DESC
+          ) GROUP BY repo_name
+       ) ps ON gh_repo_activity_feed.repo_name = ps.repo_name
        WHERE created_at > (SELECT max(created_at) FROM gh_repo_activity_feed) - INTERVAL 24 HOUR
          AND event_type IN ('PushEvent', 'PullRequestEvent', 'IssuesEvent', 'ForkEvent')
          AND NOT actor_login ILIKE '%[bot]%'
@@ -186,15 +207,15 @@ async function assembleTickerLanes(): Promise<TickerLanes> {
     // here; the result is still bounded to the same event type and windows.
     q<{ name: string; stars: string; surge: number; spark: number[] }>(
       `WITH recent AS (
-         SELECT repo_name, sum(cnt) AS star_total,
-                groupArray(8)(cnt) AS spark
-         FROM (
-           SELECT repo_name, toStartOfHour(hour) AS h, countMerge(events) AS cnt
-           FROM gh_repo_hourly
-           WHERE event_type = 'WatchEvent'
-             AND hour > (SELECT max(hour) FROM gh_repo_hourly) - INTERVAL 24 HOUR
-           GROUP BY repo_name, h ORDER BY repo_name, h
-         ) GROUP BY repo_name
+          SELECT repo_name, sum(cnt) AS star_total,
+                 reverse(groupArray(8)(cnt)) AS spark
+          FROM (
+            SELECT repo_name, toStartOfHour(hour) AS h, countMerge(events) AS cnt
+            FROM gh_repo_hourly
+            WHERE event_type = 'WatchEvent'
+              AND hour > (SELECT max(hour) FROM gh_repo_hourly) - INTERVAL 24 HOUR
+            GROUP BY repo_name, h ORDER BY repo_name, h DESC
+          ) GROUP BY repo_name
        ),
        base AS (
          SELECT repo_name, sum(cnt) / 29 AS daily_avg
@@ -233,6 +254,7 @@ async function assembleTickerLanes(): Promise<TickerLanes> {
       kicker: "NEW REPO",
       name: r.name,
       metric: "born " + r.at.slice(11, 16) + " UTC",
+      spark: r.spark,
       href: `https://github.com/${r.name}`,
       repoName: r.name,
     })),
@@ -240,6 +262,7 @@ async function assembleTickerLanes(): Promise<TickerLanes> {
       kicker: "FORKED 24H",
       name: r.name,
       metric: `+${r.forks} new forks`,
+      spark: r.spark,
       // No `delta`: it re-listed stars/pushes/PRs/issues, which the stats row
       // below already breaks out — the two rows rendered the same numbers twice.
       // stats carries the supporting dimensions (never `new forks` again, since
@@ -266,6 +289,7 @@ async function assembleTickerLanes(): Promise<TickerLanes> {
         kicker: "SHIPPING",
         name: r.name,
         metric,
+        spark: r.spark,
         // No `delta`: it re-listed PRs/closed/issues/forks/actors, exactly the
         // dimensions the stats row breaks out, so the two rows were identical.
         stats: [
@@ -298,6 +322,9 @@ async function assembleTickerLanes(): Promise<TickerLanes> {
       name: r.name,
       metric: `${r.velocity} pts/hr`,
       delta: `${r.score} pts`,
+      // No spark: HN stores only current score per story, not hourly snapshots.
+      // A per-story trendline would require point-in-time score history which
+      // we don't collect. The lane's velocity (pts/hr) is the temporal signal.
       href: `https://news.ycombinator.com/item?id=${r.id}`,
     })),
     provenance: [repos.provenance, forks.provenance, shipping.provenance, stars.provenance, stories.provenance],
