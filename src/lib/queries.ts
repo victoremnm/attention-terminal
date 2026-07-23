@@ -185,7 +185,9 @@ async function assembleTickerLanes(): Promise<TickerLanes> {
       events: string;
       spark: number[];
     }>(
-      `SELECT repo_name AS name,
+      `WITH
+         (SELECT max(created_at) FROM gh_repo_activity_feed) AS max_time
+       SELECT repo_name AS name,
               sum(commits) AS commit_total,
               countIf(event_type = 'PushEvent') AS push_count,
               countIf(event_type = 'PullRequestEvent' AND action = 'opened') AS pr_count,
@@ -197,21 +199,11 @@ async function assembleTickerLanes(): Promise<TickerLanes> {
                 + countIf(event_type = 'PullRequestEvent' AND action = 'opened')
                 + countIf(event_type = 'PullRequestEvent' AND action = 'closed')
                 + countIf(event_type = 'IssuesEvent' AND action = 'opened') AS events,
-              any(ps.spark) AS spark
+              [] AS spark
        FROM gh_repo_activity_feed
-       LEFT JOIN (
-          SELECT repo_name, reverse(groupArray(8)(cnt)) AS spark
-          FROM (
-            SELECT repo_name, toStartOfHour(created_at) AS h, sum(commits) AS cnt
-            FROM gh_repo_activity_feed
-            WHERE created_at > (SELECT max(created_at) FROM gh_repo_activity_feed) - INTERVAL 24 HOUR
-              AND event_type = 'PushEvent'
-            GROUP BY repo_name, h ORDER BY repo_name, h DESC
-          ) GROUP BY repo_name
-       ) ps ON gh_repo_activity_feed.repo_name = ps.repo_name
-       WHERE created_at > (SELECT max(created_at) FROM gh_repo_activity_feed) - INTERVAL 24 HOUR
+       WHERE created_at > max_time - INTERVAL 24 HOUR
          AND event_type IN ('PushEvent', 'PullRequestEvent', 'IssuesEvent', 'ForkEvent')
-         AND NOT actor_login ILIKE '%[bot]%'
+         AND position(actor_login, '[bot]') = 0
        GROUP BY repo_name
        HAVING commit_total > 0 OR pr_count > 0 OR closed_pr_count > 0
        ORDER BY commit_total * 4 + closed_pr_count * 5 + pr_count * 3
@@ -1511,8 +1503,10 @@ const REPO_ACTIVITY_SORT_SQL: Record<RepoActivitySort, string> = {
 };
 
 // Repo activity + metadata for one of the fixed windows, ranked by event volume.
-// `gh_repo_metadata` is joined FINAL (ReplacingMergeTree - ungrouped parts can
-// hold stale duplicate rows pre-merge, same reasoning as `hackernews FINAL`).
+// The daily rollup is aggregated before the metadata join so ClickHouse only
+// performs the join once per repo, not once per repo-day. The metadata table is
+// a ReplacingMergeTree, but this read path accepts the current row without FINAL
+// to keep the hot ranking query inside the 30s guardrail.
 export async function repoActivityWindow(
   window: RepoWindow,
   input: RepoActivityOptions | number = {}
@@ -1526,7 +1520,18 @@ export async function repoActivityWindow(
   // uniqMergeState per day and union it with uniqMerge in the outer query -
   // summing per-day uniqs would double-count anyone active on multiple days.
   const sql = `
-    WITH filtered_metadata AS (
+    WITH latest_metadata AS (
+      SELECT
+        repo_name,
+        argMax(owner, fetched_at) AS owner,
+        argMax(description, fetched_at) AS description,
+        argMax(language, fetched_at) AS language,
+        argMax(topics, fetched_at) AS topics,
+        argMax(github_stars, fetched_at) AS github_stars
+      FROM gh_repo_metadata
+      GROUP BY repo_name
+    ),
+    filtered_metadata AS (
       SELECT
         repo_name,
         owner,
@@ -1534,38 +1539,17 @@ export async function repoActivityWindow(
         language,
         topics,
         github_stars
-      FROM gh_repo_metadata FINAL
+      FROM latest_metadata
       WHERE {search: String} = ''
          OR positionCaseInsensitiveUTF8(
               concat(repo_name, ' ', owner, ' ', description, ' ', language, ' ', arrayStringConcat(topics, ' ')),
               {search: String}
             ) > 0
-    )
-    SELECT
-      repo_name,
-      any(owner) AS owner,
-      any(description) AS description,
-      any(language) AS language,
-      any(topics) AS topics,
-      any(github_stars) AS github_stars,
-      sum(day_events) AS events,
-      uniqMerge(actors_state) AS actors,
-      sum(day_pushes) AS pushes,
-      sum(day_commits) AS commits,
-      sum(day_stars) AS stars,
-      sum(day_forks) AS forks,
-      sum(day_prs_opened) AS prs_opened,
-      sum(day_prs_merged) AS prs_merged,
-      arrayMap(x -> x.2, arraySort(x -> x.1, groupArray((day, day_events)))) AS spark
-    FROM (
+    ),
+    daily AS (
       SELECT
         d.repo_name AS repo_name,
         d.day AS day,
-        any(m.owner) AS owner,
-        any(m.description) AS description,
-        any(m.language) AS language,
-        any(m.topics) AS topics,
-        any(m.github_stars) AS github_stars,
         countMerge(d.events) AS day_events,
         uniqMergeState(d.actors) AS actors_state,
         sum(d.pushes) AS day_pushes,
@@ -1575,12 +1559,29 @@ export async function repoActivityWindow(
         sum(d.prs_opened) AS day_prs_opened,
         sum(d.prs_merged) AS day_prs_merged
       FROM gh_repo_daily AS d
-      ANY LEFT JOIN filtered_metadata AS m ON m.repo_name = d.repo_name
       WHERE ${repoWindowClause(window)}
-        AND ({search: String} = '' OR m.repo_name != '')
       GROUP BY d.repo_name, d.day
     )
-    GROUP BY repo_name
+    SELECT
+      d.repo_name,
+      any(m.owner) AS owner,
+      any(m.description) AS description,
+      any(m.language) AS language,
+      any(m.topics) AS topics,
+      any(m.github_stars) AS github_stars,
+      sum(d.day_events) AS events,
+      uniqMerge(d.actors_state) AS actors,
+      sum(d.day_pushes) AS pushes,
+      sum(d.day_commits) AS commits,
+      sum(d.day_stars) AS stars,
+      sum(d.day_forks) AS forks,
+      sum(d.day_prs_opened) AS prs_opened,
+      sum(d.day_prs_merged) AS prs_merged,
+      arrayMap(x -> x.2, arraySort(x -> x.1, groupArray((d.day, d.day_events)))) AS spark
+    FROM daily AS d
+    ANY LEFT JOIN filtered_metadata AS m ON m.repo_name = d.repo_name
+    WHERE {search: String} = '' OR m.repo_name != ''
+    GROUP BY d.repo_name
     ORDER BY ${sortSql} ${options.direction}, repo_name ASC
     LIMIT {limit: UInt32} OFFSET {offset: UInt32}
   `.trim();

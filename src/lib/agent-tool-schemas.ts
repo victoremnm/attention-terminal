@@ -1,6 +1,6 @@
 import { tool } from "ai";
 import { z } from "zod";
-import { RenderPayloadSchema, VisualizationTypeSchema, CardQuerySchema } from "./render-payload";
+import { RenderPayloadSchema, VisualizationTypeSchema, CardQuerySchema, TableColumnSchema } from "./render-payload";
 
 // Schema-only tool definitions, shared between the agent task (which attaches
 // execute functions in agent-tools.ts) and the /api/chat head-start route.
@@ -101,6 +101,18 @@ export const buildMorphingCardDef = {
   }),
 } as const;
 
+export const buildTablePayloadDef = {
+  description:
+    "Deterministically builds a typed table renderAnswer payload from columns and rows you already have. Use this when you want to display tabular data with explicit column types, alignment, and optional totals. Pass the returned object straight into renderAnswer's `payload` argument, unmodified.",
+  inputSchema: z.object({
+    columns: z.array(TableColumnSchema).min(1).max(20).describe("Column definitions with key, label, type (number/string/date/link)."),
+    rows: z.array(z.record(z.string(), z.unknown())).min(0).max(200).describe("Row objects — values keyed by the column keys defined above."),
+    totals: z.record(z.string(), z.number()).optional().describe("Optional totals row for numeric columns. Keys match column keys."),
+    summary: z.string().max(500).optional(),
+    query: CardQuerySchema.optional(),
+  }),
+} as const;
+
 export const attentionToolSchemas = {
   listTables: tool(listTablesDef),
   describeTable: tool(describeTableDef),
@@ -112,4 +124,5 @@ export const attentionToolSchemas = {
   runDataRetrieval: tool(runDataRetrievalDef),
   runVisualizationMapping: tool(runVisualizationMappingDef),
   buildMorphingCard: tool(buildMorphingCardDef),
+  buildTablePayload: tool(buildTablePayloadDef),
 };

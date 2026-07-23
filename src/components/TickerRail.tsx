@@ -6,6 +6,7 @@ import type { RepoDrilldownPayload } from "@/lib/render-payload";
 import { RenderedAnswer } from "./RenderedAnswer";
 import { Sparkline } from "./charts";
 import { useIngestPulse } from "./useIngestPulse";
+import { copyToClipboard } from "@/lib/asset-export";
 
 function Card({
   card,
@@ -103,6 +104,37 @@ export function TickerRail({ initial, ingestToken }: { initial: TickerLanes; ing
   const [drilldown, setDrilldown] = useState<RepoDrilldownPayload | undefined>();
   const [loadingRepo, setLoadingRepo] = useState<string | undefined>();
   const [drilldownError, setDrilldownError] = useState<string | undefined>();
+  const [copiedTickerMd, setCopiedTickerMd] = useState(false);
+
+  async function handleCopyTickerMd() {
+    try {
+      const lines: string[] = [`### BREAKOUT TICKER`, ``];
+      const laneConfigs = [
+        { key: "newRepos", title: "NEW REPOS 24H" },
+        { key: "topForked", title: "FORKED 24H" },
+        { key: "shippingVelocity", title: "SHIPPING VELOCITY" },
+        { key: "starBreakouts", title: "STAR BREAKOUTS" },
+        { key: "risingStories", title: "HN STORIES" },
+      ] as const;
+      for (const { key, title } of laneConfigs) {
+        const cards = lanes[key] ?? [];
+        if (cards.length === 0) continue;
+        lines.push(`#### ${title}`);
+        lines.push(`| Name | Metric | Delta |`);
+        lines.push(`| :--- | :--- | :--- |`);
+        for (const c of cards) {
+          const link = c.href ? `[**${c.name}**](${c.href})` : `**${c.name}**`;
+          lines.push(`| ${link} | \`${c.metric}\` | ${c.delta ?? "-"} |`);
+        }
+        lines.push(``);
+      }
+      await copyToClipboard(lines.join("\n"), "markdown");
+      setCopiedTickerMd(true);
+      setTimeout(() => setCopiedTickerMd(false), 2000);
+    } catch {
+      setCopiedTickerMd(false);
+    }
+  }
   const drilldownRequest = useRef(0);
   const drilldownAbort = useRef<AbortController | undefined>(undefined);
   // Ticks as ingestion lands (Trigger.dev Realtime); 0 while no run completed yet.
@@ -152,9 +184,20 @@ export function TickerRail({ initial, ingestToken }: { initial: TickerLanes; ing
 
   return (
     <section className="ticker" aria-label="Breakout ticker">
-      <div className="tk-head mono">
-        📌 PINNED · BREAKOUT TICKER <span className="muted">{ingestToken ? "ticks with ingestion" : "refreshes 60s"}</span>
-        <span className="muted">· tap any repo to render its live data</span>
+      <div className="tk-head mono" style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <div>
+          📌 PINNED · BREAKOUT TICKER <span className="muted">{ingestToken ? "ticks with ingestion" : "refreshes 60s"}</span>
+          <span className="muted">· tap any repo to render its live data</span>
+        </div>
+        <button
+          type="button"
+          className={`asset-copy-btn${copiedTickerMd ? " copied" : ""}`}
+          onClick={handleCopyTickerMd}
+          style={{ opacity: 1, position: "static" }}
+          aria-label="Copy Breakout Ticker as Markdown"
+        >
+          {copiedTickerMd ? "Copied MD!" : "Copy Markdown"}
+        </button>
       </div>
       <Lane title="NEW REPOS" cards={lanes.newRepos} selectedRepo={selectedRepo} loadingRepo={loadingRepo} onOpenRepo={openRepo} />
       <Lane title="TOP FORKED · 24H" cards={lanes.topForked} selectedRepo={selectedRepo} loadingRepo={loadingRepo} onOpenRepo={openRepo} />

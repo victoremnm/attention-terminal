@@ -1,6 +1,8 @@
 import { createClient, type ClickHouseClient } from "@clickhouse/client";
 import { tool } from "ai";
 import {
+  buildMorphingCardDef,
+  buildTablePayloadDef,
   describeTableDef,
   getDailyDigestDef,
   getRealBuildersDef,
@@ -10,7 +12,6 @@ import {
   runReadOnlyQueryDef,
   runDataRetrievalDef,
   runVisualizationMappingDef,
-  buildMorphingCardDef,
 } from "./agent-tool-schemas";
 import { ensureTablesExist } from "./clickhouse";
 import { dailyDigest } from "./digest";
@@ -361,6 +362,20 @@ export const buildMorphingCard = tool({
   },
 });
 
+export const buildTablePayload = tool({
+  ...buildTablePayloadDef,
+  execute: async ({ columns, rows, totals, summary, query }) => {
+    return {
+      type: "table" as const,
+      columns,
+      rows,
+      totals,
+      summary,
+      query,
+    };
+  },
+});
+
 export const attentionTools = {
   listTables,
   describeTable,
@@ -372,4 +387,5 @@ export const attentionTools = {
   runDataRetrieval,
   runVisualizationMapping,
   buildMorphingCard,
+  buildTablePayload,
 };
