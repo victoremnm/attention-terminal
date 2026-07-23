@@ -32,43 +32,50 @@ FROM github_events
 WHERE repo_name != ''
   AND actor_login != '';
 
--- 2. gh_repo_activity_feed: a plain view (thin projection, no stored state),
---    so it's just a column-list update -- no backfill concern.
-CREATE OR REPLACE VIEW gh_repo_activity_feed AS
+-- 2. gh_repo_activity_feed: also a real table (SharedMergeTree), fed by
+--    gh_repo_activity_feed_mv -- NOT a plain view (verified against production
+--    system.tables: engine = SharedMergeTree). Same drop/recreate-MV pattern
+--    as step 1, matching the MV's actual existing shape and WHERE clause.
+ALTER TABLE gh_repo_activity_feed ADD COLUMN IF NOT EXISTS title Nullable(String);
+ALTER TABLE gh_repo_activity_feed ADD COLUMN IF NOT EXISTS labels Array(String) DEFAULT [];
+
+DROP TABLE IF EXISTS gh_repo_activity_feed_mv;
+CREATE MATERIALIZED VIEW IF NOT EXISTS gh_repo_activity_feed_mv TO gh_repo_activity_feed AS
 SELECT
+    created_at,
     repo_name,
     actor_login,
-    created_at,
     event_type,
     action,
-    commit_count,
-    distinct_commit_count,
+    commit_count AS commits,
+    distinct_commit_count AS distinct_commits,
     pr_merged,
-    number,
-    ref_type,
     title,
     labels
 FROM github_events
-WHERE repo_name != '';
+WHERE repo_name != ''
+  AND event_type IN ('PushEvent', 'PullRequestEvent');
 
 -- +goose Down
-DROP VIEW IF EXISTS gh_repo_activity_feed;
-CREATE VIEW IF NOT EXISTS gh_repo_activity_feed AS
+DROP TABLE IF EXISTS gh_repo_activity_feed_mv;
+CREATE MATERIALIZED VIEW IF NOT EXISTS gh_repo_activity_feed_mv TO gh_repo_activity_feed AS
 SELECT
+    created_at,
     repo_name,
     actor_login,
-    created_at,
     event_type,
     action,
-    commit_count,
-    distinct_commit_count,
-    pr_merged,
-    number,
-    ref_type
+    commit_count AS commits,
+    distinct_commit_count AS distinct_commits,
+    pr_merged
 FROM github_events
-WHERE repo_name != '';
+WHERE repo_name != ''
+  AND event_type IN ('PushEvent', 'PullRequestEvent');
 
-DROP VIEW IF EXISTS gh_repo_actor_activity_feed_mv;
+ALTER TABLE gh_repo_activity_feed DROP COLUMN IF EXISTS labels;
+ALTER TABLE gh_repo_activity_feed DROP COLUMN IF EXISTS title;
+
+DROP TABLE IF EXISTS gh_repo_actor_activity_feed_mv;
 CREATE MATERIALIZED VIEW IF NOT EXISTS gh_repo_actor_activity_feed_mv TO gh_repo_actor_activity_feed AS
 SELECT
     repo_name,
