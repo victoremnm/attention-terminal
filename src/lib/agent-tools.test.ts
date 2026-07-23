@@ -13,6 +13,7 @@ import {
   listTables,
   resetCatalogState,
   TABLE_LIST_TIMEOUT_MS,
+  buildMorphingCard,
 } from "./agent-tools";
 
 describe("listTables tool", () => {
@@ -71,5 +72,71 @@ describe("listTables tool", () => {
       tables: ["system.tables"],
     });
     expect(typeof res.provenance.elapsedMs).toBe("number");
+  });
+});
+
+describe("buildMorphingCard", () => {
+  it("builds a valid morphing-card payload from row objects", async () => {
+    const rows = [
+      { repo_name: "acme/widgets", stars: 500 },
+      { repo_name: "acme/gizmos", stars: 210 },
+    ];
+    const result = await (buildMorphingCard as any).execute({
+      rows,
+      visualizationType: "Bar Chart",
+    });
+    expect(result.type).toBe("morphing-card");
+    expect(result.visualizationType).toBe("Bar Chart");
+    expect(result.chartConfig.data.values).toEqual(rows);
+    expect(result.chartConfig.encoding.tooltip).toEqual([
+      { field: "repo_name", title: "Repo Name" },
+      { field: "stars", title: "Stars" },
+    ]);
+  });
+
+  it("respects explicit column definitions when provided", async () => {
+    const rows = [{ a: 1, b: 2 }];
+    const result = await (buildMorphingCard as any).execute({
+      rows,
+      columns: [{ field: "a", title: "Custom A" }],
+      visualizationType: "Data Table",
+    });
+    expect(result.chartConfig.encoding.tooltip).toEqual([{ field: "a", title: "Custom A" }]);
+  });
+
+  it("humanizes column names from snake_case to Title Case", async () => {
+    const rows = [{ first_name: "Alice", last_updated: "2024-07-23" }];
+    const result = await (buildMorphingCard as any).execute({
+      rows,
+      visualizationType: "Data Table",
+    });
+    expect(result.chartConfig.encoding.tooltip).toEqual([
+      { field: "first_name", title: "First Name" },
+      { field: "last_updated", title: "Last Updated" },
+    ]);
+  });
+
+  it("includes optional summary and query when provided", async () => {
+    const rows = [{ x: 1 }];
+    const summary = "Test summary";
+    const query = { sql: "SELECT * FROM test", rowsRead: 1, elapsedMs: 100 };
+    const result = await (buildMorphingCard as any).execute({
+      rows,
+      visualizationType: "Data Table",
+      summary,
+      query,
+    });
+    expect(result.summary).toBe(summary);
+    expect(result.query).toEqual(query);
+  });
+
+  it("sets generatedAt to a valid ISO string", async () => {
+    const rows = [{ x: 1 }];
+    const result = await (buildMorphingCard as any).execute({
+      rows,
+      visualizationType: "Data Table",
+    });
+    expect(result.generatedAt).toBeTruthy();
+    expect(() => new Date(result.generatedAt)).not.toThrow();
   });
 });

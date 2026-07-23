@@ -10,6 +10,7 @@ import {
   runReadOnlyQueryDef,
   runDataRetrievalDef,
   runVisualizationMappingDef,
+  buildMorphingCardDef,
 } from "./agent-tool-schemas";
 import { ensureTablesExist } from "./clickhouse";
 import { dailyDigest } from "./digest";
@@ -302,6 +303,31 @@ export const runVisualizationMapping = tool({
   execute: async ({ intent, metadata }) => runVisualizationMappingAgent(intent, metadata),
 });
 
+function humanizeColumnKey(key: string): string {
+  return key
+    .replace(/_/g, " ")
+    .replace(/\b([a-z])/g, (match) => match.toUpperCase());
+}
+
+export const buildMorphingCard = tool({
+  ...buildMorphingCardDef,
+  execute: async ({ rows, columns, visualizationType, summary, query }) => {
+    const resolvedColumns =
+      columns ?? Object.keys(rows[0] ?? {}).map((field) => ({ field, title: humanizeColumnKey(field) }));
+    return {
+      type: "morphing-card" as const,
+      visualizationType,
+      generatedAt: new Date().toISOString(),
+      chartConfig: {
+        data: { values: rows },
+        encoding: { tooltip: resolvedColumns },
+      },
+      summary,
+      query,
+    };
+  },
+});
+
 export const attentionTools = {
   listTables,
   describeTable,
@@ -312,4 +338,5 @@ export const attentionTools = {
   renderAnswer,
   runDataRetrieval,
   runVisualizationMapping,
+  buildMorphingCard,
 };
