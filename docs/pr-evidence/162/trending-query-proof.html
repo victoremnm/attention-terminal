@@ -37,8 +37,8 @@
     "search": "github"
   },
   "sourceTables": ["gh_repo_daily", "gh_repo_metadata"],
-  "elapsedMs": 541,
-  "rowsRead": 2613366
+  "elapsedMs": 561,
+  "rowsRead": 2688499
 }</pre>
 
 <h2>Rejected request examples</h2>
@@ -48,4 +48,4 @@ GET /api/trending?window=90d     → 400 window is not supported</pre>
 
 <h2>Verification</h2>
 <p><span class="ok">✓</span> 31 tests passed · <span class="ok">✓</span> 13 credentialed ClickHouse integration tests passed · <span class="ok">✓</span> TypeScript passed · <span class="ok">✓</span> Next production build passed</p>
-<p>Runtime proof captured from a credentialed <code>repoActivityWindow("30d", { limit: 2 })</code> read after the metadata prefilter and <code>ANY LEFT JOIN</code> change.</p>
+<p>Runtime proof captured from the exact request above: <code>repoActivityWindow("30d", { limit: 25, offset: 25, sort: "commits", direction: "asc", search: "github" })</code> after the metadata prefilter and <code>ANY LEFT JOIN</code> change.</p>
