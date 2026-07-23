@@ -186,6 +186,51 @@ a { color: inherit; }
   border-color: var(--cyan);
   color: var(--cyan);
 }
+.tk-card-copy {
+  position: absolute;
+  right: 32px;
+  bottom: 6px;
+  border: 1px solid var(--line-soft);
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--panel-2) 88%, transparent 12%);
+  color: var(--muted);
+  font-size: 9px;
+  line-height: 1;
+  padding: 3px 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  z-index: 2;
+}
+.tk-card-copy:hover, .tk-card-copy:focus-visible, .tk-card-copy.copied {
+  border-color: var(--cyan);
+  color: var(--cyan);
+}
+.tk-lane-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.tk-lane-copy {
+  border: 1px solid var(--line-soft);
+  border-radius: 3px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 9px;
+  line-height: 1;
+  padding: 2px 5px;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.tk-lane-copy:hover, .tk-lane-copy:focus-visible, .tk-lane-copy.copied {
+  border-color: var(--cyan);
+  color: var(--cyan);
+}
 .tk-card-top {
   display: flex;
   min-height: 16px;

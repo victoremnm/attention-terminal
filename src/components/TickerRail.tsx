@@ -8,6 +8,15 @@ import { Sparkline } from "./charts";
 import { useIngestPulse } from "./useIngestPulse";
 import { copyToClipboard } from "@/lib/asset-export";
 
+function CopyIcon({ className = "" }: { className?: string }) {
+  return (
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="miter" className={className} aria-hidden="true">
+      <rect x="2" y="2" width="14" height="14" rx="1" />
+      <polygon points="22 22 8 22 8 16 16 16 16 8 22 8 22 22" />
+    </svg>
+  );
+}
+
 function Card({
   card,
   state,
@@ -17,8 +26,23 @@ function Card({
   state?: "loading" | "selected";
   onOpenRepo: (repoName: string) => void;
 }) {
+  const [copied, setCopied] = useState(false);
   const stats = card.stats?.filter((stat) => stat.value !== "0").slice(0, 6) ?? [];
   const actionLabel = state === "loading" ? "rendering..." : state === "selected" ? "rendered below" : undefined;
+
+  async function handleCopyCard(event: React.MouseEvent) {
+    event.stopPropagation();
+    try {
+      const link = card.href ? `[**${card.name}**](${card.href})` : `**${card.name}**`;
+      const md = `| Name | Metric | Delta |\n| :--- | :--- | :--- |\n| ${link} | \`${card.metric}\` | ${card.delta ?? "-"} |`;
+      await copyToClipboard(md, "markdown");
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      setCopied(false);
+    }
+  }
+
   const inner = (
     <>
       {card.spark && card.spark.length > 1 && (
@@ -53,6 +77,15 @@ function Card({
           {inner}
           {actionLabel && <span className="tk-action mono">{actionLabel}</span>}
         </button>
+        <button
+          type="button"
+          className={`tk-card-copy${copied ? " copied" : ""}`}
+          onClick={handleCopyCard}
+          aria-label={`Copy Markdown for ${card.name}`}
+          title="Copy Markdown for this repo"
+        >
+          <CopyIcon />
+        </button>
         {card.href && (
           <a className="tk-card-external mono" href={card.href} target="_blank" rel="noreferrer" onClick={(event) => event.stopPropagation()}>
             GH
@@ -81,9 +114,43 @@ function Lane({
   loadingRepo?: string;
   onOpenRepo: (repoName: string) => void;
 }) {
+  const [copiedLane, setCopiedLane] = useState(false);
+
+  async function handleCopyLane(event: React.MouseEvent) {
+    event.stopPropagation();
+    try {
+      const lines = [
+        `#### ${title}`,
+        `| Name | Metric | Delta |`,
+        `| :--- | :--- | :--- |`,
+      ];
+      for (const c of cards) {
+        const link = c.href ? `[**${c.name}**](${c.href})` : `**${c.name}**`;
+        lines.push(`| ${link} | \`${c.metric}\` | ${c.delta ?? "-"} |`);
+      }
+      await copyToClipboard(lines.join("\n"), "markdown");
+      setCopiedLane(true);
+      setTimeout(() => setCopiedLane(false), 2000);
+    } catch {
+      setCopiedLane(false);
+    }
+  }
+
   return (
     <div className="tk-lane">
-      <div className="tk-lane-title mono">{title}</div>
+      <div className="tk-lane-title mono">
+        <span>{title}</span>
+        <button
+          type="button"
+          className={`tk-lane-copy${copiedLane ? " copied" : ""}`}
+          onClick={handleCopyLane}
+          aria-label={`Copy ${title} lane as Markdown`}
+          title={`Copy ${title} lane as Markdown`}
+        >
+          <CopyIcon />
+          <span>{copiedLane ? "Copied" : "MD"}</span>
+        </button>
+      </div>
       <div className="tk-scroll">
         {cards.map((c, i) => (
           <Card
