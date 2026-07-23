@@ -1479,6 +1479,17 @@ a { color: inherit; }
   width: fit-content;
 }
 
+.rank-bot-badge {
+  margin-left: 6px;
+  border: 1px solid var(--line-soft);
+  border-radius: 3px;
+  padding: 1px 5px;
+  color: var(--muted);
+  font-size: 9px;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+
 /* Sortable measure headers (issue #135) */
 .rank-stats-head {
   display: flex;
