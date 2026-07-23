@@ -1405,36 +1405,34 @@ a { color: inherit; }
   cursor: not-allowed;
   opacity: .42;
 }
+.rankings-table-wrap {
+  overflow-x: auto;
+  margin-top: 4px;
+}
+.rank-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+.rank-head th,
+.rank-row td {
+  padding: 8px 10px;
+  text-align: left;
+  white-space: nowrap;
+}
 .rank-head {
-  display: grid;
-  grid-template-columns: 40px minmax(0, 1fr) 156px minmax(180px, 1fr) 90px;
-  gap: 12px;
-  align-items: center;
-  padding: 10px 6px 8px;
   border-bottom: 1px solid var(--line);
   color: var(--muted);
   font-size: 9.5px;
-  letter-spacing: .14em;
+  letter-spacing: .1em;
   text-transform: uppercase;
 }
 .rank-row {
-  display: grid;
-  grid-template-columns: 40px minmax(0, 1fr) 156px minmax(180px, 1fr) 90px;
-  gap: 12px;
-  align-items: center;
-  width: 100%;
-  text-align: left;
-  border: 0;
   border-bottom: 1px solid var(--line-soft);
   border-left: 2px solid transparent;
-  background: transparent;
   color: var(--ink);
-  padding: 9px 6px;
-  cursor: pointer;
 }
-.rank-row:hover,
-.rank-row:focus-visible {
-  outline: none;
+.rank-row:hover {
   background: color-mix(in srgb, var(--panel) 60%, transparent 40%);
   border-left-color: color-mix(in srgb, var(--cyan) 62%, var(--line-soft) 38%);
 }
@@ -1448,13 +1446,23 @@ a { color: inherit; }
 .rank-num {
   color: var(--muted);
   font-size: 12px;
-  font-variant-numeric: tabular-nums;
+  width: 32px;
 }
 .rank-repo {
-  min-width: 0;
+  min-width: 220px;
+}
+.rank-repo button {
   display: flex;
   flex-direction: column;
   gap: 2px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  padding: 0;
+  cursor: pointer;
+  text-align: left;
+  width: 100%;
 }
 .rank-repo b {
   min-width: 0;
@@ -1474,40 +1482,268 @@ a { color: inherit; }
   white-space: nowrap;
 }
 .rank-spark {
-  display: flex;
-  justify-content: flex-end;
-  align-items: center;
-  color: var(--cyan);
+  min-width: 120px;
 }
-.rank-stats {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 5px;
-  align-items: center;
-  justify-content: flex-start;
-}
-.rank-stats span {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 4px;
-  border: 1px solid var(--line-soft);
-  border-radius: 3px;
-  padding: 2px 6px;
-  color: var(--muted);
-  font-size: 9px;
-  line-height: 1.35;
-  white-space: nowrap;
-}
-.rank-stats b {
+.rank-cell-num {
+  text-align: right;
   color: var(--ink);
-  font-weight: 700;
+  font-size: 12px;
 }
 .rank-events {
   text-align: right;
   color: var(--ink);
   font-size: 13px;
-  font-variant-numeric: tabular-nums;
 }
+
+.rank-repo-head {
+  min-width: 0;
+  color: var(--muted);
+}
+
+.rank-badge {
+  display: inline-block;
+  margin-top: 2px;
+  border: 1px solid color-mix(in srgb, var(--amber) 55%, var(--line-soft) 45%);
+  border-radius: 3px;
+  padding: 1px 5px;
+  color: var(--amber);
+  font-size: 8.5px;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  width: fit-content;
+}
+
+.rank-bot-badge {
+  margin-left: 6px;
+  border: 1px solid var(--line-soft);
+  border-radius: 3px;
+  padding: 1px 5px;
+  color: var(--muted);
+  font-size: 9px;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+
+
+.rank-sort-header {
+  border: 1px solid transparent;
+  border-radius: 3px;
+  padding: 2px 6px;
+  color: var(--muted);
+  background: transparent;
+  font: inherit;
+  font-size: 9.5px;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.rank-sort-header:hover,
+.rank-sort-header:focus-visible {
+  border-color: var(--line-soft);
+  color: var(--ink);
+  outline: none;
+}
+
+.rank-sort-header[aria-pressed="true"] {
+  color: var(--cyan);
+}
+
+.rank-events .rank-sort-header {
+  font-size: 9.5px;
+}
+
+/* Ranking mode selector (issue #139) */
+.rankings-modes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 14px 0 4px;
+}
+
+.rankings-mode-button {
+  border: 1px solid var(--line-soft);
+  border-radius: 4px;
+  padding: 5px 10px;
+  color: var(--muted);
+  background: transparent;
+  font: inherit;
+  font-size: 10px;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.rankings-mode-button:hover,
+.rankings-mode-button:focus-visible {
+  border-color: var(--line);
+  color: var(--ink);
+}
+
+.rankings-mode-button[aria-pressed="true"] {
+  border-color: color-mix(in srgb, var(--cyan) 62%, var(--line-soft) 38%);
+  color: var(--cyan);
+  background: color-mix(in srgb, var(--cyan) 8%, transparent 92%);
+}
+
+.rankings-controls-toggle {
+  margin-left: auto;
+  border: 1px solid var(--line-soft);
+  border-radius: 4px;
+  padding: 5px 10px;
+  color: var(--muted);
+  background: transparent;
+  font: inherit;
+  font-size: 10px;
+  cursor: pointer;
+}
+
+.rankings-controls-toggle:hover,
+.rankings-controls-toggle:focus-visible,
+.rankings-controls-toggle[aria-expanded="true"] {
+  border-color: var(--line);
+  color: var(--ink);
+}
+
+.rankings-mode-caption {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+/* Filters & Columns sheet (issue #135) */
+.rankings-controls-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin: 10px 0 4px;
+  border: 1px solid var(--line-soft);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--panel) 78%, transparent 22%);
+  padding: 12px 14px;
+}
+
+.rankings-controls-section h3 {
+  margin: 0 0 8px;
+  color: var(--muted);
+  font-size: 9.5px;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+}
+
+.rankings-controls-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--ink);
+  font-size: 11px;
+}
+
+.rankings-controls-field input[type="number"] {
+  width: 88px;
+  border: 1px solid var(--line-soft);
+  border-radius: 3px;
+  background: transparent;
+  color: var(--ink);
+  padding: 4px 6px;
+  font: inherit;
+}
+
+.rankings-controls-checkbox {
+  gap: 6px;
+}
+
+.rankings-columns-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.rankings-columns-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  color: var(--ink);
+  font-size: 11px;
+}
+
+.rankings-columns-item label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.rankings-columns-reorder {
+  display: flex;
+  gap: 4px;
+}
+
+.rankings-columns-reorder button {
+  border: 1px solid var(--line-soft);
+  border-radius: 3px;
+  padding: 1px 6px;
+  color: var(--muted);
+  background: transparent;
+  font: inherit;
+  cursor: pointer;
+}
+
+.rankings-columns-reorder button:hover:not(:disabled),
+.rankings-columns-reorder button:focus-visible:not(:disabled) {
+  border-color: var(--line);
+  color: var(--cyan);
+}
+
+.rankings-columns-reorder button:disabled {
+  cursor: not-allowed;
+  opacity: .35;
+}
+
+.rankings-reset-button {
+  align-self: flex-start;
+  border: 1px solid var(--line-soft);
+  border-radius: 4px;
+  padding: 5px 10px;
+  color: var(--muted);
+  background: transparent;
+  font: inherit;
+  font-size: 10px;
+  cursor: pointer;
+}
+
+.rankings-reset-button:hover,
+.rankings-reset-button:focus-visible {
+  border-color: var(--line);
+  color: var(--ink);
+}
+
+.rankings-refresh-button {
+  margin-left: 8px;
+  border: 1px solid var(--line-soft);
+  border-radius: 4px;
+  padding: 5px 10px;
+  color: var(--muted);
+  background: transparent;
+  font: inherit;
+  font-size: 10px;
+  cursor: pointer;
+}
+.rankings-refresh-button:hover,
+.rankings-refresh-button:focus-visible {
+  border-color: var(--line);
+  color: var(--ink);
+}
+
+.rankings-controls-actions {
+  display: flex;
+  gap: 8px;
+}
+
 @media (min-width: 960px) {
   .tk-scroll {
     display: grid;
@@ -1528,15 +1764,11 @@ a { color: inherit; }
 
 /* skills.sh hides the sparkline column on small screens */
 @media (max-width: 640px) {
-  .rank-head,
-  .rank-row {
-    grid-template-columns: 32px minmax(0, 1fr) 76px;
-  }
   .rank-spark {
     display: none;
   }
-  .rank-stats {
-    display: none;
+  .rankings-controls-toggle {
+    margin-left: 0;
   }
   .rankings-summary {
     grid-template-columns: 1fr;
