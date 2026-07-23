@@ -1510,7 +1510,18 @@ export async function repoActivityWindow(
   // uniqMergeState per day and union it with uniqMerge in the outer query -
   // summing per-day uniqs would double-count anyone active on multiple days.
   const sql = `
-    WITH filtered_metadata AS (
+    WITH latest_metadata AS (
+      SELECT
+        repo_name,
+        argMax(owner, fetched_at) AS owner,
+        argMax(description, fetched_at) AS description,
+        argMax(language, fetched_at) AS language,
+        argMax(topics, fetched_at) AS topics,
+        argMax(github_stars, fetched_at) AS github_stars
+      FROM gh_repo_metadata
+      GROUP BY repo_name
+    ),
+    filtered_metadata AS (
       SELECT
         repo_name,
         owner,
@@ -1518,7 +1529,7 @@ export async function repoActivityWindow(
         language,
         topics,
         github_stars
-      FROM gh_repo_metadata
+      FROM latest_metadata
       WHERE {search: String} = ''
          OR positionCaseInsensitiveUTF8(
               concat(repo_name, ' ', owner, ' ', description, ' ', language, ' ', arrayStringConcat(topics, ' ')),
@@ -1543,11 +1554,11 @@ export async function repoActivityWindow(
     )
     SELECT
       d.repo_name,
-      any(owner) AS owner,
-      any(description) AS description,
-      any(language) AS language,
-      any(topics) AS topics,
-      any(github_stars) AS github_stars,
+      any(m.owner) AS owner,
+      any(m.description) AS description,
+      any(m.language) AS language,
+      any(m.topics) AS topics,
+      any(m.github_stars) AS github_stars,
       sum(d.day_events) AS events,
       uniqMerge(d.actors_state) AS actors,
       sum(d.day_pushes) AS pushes,
