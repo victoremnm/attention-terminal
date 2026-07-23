@@ -21,7 +21,7 @@ select
   sum(branches_created) as branches_created,
   sum(tags_created) as tags_created,
   sum(releases_published) as releases_published
-from {{ source('raw', 'gh_repo_monthly') }}
+from {{ source('default', 'gh_repo_monthly') }}
 group by
   activity_month,
   source_id,

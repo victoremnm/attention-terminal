@@ -35,7 +35,7 @@ export const ingestGhArchive = schedules.task({
     // Start from the hour after the newest loaded event; GH Archive publishes
     // each hour's file shortly after the hour closes, so stop at now-1h.
     const [{ last }] = await selectRows<{ last: string }>(
-      "SELECT toUnixTimestamp(toStartOfHour(max(created_at))) AS last FROM github_events"
+      "SELECT toUnixTimestamp(toStartOfHour(max(created_at))) AS last FROM raw.github_events"
     );
     const from = new Date((Number(last) + 3600) * 1000);
     const until = new Date(Date.now() - 60 * 60 * 1000);
@@ -50,7 +50,7 @@ export const ingestGhArchive = schedules.task({
       try {
         await clickhouse.command({
           query: `
-            INSERT INTO github_events
+            INSERT INTO raw.github_events
               (event_id, event_type, actor_login, repo_name, owner, created_at, action, ref_type,
                commit_count, distinct_commit_count, pr_merged, number, title, labels)
             SELECT toUInt64OrZero(id), type, tupleElement(actor,'login'), tupleElement(repo,'name'),
@@ -85,7 +85,7 @@ export const ingestGhArchive = schedules.task({
       }
 
       const [{ rows }] = await selectRows<{ rows: string }>(
-        `SELECT count() AS rows FROM github_events WHERE toStartOfHour(created_at) = toDateTime(${Math.floor(hour.getTime() / 1000)})`
+        `SELECT count() AS rows FROM raw.github_events WHERE toStartOfHour(created_at) = toDateTime(${Math.floor(hour.getTime() / 1000)})`
       );
       await logIngest({ source: "gharchive", chunk_key: key, rows_ingested: Number(rows) });
       loaded += 1;

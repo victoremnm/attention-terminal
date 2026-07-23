@@ -21,7 +21,7 @@ describe("listTables tool", () => {
     resetCatalogState();
     mockQuery.mockResolvedValueOnce({
       json: async () => [
-        { database: "default", name: "github_events", engine: "MergeTree", total_rows: "1000", size: "1 MB" },
+        { database: "raw", name: "github_events", engine: "MergeTree", total_rows: "1000", size: "1 MB" },
         { database: "default", name: "gh_repo_metadata", engine: "ReplacingMergeTree", total_rows: "50", size: "100 KB" },
       ],
     });
@@ -30,7 +30,7 @@ describe("listTables tool", () => {
 
     expect(res.tables).toHaveLength(2);
     expect(res.tables[0]).toEqual({
-      database: "default",
+      database: "raw",
       name: "github_events",
       engine: "MergeTree",
       total_rows: "1000",

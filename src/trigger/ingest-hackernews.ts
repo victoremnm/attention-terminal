@@ -76,7 +76,7 @@ export const ingestHackernews = schedules.task({
     // The database is the watermark; the task stays stateless and self-heals
     // after downtime (catch-up is capped per run, the next run continues).
     const [{ watermark }] = await selectRows<{ watermark: string }>(
-      "SELECT max(id) AS watermark FROM hackernews"
+      "SELECT max(id) AS watermark FROM raw.hackernews"
     );
     const maxKnown = Number(watermark);
 
@@ -99,7 +99,7 @@ export const ingestHackernews = schedules.task({
 
     const rows = await fetchItems(ids);
     if (rows.length > 0) {
-      await clickhouseInsert.insert({ table: "hackernews", values: rows, format: "JSONEachRow" });
+      await clickhouseInsert.insert({ table: "raw.hackernews", values: rows, format: "JSONEachRow" });
       await logIngest({
         source: "hackernews",
         chunk_key: `items:${ids[0]}-${ids[ids.length - 1]}`,

@@ -3,6 +3,7 @@ version: 2
 sources:
   - name: raw
     schema: "{{ target.schema }}"
+    database: raw
     description: "Append-only or engine-managed source tables owned by Goose migrations and Trigger.dev ingestion tasks."
     tables:
       - name: hackernews
@@ -11,6 +12,11 @@ sources:
         description: "Raw GH Archive events with extracted activity measures."
       - name: hf_model_snapshots
         description: "Hourly Hugging Face model scan snapshots."
+  - name: default
+    schema: "{{ target.schema }}"
+    database: default
+    description: "Aggregate and compatibility tables managed by ClickHouse rollups and views."
+    tables:
       - name: hn_hourly
         description: "Incremental ClickHouse rollup of Hacker News activity."
       - name: gh_repo_hourly

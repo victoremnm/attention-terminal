@@ -4,12 +4,12 @@ import { formatTableRow, fallbackCatalog } from "./catalog";
 describe("formatTableRow", () => {
   it("formats a table with rows estimate", () => {
     const result = formatTableRow({
-      database: "default",
+      database: "raw",
       name: "github_events",
       engine: "ReplacingMergeTree",
       total_rows: "1500000",
     });
-    expect(result).toBe("- `default.github_events` (ReplacingMergeTree) (~1,500,000 rows)");
+    expect(result).toBe("- `raw.github_events` (ReplacingMergeTree) (~1,500,000 rows)");
   });
 
   it("formats a table without row estimate", () => {
