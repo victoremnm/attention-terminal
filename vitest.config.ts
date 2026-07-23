@@ -1,8 +1,12 @@
+import path from "node:path";
 import { defineConfig } from "vitest/config";
 import { fileURLToPath, URL } from "node:url";
 
 export default defineConfig({
   resolve: {
+    // Mirrors tsconfig.json's "@/*" -> "./src/*" path alias. Needed by any
+    // test that imports a component/module using the alias (e.g.
+    // RenderedAnswer.tsx importing "@/lib/render-payload").
     alias: {
       "@": fileURLToPath(new URL("./src", import.meta.url)),
     },
