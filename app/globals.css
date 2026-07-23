@@ -186,6 +186,57 @@ a { color: inherit; }
   border-color: var(--cyan);
   color: var(--cyan);
 }
+.tk-card-copy {
+  position: absolute;
+  top: 6px;
+  right: 7px;
+  border: 1px solid var(--line-soft);
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--panel-2) 88%, transparent 12%);
+  color: var(--muted);
+  font-size: 9px;
+  line-height: 1;
+  padding: 3px 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  z-index: 2;
+  opacity: 0;
+  pointer-events: none;
+}
+.tk-card-shell:hover .tk-card-copy, .tk-card-copy:focus-visible, .tk-card-copy.copied {
+  opacity: 1;
+  pointer-events: auto;
+}
+.tk-card-copy:hover, .tk-card-copy:focus-visible, .tk-card-copy.copied {
+  border-color: var(--cyan);
+  color: var(--cyan);
+}
+.tk-lane-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.tk-lane-copy {
+  border: 1px solid var(--line-soft);
+  border-radius: 3px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 9px;
+  line-height: 1;
+  padding: 2px 5px;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.tk-lane-copy:hover, .tk-lane-copy:focus-visible, .tk-lane-copy.copied {
+  border-color: var(--cyan);
+  color: var(--cyan);
+}
 .tk-card-top {
   display: flex;
   min-height: 16px;
@@ -1073,16 +1124,24 @@ a { color: inherit; }
 }
 .repo-actor-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
   gap: 6px;
 }
 .repo-actor-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto auto;
-  gap: 8px;
-  align-items: center;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
   border-top: 1px solid var(--line-soft);
-  padding: 7px 0;
+  padding: 9px 0;
+}
+.repo-actor-row.is-bot {
+  opacity: 0.75;
+}
+.repo-actor-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
 }
 .repo-actor-row b {
   min-width: 0;
@@ -1092,10 +1151,24 @@ a { color: inherit; }
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.repo-actor-row span {
+.actor-bot-badge {
   color: var(--muted);
-  font-size: 9.5px;
+  font-size: 8px;
+  letter-spacing: .08em;
+  font-weight: 400;
+  flex-shrink: 0;
+}
+.repo-actor-metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px 8px;
+}
+.repo-actor-metrics span {
+  color: var(--muted);
+  font-size: 9px;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .repo-section-title {
   color: var(--muted);

@@ -274,15 +274,20 @@ export const RepoDrilldownSchema = z.object({
     distinctCommits: z.number().int().nonnegative(),
     prsOpened: z.number().int().nonnegative(),
     prsMerged: z.number().int().nonnegative(),
+    issuesOpened: z.number().int().nonnegative(),
+    releasesPublished: z.number().int().nonnegative(),
+    isBot: z.boolean().default(false),
   })).default([]),
   feed: z.array(z.object({
     at: z.string(),
     actor: z.string().max(120),
-    eventType: z.enum(["PushEvent", "PullRequestEvent"]),
+    eventType: z.enum(["PushEvent", "PullRequestEvent", "IssuesEvent"]),
     action: z.string().max(80),
     commits: z.number().int().nonnegative(),
     distinctCommits: z.number().int().nonnegative(),
     merged: z.boolean(),
+    title: z.string().optional(),
+    labels: z.array(z.string()).optional(),
   })),
   analysis: z
     .object({
@@ -374,6 +379,15 @@ export const RepoDrilldownSchema = z.object({
         commits: z.number().int().nonnegative(),
       })),
     })
+    .optional(),
+  // Weekly code frequency (additions/deletions) from GitHub REST API.
+  // Optional — omitted when the REST fetch fails or returns empty data.
+  codeFrequency: z
+    .array(z.object({
+      week: z.string(),
+      additions: z.number().int().nonnegative(),
+      deletions: z.number().int().nonnegative(),
+    }))
     .optional(),
   query: CardQuerySchema,
 });

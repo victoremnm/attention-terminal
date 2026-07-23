@@ -3,7 +3,7 @@
 import { useState, type ReactNode } from "react";
 import type { CandlesPayload, DigestPayload, DivergencePayload, MatrixPayload, MorphingCardPayload, RenderPayload, RepoDrilldownPayload, RepoDrilldownActivity, RepoDrilldownPulse, RepoDrilldownTrend, TableColumn, TablePayload, TickerPayload, VerdictTile } from "@/lib/render-payload";
 import { VERDICT_COLOR } from "@/lib/verdict-color";
-import { AreaChart, DualLine, HorizontalBarChart, PieChart, Sparkline, StackedBarChart, TreemapChart, VerticalBarChart, WaterfallChart } from "./charts";
+import { AreaChart, CodeFrequencyChart, DualLine, HorizontalBarChart, PieChart, Sparkline, StackedBarChart, TreemapChart, VerticalBarChart, WaterfallChart } from "./charts";
 import { MarkdownText } from "./MarkdownText";
 import { SkinnyDeck } from "./SkinnyDeck";
 import { copyToClipboard, exportAssetAsHTML, exportAssetAsMarkdown } from "@/lib/asset-export";
@@ -702,23 +702,36 @@ function RepoDrilldownAnswer({ payload }: { payload: RepoDrilldownPayload }) {
           <div className="repo-section-title mono">TOP CONTRIBUTORS 24H</div>
           <div className="repo-actor-grid">
             {payload.topActors24h.map((actor) => (
-              <div key={actor.actor} className="repo-actor-row">
-                <b>{actor.actor}</b>
-                <span className="mono">{compact(actor.commits)} commits</span>
-                <span className="mono">{compact(actor.pushes)} pushes</span>
-                <span className="mono">{compact(actor.prsMerged)} merged</span>
+              <div key={actor.actor} className={`repo-actor-row ${actor.isBot ? 'is-bot' : ''}`}>
+                <div className="repo-actor-header">
+                  <b>{actor.actor}</b>
+                  {actor.isBot && <span className="actor-bot-badge">[bot]</span>}
+                </div>
+                <div className="repo-actor-metrics">
+                  <span className="mono">{compact(actor.distinctCommits)} commits</span>
+                  <span className="mono">{compact(actor.pushes)} pushes</span>
+                  <span className="mono">{compact(actor.prsOpened)} PRs opened</span>
+                  <span className="mono">{compact(actor.prsMerged)} merged</span>
+                  {actor.issuesOpened > 0 && <span className="mono">{compact(actor.issuesOpened)} issues</span>}
+                  {actor.releasesPublished > 0 && <span className="mono">{compact(actor.releasesPublished)} releases</span>}
+                </div>
               </div>
             ))}
           </div>
         </div>
       )}
       <div className="repo-feed">
-        <div className="repo-section-title mono">LATEST PUSH / PR EVENTS</div>
+        <div className="repo-section-title mono">LATEST PUSH / PR / ISSUE EVENTS</div>
         {payload.feed.length ? payload.feed.map((item) => (
           <div key={`${item.at}-${item.actor}-${item.eventType}`} className="repo-feed-row">
             <span className="mono">{shortTime(item.at)}</span>
             <b>{item.actor}</b>
-            <i className="mono">{item.eventType === "PushEvent" ? "push" : item.merged ? "merged PR" : item.action || "PR"}</i>
+            <i className="mono">
+              {item.eventType === "PushEvent" ? "push" : item.eventType === "IssuesEvent" ? "issue" : item.merged ? "merged PR" : item.action || "PR"}
+            </i>
+            {item.title && (item.eventType === "PullRequestEvent" || item.eventType === "IssuesEvent") && (
+              <span className="repo-feed-title">{item.title.substring(0, 60)}</span>
+            )}
             <em className="mono">
               {item.eventType === "PushEvent"
                 ? item.distinctCommits > 0
@@ -726,15 +739,23 @@ function RepoDrilldownAnswer({ payload }: { payload: RepoDrilldownPayload }) {
                   : item.commits > 0
                   ? `${item.commits} commit${item.commits === 1 ? "" : "s"}`
                   : ""
+                : item.labels && item.labels.length > 0
+                ? item.labels.slice(0, 2).join(", ")
                 : ""}
             </em>
           </div>
-        )) : <div className="repo-empty mono">no push or PR events in the latest 24h window</div>}
+        )) : <div className="repo-empty mono">no push, PR, or issue events in the latest 24h window</div>}
       </div>
       {payload.trends && payload.trends.length > 0 && (
         <div className="repo-trends">
           <div className="repo-section-title mono">30-DAY TREND TIMELINE</div>
           <RepoTrendChart trends={payload.trends} />
+        </div>
+      )}
+      {payload.codeFrequency && payload.codeFrequency.length > 0 && (
+        <div className="repo-code-frequency">
+          <div className="repo-section-title mono">CODE FREQUENCY</div>
+          <CodeFrequencyChart data={payload.codeFrequency} />
         </div>
       )}
       {payload.pulse && <RepoPulseOverview pulse={payload.pulse} />}

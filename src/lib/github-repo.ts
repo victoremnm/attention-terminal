@@ -149,6 +149,57 @@ export async function fetchTopics(repoName: string, options?: FetchOptions): Pro
   return [];
 }
 
+export interface CodeFrequencyRow {
+  week: string;
+  additions: number;
+  deletions: number;
+}
+
+// Fetch weekly code frequency stats (additions/deletions) from GitHub's REST API.
+// The endpoint returns [timestamp_unix, additions, deletions] arrays for each week.
+// Returns an array of the last 52 weeks (1 year) in chronological order.
+export async function fetchCodeFrequency(repoName: string, options?: FetchOptions): Promise<CodeFrequencyRow[]> {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    let res: Response;
+    try {
+      res = await fetch(`${GITHUB_API}/repos/${repoName}/stats/code_frequency`, {
+        headers: authHeaders(),
+        signal: options?.fast ? AbortSignal.timeout(FAST_MODE_TIMEOUT_MS) : undefined,
+      });
+    } catch (error) {
+      console.log("[github-repo] GitHub code frequency fetch errored", { repoName, error });
+      return [];
+    }
+    if (res.status === 404 || res.status === 451) return []; // deleted/DMCA-taken-down
+    if (res.status === 202) {
+      // GitHub returns 202 if the stats are being computed; in fast mode, bail, otherwise retry
+      if (options?.fast) {
+        console.log("[github-repo] code frequency stats still computing (202), skipping in fast mode");
+        return [];
+      }
+      // In slow mode (batch tasks), sleep and retry
+      console.log("[github-repo] code frequency stats still computing (202), retrying after delay");
+      await new Promise((resolve) => setTimeout(resolve, 3000));
+      continue;
+    }
+    if (await respectRateLimit(res, options)) continue;
+    if (!res.ok) {
+      console.log("[github-repo] GitHub code frequency fetch failed", { repoName, status: res.status });
+      return [];
+    }
+    const data = (await res.json()) as Array<[number, number, number]> | null;
+    if (!data || !Array.isArray(data)) return [];
+
+    // Convert from [timestamp_unix, additions, deletions] to a more usable format
+    return data.map(([weekTimestamp, additions, deletions]) => ({
+      week: new Date(weekTimestamp * 1000).toISOString().split("T")[0],
+      additions: Math.max(0, additions),
+      deletions: Math.max(0, Math.abs(deletions)), // deletions come as negative numbers
+    }));
+  }
+  return [];
+}
+
 export function toRow(
   repoName: string,
   repo: GitHubRepo,

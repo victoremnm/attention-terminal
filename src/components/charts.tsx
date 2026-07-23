@@ -710,3 +710,54 @@ export function TreemapChart({ items, title }: { items: TreemapTile[]; title?: s
     </figure>
   );
 }
+
+export function CodeFrequencyChart({ data }: { data: Array<{ week: string; additions: number; deletions: number }> }) {
+  if (!data || data.length < 2) return null;
+
+  const weeks = data.map((d) => d.week);
+  const additions = data.map((d) => d.additions);
+  const deletions = data.map((d) => d.deletions);
+
+  const W = 640, H = 200, padL = 8, padR = 8, padT = 12, padB = 22;
+  const iw = W - padL - padR, ih = H - padT - padB;
+
+  const norm = (xs: number[]) => {
+    const max = Math.max(...xs, 1);
+    return xs.map((v) => v / max);
+  };
+
+  const line = (xs: number[]) =>
+    norm(xs)
+      .map((v, i) => `${(padL + (i / (xs.length - 1)) * iw).toFixed(1)},${(padT + ih - v * ih).toFixed(1)}`)
+      .join(" ");
+
+  function axisWeeks(weeks_: string[], n = 4): { i: number; label: string }[] {
+    const step = Math.max(1, Math.floor((weeks_.length - 1) / (n - 1)));
+    const out: { i: number; label: string }[] = [];
+    for (let i = 0; i < weeks_.length; i += step) out.push({ i, label: weeks_[i].slice(5).replace("-", "/") });
+    return out;
+  }
+
+  return (
+    <figure className="chart">
+      <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label="Code frequency: additions vs deletions, normalized, 52 weeks">
+        {[0.5, 1].map((t) => (
+          <line key={t} x1={padL} x2={W - padR} y1={padT + ih - t * ih} y2={padT + ih - t * ih}
+                stroke="var(--line)" strokeWidth="1" />
+        ))}
+        <line x1={padL} x2={W - padR} y1={padT + ih} y2={padT + ih} stroke="var(--line)" strokeWidth="1" />
+        {axisWeeks(weeks).map(({ i, label }) => (
+          <text key={i} x={padL + (i / (weeks.length - 1)) * iw} y={H - 6}
+                fontSize="9.5" fill="var(--muted)" textAnchor="middle" className="mono">{label}</text>
+        ))}
+        <polyline points={line(additions)} fill="none" stroke="var(--cyan)" strokeWidth="2" strokeLinejoin="round" />
+        <polyline points={line(deletions)} fill="none" stroke="var(--mag)" strokeWidth="2" strokeLinejoin="round" />
+      </svg>
+      <figcaption className="legend">
+        <span><i className="swatch" style={{ background: "var(--cyan)" }} /> additions</span>
+        <span><i className="swatch" style={{ background: "var(--mag)" }} /> deletions</span>
+        <span className="muted">each series normalized to its own 52-week max</span>
+      </figcaption>
+    </figure>
+  );
+}
