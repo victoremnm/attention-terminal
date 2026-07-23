@@ -1,4 +1,4 @@
-import { AttentionChat } from "@/components/AttentionChat";
+import { ChatCtaBanner } from "@/components/ChatCtaBanner";
 import { SurfaceNav } from "@/components/SurfaceNav";
 import { TickerRail } from "@/components/TickerRail";
 import { tickerLanes } from "@/lib/queries";
@@ -23,8 +23,8 @@ export async function TrendingSurface() {
           </p>
         </header>
         <TickerRail initial={lanes} ingestToken={token} />
+        <ChatCtaBanner />
       </main>
-      <AttentionChat />
     </>
   );
 }

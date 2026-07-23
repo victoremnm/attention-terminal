@@ -1,4 +1,4 @@
-import { AttentionChat } from "@/components/AttentionChat";
+import { ChatCtaBanner } from "@/components/ChatCtaBanner";
 import { RepoRankings } from "@/components/RepoRankings";
 import { SurfaceNav } from "@/components/SurfaceNav";
 import { repoActivityWindow, type RepoWindow, type RepoWindowRow } from "@/lib/queries";
@@ -16,8 +16,6 @@ export async function RepoRankingsSurface() {
     "1d": d1.data,
     "7d": d7.data,
     "30d": d30.data,
-    // `td` is not surfaced (gh_repo_daily retains ~30d, so it duplicates 30d),
-    // but the map key is required by the RepoWindow type.
     td: d30.data,
   };
 
@@ -34,8 +32,8 @@ export async function RepoRankingsSurface() {
           </p>
         </header>
         <RepoRankings windows={windows} />
+        <ChatCtaBanner />
       </main>
-      <AttentionChat />
     </>
   );
 }
