@@ -62,9 +62,9 @@ export const ingestGhArchive = schedules.task({
                    if(type = 'PullRequestEvent', JSONExtractString(payload, 'pull_request', 'title'),
                       if(type = 'IssuesEvent', JSONExtractString(payload, 'issue', 'title'), null)),
                    if(type = 'PullRequestEvent',
-                      arrayMap(x -> JSONExtractString(x, 'name'), JSONExtractArrayRaw(payload, 'pull_request.labels')),
+                      arrayMap(x -> JSONExtractString(x, 'name'), JSONExtractArrayRaw(payload, 'pull_request', 'labels')),
                       if(type = 'IssuesEvent',
-                         arrayMap(x -> JSONExtractString(x, 'name'), JSONExtractArrayRaw(payload, 'issue.labels')),
+                         arrayMap(x -> JSONExtractString(x, 'name'), JSONExtractArrayRaw(payload, 'issue', 'labels')),
                          []))
             FROM url('${url}', 'JSONEachRow',
                      'id String, type String, actor Tuple(login String), repo Tuple(name String), payload String, created_at DateTime')
