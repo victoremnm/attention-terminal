@@ -57,19 +57,31 @@ function summarizeEngine(engine: string) {
 }
 
 export async function catalogPromptSection() {
-  const tables = await clickhouse.query({
-    query: `
-      SELECT database, name, engine
-      FROM system.tables
-      WHERE database NOT IN ('system', 'information_schema', 'INFORMATION_SCHEMA')
-      ORDER BY database, name
-    `,
-    format: "JSONEachRow",
-    clickhouse_settings: {
-      readonly: "2",
-      max_execution_time: 10,
-    },
-  }).then((result) => result.json<TableRow>());
+  let tables: TableRow[] = [];
+  try {
+    tables = await clickhouse.query({
+      query: `
+        SELECT database, name, engine
+        FROM system.tables
+        WHERE database NOT IN ('system', 'information_schema', 'INFORMATION_SCHEMA')
+        ORDER BY database, name
+        LIMIT 50
+      `,
+      format: "JSONEachRow",
+      clickhouse_settings: {
+        readonly: "2",
+        max_execution_time: 5,
+      },
+    }).then((result) => result.json<TableRow>());
+  } catch {
+    tables = [
+      { database: "default", name: "github_events", engine: "MergeTree" },
+      { database: "default", name: "gh_repo_metadata", engine: "ReplacingMergeTree" },
+      { database: "default", name: "gh_repo_daily", engine: "SummingMergeTree" },
+      { database: "default", name: "gh_repo_hourly", engine: "SummingMergeTree" },
+      { database: "default", name: "gh_actor_daily", engine: "SummingMergeTree" },
+    ];
+  }
 
   const lines = await Promise.all(
     tables.filter((table) => RELEVANT_TABLES.has(table.name)).map(async (table) => {

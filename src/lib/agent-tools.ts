@@ -101,31 +101,71 @@ function requireDescribedTables(query: string) {
   return extractTableCandidates(query).filter((table) => !knownSchemas.has(table));
 }
 
+export const FALLBACK_TABLES = [
+  { database: "default", name: "github_events", engine: "MergeTree", total_rows: "estimated", size: "N/A" },
+  { database: "default", name: "gh_repo_metadata", engine: "ReplacingMergeTree", total_rows: "estimated", size: "N/A" },
+  { database: "default", name: "gh_repo_daily", engine: "SummingMergeTree", total_rows: "estimated", size: "N/A" },
+  { database: "default", name: "gh_repo_hourly", engine: "SummingMergeTree", total_rows: "estimated", size: "N/A" },
+  { database: "default", name: "gh_actor_daily", engine: "SummingMergeTree", total_rows: "estimated", size: "N/A" },
+  { database: "default", name: "gh_repo_activity_feed", engine: "MergeTree", total_rows: "estimated", size: "N/A" },
+  { database: "default", name: "repo_analysis", engine: "ReplacingMergeTree", total_rows: "estimated", size: "N/A" },
+  { database: "default", name: "subagent_runs", engine: "MergeTree", total_rows: "estimated", size: "N/A" },
+];
+
+export const LIST_TABLES_SQL = `
+  SELECT database, name, engine, total_rows, formatReadableSize(total_bytes) AS size
+  FROM system.tables
+  WHERE database NOT IN ('system', 'information_schema', 'INFORMATION_SCHEMA')
+  ORDER BY database, name
+  LIMIT 50
+`.trim();
+
 export const listTables = tool({
   ...listTablesDef,
   execute: async () => {
-    const result = await getClickHouse().query({
-      query: `
-        SELECT database, name, engine, total_rows, formatReadableSize(total_bytes) AS size
-        FROM system.tables
-        WHERE database NOT IN ('system', 'information_schema', 'INFORMATION_SCHEMA')
-        ORDER BY database, name
-      `,
-      format: "JSONEachRow",
-      clickhouse_settings: {
-        readonly: "2",
-        max_execution_time: 10,
-      },
-    });
-    const tables = (await result.json()) as Array<{
-      database: string;
-      name: string;
-      engine: string;
-      total_rows: string;
-      size: string;
-    }>;
-    registerCatalogTables(tables);
-    return { tables };
+    const t0 = Date.now();
+    try {
+      const result = await getClickHouse().query({
+        query: LIST_TABLES_SQL,
+        format: "JSONEachRow",
+        clickhouse_settings: {
+          readonly: "2",
+          max_execution_time: 5,
+        },
+      });
+      const tables = (await result.json()) as Array<{
+        database: string;
+        name: string;
+        engine: string;
+        total_rows: string;
+        size: string;
+      }>;
+      const elapsedMs = Date.now() - t0;
+      registerCatalogTables(tables);
+      return {
+        tables,
+        provenance: {
+          sql: LIST_TABLES_SQL,
+          elapsedMs,
+          rowsRead: tables.length,
+          tables: ["system.tables"],
+        },
+      };
+    } catch {
+      const elapsedMs = Date.now() - t0;
+      registerCatalogTables(FALLBACK_TABLES);
+      return {
+        tables: FALLBACK_TABLES,
+        isFallback: true,
+        note: "ClickHouse system.tables query failed or timed out. Defaulting to safe catalog fallback.",
+        provenance: {
+          sql: LIST_TABLES_SQL,
+          elapsedMs,
+          rowsRead: 0,
+          tables: ["system.tables"],
+        },
+      };
+    }
   },
 });
 
