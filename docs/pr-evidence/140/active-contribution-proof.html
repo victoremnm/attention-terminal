@@ -13,30 +13,39 @@
   .ok { color: #69f0ae; }
 </style>
 <h1>Active contribution ranking · Issue 140</h1>
-<p class="ok">PASS · bounded actor rollup · anti-noise ranking · live ClickHouse query</p>
+<p class="ok">PASS · bounded actor rollup · push eligibility gate · live ClickHouse query</p>
 
 <div class="grid">
   <div class="card"><div>source</div><div class="value">actor rollup</div><div>gh_repo_actor_hourly</div></div>
   <div class="card"><div>default window</div><div class="value">7d</div><div>max result: 100</div></div>
-  <div class="card"><div>noise filter</div><div class="value">commit signal</div><div>bot counts disclosed</div></div>
+  <div class="card"><div>noise filter</div><div class="value">bucket &gt; 0</div><div>push mode eligibility</div></div>
 </div>
 
 <h2>Ranking contract</h2>
 <pre>activeContributionRanking("7d", "commits", 5)
 
-filters: commits &gt; 0 OR prs_opened &gt; 0 OR prs_merged &gt; 0
+commit mode: commits &gt; 0 OR prs_opened &gt; 0 OR prs_merged &gt; 0
+push mode: substantive_push_buckets &gt; 0 (empty pushes and PR-only rows excluded)
 sort: distinct_commits DESC, activity_score DESC, repo_name ASC
 push mode: substantive_push_buckets, never raw push volume
-branch scope: unknown (not present in source rollup)
+branch scope: unknown (not present in source rollup; main-branch filtering is not claimed)
 dependency updates: unknown (not present in source rollup)</pre>
+
+<h2>Cost and benchmark caveat</h2>
+<p>The global ranking filters <code>hour</code> against <code>gh_repo_actor_hourly</code>, whose key is <code>(repo_name, hour, actor_login)</code>. The time window is bounded, but an hour-only predicate cannot use the key prefix for full pruning. A schema keyed for global time-window scans would be a separate measured optimization.</p>
+<pre>previous corrected query: 411 ms · 2,682,426 rows read · LIMIT 1
+current commit mode: 488 ms · 2,682,426 rows read · LIMIT 10
+current push-gated mode: 186 ms · 2,682,426 rows read · LIMIT 10 · 0 rows returned
+benchmark caveat: runtime/read rows vary with ingestion and merge state</pre>
 
 <h2>Credentialed runtime proof</h2>
 <pre>{
-  "rows": 1,
-  "elapsedMs": 411,
+  "mode": "pushes",
+  "rows": 0,
+  "elapsedMs": 186,
   "rowsRead": 2682426,
   "sourceTable": "gh_repo_actor_hourly"
 }</pre>
 
 <h2>Verification</h2>
-<p><span class="ok">✓</span> 6 targeted tests passed · <span class="ok">✓</span> TypeScript passed · <span class="ok">✓</span> credentialed ClickHouse query passed</p>
+<p><span class="ok">✓</span> behavior fixtures cover empty pushes, PR-only rows, and substantive rows · <span class="ok">✓</span> branch scope remains explicitly unknown · <span class="ok">✓</span> credentialed ClickHouse query passed</p>

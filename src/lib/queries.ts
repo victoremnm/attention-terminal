@@ -1612,6 +1612,7 @@ export interface ActiveContributionResult extends QueryResult<ActiveContribution
   window: ActiveContributionWindow;
   sort: ActiveContributionSort;
   limit: number;
+  notes: string[];
 }
 
 function activeContributionLimit(limit: number) {
@@ -1633,6 +1634,9 @@ export async function activeContributionRanking(
   }
   const boundedLimit = activeContributionLimit(limit);
   const sortSql = ACTIVE_CONTRIBUTION_SORT_SQL[sort];
+  const eligibilitySql = sort === "pushes"
+    ? "substantive_push_bucket_total > 0"
+    : "commit_total > 0 OR pr_opened_total > 0 OR pr_merged_total > 0";
 
   const sql = `
     WITH (SELECT max(hour) FROM gh_repo_actor_hourly) AS high_water
@@ -1674,8 +1678,8 @@ export async function activeContributionRanking(
         WHERE hour > high_water - INTERVAL ${days} DAY
       ) AS bucket
       GROUP BY repo_name
-      -- Empty pushes and push-only PR noise do not qualify as active code.
-      HAVING commit_total > 0 OR pr_opened_total > 0 OR pr_merged_total > 0
+      -- Empty pushes and push-only PR noise do not qualify for push mode.
+      HAVING ${eligibilitySql}
     )
     ORDER BY ${sortSql} DESC, activity_score DESC, repo_name ASC
     LIMIT {limit: UInt32}
@@ -1708,6 +1712,14 @@ export async function activeContributionRanking(
     window,
     sort,
     limit: boundedLimit,
+    notes: [
+      sort === "pushes"
+        ? "Push ranking requires substantive_push_bucket_total > 0; raw push volume never makes a repo eligible."
+        : "Commit ranking excludes rows with no commits and no PR activity.",
+      "branchScope is unknown because gh_repo_actor_hourly does not retain push ref/default-branch fields; main-branch filtering is not claimed.",
+      "The global ranking filters hour against ORDER BY (repo_name, hour, actor_login); this is bounded by time but hour-only filtering cannot use the rollup key prefix for full pruning.",
+      "dependencyUpdateAttribution is unknown because the source rollup does not retain dependency-update attribution.",
+    ],
   };
 }
 
