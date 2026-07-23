@@ -17,7 +17,7 @@ import { dailyDigest } from "./digest";
 import { realBuildersDeck } from "./real-builders";
 import { RenderPayloadSchema } from "./render-payload";
 import { repoDrilldown } from "./queries";
-import { runDataRetrievalAgent } from "./agents/data-retrieval-agent";
+import { normalizeUnionQuery, runDataRetrievalAgent } from "./agents/data-retrieval-agent";
 import { runVisualizationMappingAgent } from "./agents/visualization-mapping-agent";
 
 let clickhouse: ClickHouseClient | undefined;
@@ -213,38 +213,41 @@ export const describeTable = tool({
   },
 });
 
+
 export const runReadOnlyQuery = tool({
   ...runReadOnlyQueryDef,
   execute: async ({ query }) => {
-    if (!READ_ONLY_STATEMENTS.test(query) || hasMultipleStatements(query)) {
+    const normalizedQuery = normalizeUnionQuery(query);
+    if (!READ_ONLY_STATEMENTS.test(normalizedQuery) || hasMultipleStatements(normalizedQuery)) {
       return {
         error: "Only one read-only SELECT-style statement is allowed.",
       };
     }
 
     try {
-      const missingTables = requireCatalogedTables(query);
+      const missingTables = requireCatalogedTables(normalizedQuery);
       if (missingTables.length > 0) {
         return {
           error: `Unknown table reference(s): ${missingTables.join(", ")}. Call listTables first, then describe the table(s) before writing SQL.`,
         };
       }
-      const missingSchemas = requireDescribedTables(query);
+      const missingSchemas = requireDescribedTables(normalizedQuery);
       if (missingSchemas.length > 0) {
         return {
           error: `Undescribed table reference(s): ${missingSchemas.join(", ")}. Call describeTable on each table before writing SQL.`,
         };
       }
-      const tables = extractTableCandidates(query);
+      const tables = extractTableCandidates(normalizedQuery);
       await ensureTablesExist(tables);
       const result = await getClickHouse().query({
-        query,
+        query: normalizedQuery,
         format: "JSONEachRow",
         clickhouse_settings: {
           readonly: "2",
           max_result_rows: "1000",
           result_overflow_mode: "break",
           max_execution_time: 30,
+          union_default_mode: "ALL",
         },
       });
       const rows = await result.json();

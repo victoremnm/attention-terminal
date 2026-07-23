@@ -31,7 +31,16 @@ export async function q<T>(
 ): Promise<{ rows: T[]; provenance: Provenance }> {
   await (request?.tablesReady ?? ensureTablesExist(tables));
   const t0 = Date.now();
-  const rs = await clickhouse.query({ query: sql, format: "JSONEachRow", query_params });
+  const rs = await clickhouse.query({
+    query: sql,
+    format: "JSONEachRow",
+    query_params,
+    clickhouse_settings: {
+      readonly: "2",
+      max_execution_time: 30,
+      union_default_mode: "ALL",
+    },
+  });
   const rows = await rs.json<T>();
   const elapsedMs = Date.now() - t0;
   let rowsRead: number | undefined;
@@ -119,39 +128,41 @@ async function assembleTickerLanes(): Promise<TickerLanes> {
       ["github_events"]
     ),
     q<{ name: string; forks: string; stars: string; pushes: string; prs: string; issues: string; spark: number[] }>(
-      `WITH per_repo_event AS (
-         SELECT repo_name, event_type, countMerge(events) AS event_count
-         FROM gh_repo_hourly
-         WHERE hour > (SELECT max(hour) FROM gh_repo_hourly) - INTERVAL 24 HOUR
-           AND event_type IN ('ForkEvent', 'WatchEvent', 'PushEvent', 'PullRequestEvent', 'IssuesEvent')
-         GROUP BY repo_name, event_type
-       ),
-       per_repo AS (
-         SELECT repo_name,
-                sumIf(event_count, event_type = 'ForkEvent') AS fork_count,
-                sumIf(event_count, event_type = 'WatchEvent') AS star_count,
-                sumIf(event_count, event_type = 'PushEvent') AS push_count,
-                sumIf(event_count, event_type = 'PullRequestEvent') AS pr_count,
-                sumIf(event_count, event_type = 'IssuesEvent') AS issue_count
-         FROM per_repo_event
-         GROUP BY repo_name
-         HAVING fork_count > 0 AND push_count + pr_count + issue_count > 0
-       ),
-       fork_spark AS (
-          SELECT repo_name, reverse(groupArray(8)(cnt)) AS spark
-          FROM (
-            SELECT repo_name, hour, countMerge(events) AS cnt
-            FROM gh_repo_hourly
-            WHERE hour > (SELECT max(hour) FROM gh_repo_hourly) - INTERVAL 24 HOUR
-              AND event_type = 'ForkEvent'
-            GROUP BY repo_name, hour
-            ORDER BY repo_name, hour DESC
-          ) GROUP BY repo_name
-       )
-       SELECT p.repo_name AS name,
-              toString(p.fork_count) AS forks,
-              toString(p.star_count) AS stars,
-              toString(p.push_count) AS pushes,
+      `WITH
+         (SELECT max(hour) FROM gh_repo_hourly) AS max_h,
+         per_repo_event AS (
+           SELECT repo_name, event_type, countMerge(events) AS event_count
+           FROM gh_repo_hourly
+           WHERE hour > max_h - INTERVAL 24 HOUR
+             AND event_type IN ('ForkEvent', 'WatchEvent', 'PushEvent', 'PullRequestEvent', 'IssuesEvent')
+           GROUP BY repo_name, event_type
+         ),
+         per_repo AS (
+           SELECT repo_name,
+                  sumIf(event_count, event_type = 'ForkEvent') AS fork_count,
+                  sumIf(event_count, event_type = 'WatchEvent') AS star_count,
+                  sumIf(event_count, event_type = 'PushEvent') AS push_count,
+                  sumIf(event_count, event_type = 'PullRequestEvent') AS pr_count,
+                  sumIf(event_count, event_type = 'IssuesEvent') AS issue_count
+           FROM per_repo_event
+           GROUP BY repo_name
+           HAVING fork_count > 0 AND push_count + pr_count + issue_count > 0
+         ),
+         fork_spark AS (
+            SELECT repo_name, reverse(groupArray(8)(cnt)) AS spark
+            FROM (
+              SELECT repo_name, hour, countMerge(events) AS cnt
+              FROM gh_repo_hourly
+              WHERE hour > max_h - INTERVAL 24 HOUR
+                AND event_type = 'ForkEvent'
+              GROUP BY repo_name, hour
+              ORDER BY repo_name, hour DESC
+            ) GROUP BY repo_name
+         )
+         SELECT p.repo_name AS name,
+                toString(p.fork_count) AS forks,
+                toString(p.star_count) AS stars,
+                toString(p.push_count) AS pushes,
               toString(p.pr_count) AS prs,
               toString(p.issue_count) AS issues,
               fs.spark
