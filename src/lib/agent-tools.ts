@@ -275,6 +275,29 @@ export const getRepoDrilldown = tool({
   execute: async ({ repoName }) => repoDrilldown(repoName),
 });
 
+// morphing-card's chartConfig is a permissive z.record(string, unknown()) --
+// deliberately loose so it can carry an arbitrary Vega-Lite-ish shape, which
+// means Zod alone can't catch an empty/malformed chartConfig.data.values.
+// This is a real failure mode observed in live testing: the model
+// hand-constructing a wrong shape (chartConfig.data.fields instead of
+// .values, or omitting data.values entirely) passes RenderPayloadSchema fine
+// but renders an empty table. Reject it here the same way a schema failure
+// is rejected, so the model sees a concrete error and retries instead of the
+// user silently seeing "no tabular values were provided for this chart".
+function morphingCardDataError(payload: { type: string; chartConfig?: unknown }): string | null {
+  if (payload.type !== "morphing-card") return null;
+  const config = payload.chartConfig as Record<string, unknown> | undefined;
+  const data = config && typeof config === "object" ? (config.data as Record<string, unknown> | undefined) : undefined;
+  const values = data && typeof data === "object" ? data.values : undefined;
+  if (!Array.isArray(values) || values.length === 0) {
+    return "chartConfig.data.values must be a non-empty array of row objects (use the buildMorphingCard tool instead of hand-constructing chartConfig, or set chartConfig.data.values directly to your rows).";
+  }
+  if (!values.every((row) => row !== null && typeof row === "object" && !Array.isArray(row))) {
+    return "chartConfig.data.values must contain row objects (not arrays or primitives) -- each entry should be a record like { field: value, ... }.";
+  }
+  return null;
+}
+
 export const renderAnswer = tool({
   ...renderAnswerDef,
   execute: async ({ payload }) => {
@@ -283,6 +306,13 @@ export const renderAnswer = tool({
       return {
         ok: false,
         errors: parsed.error.issues.map((issue) => `${issue.path.join(".")}: ${issue.message}`),
+      };
+    }
+    const dataError = morphingCardDataError(parsed.data);
+    if (dataError) {
+      return {
+        ok: false,
+        errors: [dataError],
       };
     }
     return {
