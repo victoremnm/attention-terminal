@@ -119,7 +119,9 @@ fi
 if [ -n "$REPO" ]; then
   TMPFILE=$(mktemp)
   printf '%s\n' "$COMMENT_BODY" > "$TMPFILE"
-  if gh pr comment "$PR_NUM" --repo "$REPO" --body-file "$TMPFILE" 2>&1; then
+  # Ignore env-provided tokens for this call so an expired .env token cannot
+  # override the authenticated GitHub CLI credential in the keychain.
+  if env -u GITHUB_TOKEN -u GH_TOKEN gh pr comment "$PR_NUM" --repo "$REPO" --body-file "$TMPFILE" 2>&1; then
     echo "[pre-push-telemetry] Posted telemetry comment to PR #${PR_NUM}."
   else
     echo "[pre-push-telemetry] Failed to post comment (non-blocking)."
