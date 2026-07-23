@@ -198,12 +198,11 @@ export async function tickerLanes(): Promise<TickerLanes> {
          AND event_type IN ('PushEvent', 'PullRequestEvent', 'IssuesEvent', 'ForkEvent')
          AND NOT actor_login ILIKE '%[bot]%'
        GROUP BY repo_name
-       -- Fork-farm gate: require at least one push/commit/PR/issue - the same
-       -- substance requirement as topForked, so a spray-forked repo with zero
-       -- real activity can't land in this lane either.
-       HAVING pushes + commits + prs + closed_prs + issues > 0
-       ORDER BY prs * 4 + closed_prs * 3 + issues * 2 + least(forks, 10) + least(pushes, 10) + actors * 2 DESC,
-                events DESC
+       -- Require real commit or PR substance (commits > 0 or PRs > 0) so empty branch/main pushes
+       -- without any commits do not qualify for shipping velocity.
+       HAVING commits > 0 OR prs > 0 OR closed_prs > 0
+       ORDER BY commits * 4 + closed_prs * 5 + prs * 3 + least(pushes, commits) * 2 + actors * 2 DESC,
+                commits DESC
        LIMIT 20`,
       ["github_events"]
     ),
@@ -514,6 +513,15 @@ async function hasAnalysisTable(): Promise<boolean> {
   }
 }
 
+async function hasActorActivityFeedTable(): Promise<boolean> {
+  try {
+    const missing = await missingTables(["gh_repo_actor_activity_feed"]);
+    return missing.length === 0;
+  } catch {
+    return false;
+  }
+}
+
 // Groups the trend UNION ALL rows (one row per day + one row per event) into
 // a per-date timeline with annotated events. Days with no event have an empty
 // `events` array. The trend chart renders star/fork lines + event markers.
@@ -549,9 +557,10 @@ function buildTrends(rows: RepoDrilldownTrendSqlRow[]): Array<{
 
 export async function repoDrilldown(repoName: string): Promise<RepoDrilldownPayload> {
   const queryParams = { repoName };
-  const [useAggregates, canQueryAnalysis] = await Promise.all([
+  const [useAggregates, canQueryAnalysis, canQueryActorFeed] = await Promise.all([
     hasSeededAggregates(),
     hasAnalysisTable(),
+    hasActorActivityFeedTable(),
   ]);
 
   const metadataQuery = q<RepoDrilldownMetadataSqlRow>(
@@ -669,20 +678,21 @@ export async function repoDrilldown(repoName: string): Promise<RepoDrilldownPayl
            toString(pr_merged_total) AS prs_merged
          FROM (
            SELECT
-             actor_login AS actor,
-             sum(pushes) AS push_total,
-             sum(commits) AS commit_total,
-             sum(distinct_commits) AS distinct_commit_total,
-             sum(prs_opened) AS pr_opened_total,
-             sum(prs_merged) AS pr_merged_total,
-             push_total + commit_total + (pr_opened_total * 2) + (pr_merged_total * 3) AS activity_score
-           FROM gh_repo_actor_hourly
-           WHERE repo_name = {repoName: String}
-             AND hour > high_water - INTERVAL 24 HOUR
-           GROUP BY actor_login
-         )
-         ORDER BY activity_score DESC, actor
-         LIMIT 8`,
+              actor_login AS actor,
+              sum(pushes) AS push_total,
+              sum(commits) AS commit_total,
+              sum(distinct_commits) AS distinct_commit_total,
+              sum(prs_opened) AS pr_opened_total,
+              sum(prs_merged) AS pr_merged_total,
+              (commit_total * 3) + (distinct_commit_total * 2) + (pr_opened_total * 3) + (pr_merged_total * 5) + least(push_total, commit_total) AS activity_score
+            FROM gh_repo_actor_hourly
+            WHERE repo_name = {repoName: String}
+              AND hour > high_water - INTERVAL 24 HOUR
+            GROUP BY actor_login
+            HAVING commit_total > 0 OR pr_opened_total > 0 OR pr_merged_total > 0
+          )
+          ORDER BY activity_score DESC, actor
+          LIMIT 8`,
         ["gh_repo_actor_hourly", "gh_repo_drilldown_hourly"],
         queryParams
       )
@@ -703,12 +713,13 @@ export async function repoDrilldown(repoName: string): Promise<RepoDrilldownPayl
              sum(distinct_commit_count) AS distinct_commit_total,
              countIf(event_type = 'PullRequestEvent' AND action = 'opened') AS pr_opened_total,
              countIf(event_type = 'PullRequestEvent' AND action = 'closed' AND pr_merged = 1) AS pr_merged_total,
-             push_total + commit_total + (pr_opened_total * 2) + (pr_merged_total * 3) AS activity_score
+             (commit_total * 3) + (distinct_commit_total * 2) + (pr_opened_total * 3) + (pr_merged_total * 5) + least(push_total, commit_total) AS activity_score
            FROM github_events
            WHERE repo_name = {repoName: String}
              AND created_at > high_water - INTERVAL 24 HOUR
              AND event_type IN ('PushEvent', 'PullRequestEvent')
            GROUP BY actor_login
+           HAVING commit_total > 0 OR pr_opened_total > 0 OR pr_merged_total > 0
          )
          ORDER BY activity_score DESC, actor
          LIMIT 8`,
@@ -716,44 +727,45 @@ export async function repoDrilldown(repoName: string): Promise<RepoDrilldownPayl
         queryParams
       );
 
-  const feedQuery = useAggregates
-    ? q<RepoDrilldownFeedSqlRow>(
-        `WITH (SELECT max(hour) FROM gh_repo_drilldown_hourly) AS high_water
-         SELECT
-           toString(created_at) AS at,
-           actor_login AS actor,
-           event_type,
-           action,
-           toString(commits) AS commits,
-           toString(distinct_commits) AS distinct_commits,
-           pr_merged AS merged
-         FROM gh_repo_activity_feed
-         WHERE repo_name = {repoName: String}
-           AND created_at > high_water - INTERVAL 24 HOUR
-         ORDER BY created_at DESC
-         LIMIT 12`,
-        ["gh_repo_activity_feed", "gh_repo_drilldown_hourly"],
-        queryParams
-      )
-    : q<RepoDrilldownFeedSqlRow>(
-        `WITH (SELECT max(created_at) FROM github_events) AS high_water
-         SELECT
-           toString(created_at) AS at,
-           actor_login AS actor,
-           event_type,
-           action,
-           toString(commit_count) AS commits,
-           toString(distinct_commit_count) AS distinct_commits,
-           pr_merged AS merged
-         FROM github_events
-         WHERE repo_name = {repoName: String}
-           AND created_at > high_water - INTERVAL 24 HOUR
-           AND event_type IN ('PushEvent', 'PullRequestEvent')
-         ORDER BY created_at DESC
-         LIMIT 12`,
-        ["github_events"],
-        queryParams
-      );
+  const feedQuery =
+    useAggregates && canQueryActorFeed
+      ? q<RepoDrilldownFeedSqlRow>(
+          `WITH (SELECT max(hour) FROM gh_repo_drilldown_hourly) AS high_water
+           SELECT
+             toString(created_at) AS at,
+             actor_login AS actor,
+             event_type,
+             action,
+             toString(commits) AS commits,
+             toString(distinct_commits) AS distinct_commits,
+             pr_merged AS merged
+           FROM gh_repo_actor_activity_feed FINAL
+           WHERE repo_name = {repoName: String}
+             AND created_at > high_water - INTERVAL 24 HOUR
+           ORDER BY created_at DESC
+           LIMIT 12`,
+          ["gh_repo_actor_activity_feed", "gh_repo_drilldown_hourly"],
+          queryParams
+        )
+      : q<RepoDrilldownFeedSqlRow>(
+          `WITH (SELECT max(created_at) FROM github_events) AS high_water
+           SELECT
+             toString(created_at) AS at,
+             actor_login AS actor,
+             event_type,
+             action,
+             toString(commit_count) AS commits,
+             toString(distinct_commit_count) AS distinct_commits,
+             pr_merged AS merged
+           FROM github_events
+           WHERE repo_name = {repoName: String}
+             AND created_at > high_water - INTERVAL 24 HOUR
+             AND event_type IN ('PushEvent', 'PullRequestEvent')
+           ORDER BY created_at DESC
+           LIMIT 12`,
+          ["github_events"],
+          queryParams
+        );
 
   const analysisQuery = canQueryAnalysis
     ? q<RepoDrilldownAnalysisSqlRow>(

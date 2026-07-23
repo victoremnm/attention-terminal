@@ -1,10 +1,19 @@
 name: Release
 
-# Manual-dispatch release: analyzes conventional commits (feat/fix/…) since the
-# last tag, bumps the version, writes CHANGELOG.md, and cuts a GitHub Release.
-# Deploys are handled separately by cd.yml (migrations + Trigger.dev) and Vercel's
-# git integration — this workflow only versions + records the release.
+# Auto-release on every push to main (merge) + manual dispatch.
+# Analyzes conventional commits since the last tag, bumps the version,
+# writes CHANGELOG.md, and cuts a GitHub Release with a version tag.
+#
+# Does NOT push to main (branch is protected — PRs only).
+# The @semantic-release/git plugin is intentionally omitted; the version
+# bump in package.json is not committed to the branch. The GitHub Release
+# tag provides the versioning + rollback point.
+#
+# Every commit type triggers at least a patch release, so every deploy
+# has a version tag for rollback. feat/fix/refactor/perf → minor.
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
 
 concurrency:
@@ -12,7 +21,7 @@ concurrency:
   cancel-in-progress: false
 
 permissions:
-  contents: write        # push the version commit + tag, create the release
+  contents: write        # create the tag + GitHub Release
   issues: write          # comment on released issues
   pull-requests: write   # comment on released PRs
 
