@@ -329,14 +329,14 @@ async function assembleTickerLanes(): Promise<TickerLanes> {
       `WITH
          (SELECT max(created_at) FROM gh_repo_activity_feed) AS max_time
        SELECT repo_name AS name,
-              sum(commit_count) AS commit_total,
+              sum(commits) AS commit_total,
               countIf(event_type = 'PushEvent') AS push_count,
               countIf(event_type = 'PullRequestEvent' AND action = 'opened') AS pr_count,
               countIf(event_type = 'PullRequestEvent' AND action = 'closed') AS closed_pr_count,
               countIf(event_type = 'IssuesEvent' AND action = 'opened') AS issue_count,
               countIf(event_type = 'ForkEvent') AS fork_count,
               uniqExactIf(actor_login, event_type IN ('PushEvent', 'PullRequestEvent', 'IssuesEvent')) AS actor_count,
-              sum(commit_count) + countIf(event_type = 'PushEvent')
+              sum(commits) + countIf(event_type = 'PushEvent')
                 + countIf(event_type = 'PullRequestEvent' AND action = 'opened')
                 + countIf(event_type = 'PullRequestEvent' AND action = 'closed')
                 + countIf(event_type = 'IssuesEvent' AND action = 'opened') AS events,
