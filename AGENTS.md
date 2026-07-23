@@ -55,6 +55,11 @@ GROUP BY model_name
 ORDER BY runs DESC
 ```
 
+## Issue claiming and Model Tagging (mandatory)
+
+1. **Issue Claiming**: When an agent begins work on an issue (or calls dibs), it must immediately assign the maintainer (`victoremnm`) to the issue via `gh issue edit <issue_number> --add-assignee victoremnm` to indicate that it is claimed and avoid redundant work across agents.
+2. **Model Tagging**: Every PR body, review comment, and commit trailer authored by an agent must explicitly state the LLM model being used (e.g. `Model: Gemini 3.6 Flash`, `Model: DeepSeek`, `Model: Codex`, `Model: Claude 3.5 Sonnet`). This makes it easy to identify which model is working on a PR/issue and prevents duplicate effort.
+
 ## PR template (mandatory)
 
 Every PR must follow `.github/PULL_REQUEST_TEMPLATE.md`. The key sections:
