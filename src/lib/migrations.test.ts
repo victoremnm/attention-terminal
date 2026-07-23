@@ -33,22 +33,30 @@ describe("Goose Migrations & Skipping Index Verification", () => {
   });
 
   it("verifies ClickHouse skipping indexes are present on target tables", async () => {
+    let hnExplain = "";
+    let hourlyExplain = "";
+    let isConnected = false;
+
     try {
       const hnRes = await clickhouse.query({
         query: "EXPLAIN indexes = 1 SELECT count() FROM hackernews WHERE time > now() - INTERVAL 6 HOUR",
         format: "TabSeparated",
       });
-      const hnExplain = await hnRes.text();
-      expect(hnExplain).toContain("idx_hn_time");
+      hnExplain = await hnRes.text();
 
       const hourlyRes = await clickhouse.query({
         query: "EXPLAIN indexes = 1 SELECT count() FROM gh_repo_hourly WHERE hour > now() - INTERVAL 24 HOUR",
         format: "TabSeparated",
       });
-      const hourlyExplain = await hourlyRes.text();
-      expect(hourlyExplain).toContain("idx_hourly_hour");
+      hourlyExplain = await hourlyRes.text();
+      isConnected = true;
     } catch (err: any) {
-      console.warn("Skipping index verification notice:", err.message);
+      console.warn("Skipping index verification connection notice:", err.message);
+    }
+
+    if (isConnected) {
+      expect(hnExplain).toContain("idx_hn_time");
+      expect(hourlyExplain).toContain("idx_hourly_hour");
     }
   });
 });

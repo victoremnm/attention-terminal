@@ -34,7 +34,11 @@ function hasMultipleStatements(query: string) {
 }
 
 export function normalizeUnionQuery(query: string): string {
-  return query.replace(/\bUNION\b(?!\s+(?:ALL|DISTINCT)\b)/gi, "UNION ALL");
+  // Preserve single and double quoted string literals while normalizing bare UNION keywords
+  return query.replace(/(['"])(?:(?!\1)[^\\]|\\.)*\1|\bUNION\b(?!\s+(?:ALL|DISTINCT)\b)/gi, (match, quote) => {
+    if (quote) return match;
+    return "UNION ALL";
+  });
 }
 
 export async function runDataRetrievalAgent(intent: string) {
