@@ -103,6 +103,11 @@ a { color: inherit; }
   margin: 0;
   color: var(--muted);
 }
+.chat-cta-link:hover,
+.chat-cta-link:focus-visible {
+  background: rgba(0, 200, 240, 0.15) !important;
+  border-color: var(--cyan) !important;
+}
 .ticker {
   width: 100%;
   border: 1px solid var(--line);
@@ -2211,4 +2216,3 @@ a { color: inherit; }
   overflow-x: auto;
   line-height: 1.5;
 }
-
