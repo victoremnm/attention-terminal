@@ -1,5 +1,29 @@
 import { clickhouse, missingColumns, missingTables } from "./clickhouse";
 
+/**
+ * ClickHouse Subagent Telemetry Tables and Internal Prefixes:
+ *
+ * 1. `subagent_runs` (and `internal.subagent_runs`):
+ *    Tracks individual subagent invocation telemetry including model name, task prompt spec,
+ *    result preview, latency in milliseconds, token counts (input/output), cost USD, and success flag.
+ *
+ * 2. `subagent_api_events` (and `internal.subagent_api_events`):
+ *    Records granular LLM API request events, token usage, latency, and costs emitted by
+ *    OpenTelemetry or application instrumentation.
+ *
+ * 3. `subagent_evals` (and `internal.subagent_evals`):
+ *    Stores automated and human evaluation scores (0.0 - 1.0) and benchmark grades assigned
+ *    to subagent run outputs for model quality comparisons.
+ *
+ * 4. `subagent_experiments` (and `internal.subagent_experiments`):
+ *    Materialized view / view aggregating subagent runs and evaluation scores grouped by
+ *    model family, agent type, and effort level to benchmark performance across LLMs.
+ *
+ * 5. `session_learnings` (and `internal.session_learnings`):
+ *    Stores architectural decision records, runtime caveats, and cross-session learnings
+ *    discovered during agent execution loops.
+ */
+
 export type UsageProvenance = "measured" | "estimated";
 
 export interface TelemetryKpiSummary {
@@ -10,6 +34,7 @@ export interface TelemetryKpiSummary {
   avgLatencyMs: number;
 }
 
+/** Represents a row in `subagent_runs` / `internal.subagent_runs` */
 export interface SubagentRunRow {
   ts: string;
   session_id: string;
@@ -30,6 +55,7 @@ export interface SubagentRunRow {
   ok: number;
 }
 
+/** Represents a row in `subagent_api_events` / `internal.subagent_api_events` */
 export interface SubagentApiEventRow {
   ts: string;
   session_id: string;
@@ -46,6 +72,7 @@ export interface SubagentApiEventRow {
   duration_ms: number;
 }
 
+/** Represents a row in `subagent_experiments` / `internal.subagent_experiments` */
 export interface SubagentExperimentRow {
   task_hash: string;
   conversation_hash: string;
@@ -66,6 +93,7 @@ export interface SubagentExperimentRow {
   ts: string;
 }
 
+/** Represents a row in `session_learnings` / `internal.session_learnings` */
 export interface SessionLearningRow {
   ts: string;
   session: string;
