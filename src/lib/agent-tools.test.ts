@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-const mockQuery = vi.fn();
+const mockQuery = vi.hoisted(() => vi.fn());
 
 vi.mock("@clickhouse/client", () => ({
   createClient: () => ({
