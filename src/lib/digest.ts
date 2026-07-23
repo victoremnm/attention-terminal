@@ -40,10 +40,15 @@ async function getTaxonomy(): Promise<Topic[]> {
 
     return cachedTopics;
   } catch (error) {
-    // Fallback to empty array if table doesn't exist yet
+    // Fallback to empty array if the table doesn't exist yet (or the query
+    // otherwise fails). Deliberately do NOT cache this failure: caching []
+    // here would permanently short-circuit every future call for the
+    // lifetime of the process (e.g. a request racing the
+    // daily_skinny_taxonomy migration would poison the cache forever, even
+    // after the migration completes moments later). Leave cachedTopics null
+    // so the next call retries the query fresh.
     console.warn("Failed to fetch daily_skinny_taxonomy:", error);
-    cachedTopics = [];
-    return cachedTopics;
+    return [];
   }
 }
 
@@ -157,8 +162,13 @@ export async function dailyDigest(noiseFloor = 0): Promise<DigestPayload> {
   }
 
   const clusters = [...bySubject.entries()]
-    .map(([subject, subjectRows]) => {
-      const topic = topics.find((candidate) => candidate.subject === subject);
+    .map(([subject, subjectRows]) => ({ subject, subjectRows, topic: topics.find((candidate) => candidate.subject === subject) }))
+    // daily_skinny_subject_hourly hardcodes its own subject matching independently of
+    // daily_skinny_taxonomy, so it can still emit subjects (e.g. this project's own
+    // self-referential "Attention Terminal") that the taxonomy deliberately excludes.
+    // Only surface clusters the taxonomy recognizes.
+    .filter(({ topic }) => topic !== undefined)
+    .map(({ subject, subjectRows, topic }) => {
       const recent = subjectRows.filter((row) => row.age === 0);
       const baseline = subjectRows.filter((row) => row.age > 0);
       const talk24h = sum(recent.map((row) => Number(row.talk_threads)));
