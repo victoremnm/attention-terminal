@@ -1,4 +1,6 @@
-import { clickhouse, missingTables } from "./clickhouse";
+import { clickhouse, missingColumns, missingTables } from "./clickhouse";
+
+export type UsageProvenance = "measured" | "estimated";
 
 export interface TelemetryKpiSummary {
   runCount: number;
@@ -20,8 +22,11 @@ export interface SubagentRunRow {
   result_preview: string;
   latency_ms: number;
   input_tokens: number;
+  input_tokens_provenance: UsageProvenance;
   output_tokens: number;
+  output_tokens_provenance: UsageProvenance;
   cost_usd: number;
+  cost_provenance: UsageProvenance;
   ok: number;
 }
 
@@ -33,8 +38,11 @@ export interface SubagentApiEventRow {
   agent_name: string;
   model: string;
   input_tokens: number;
+  input_tokens_provenance: UsageProvenance;
   output_tokens: number;
+  output_tokens_provenance: UsageProvenance;
   cost_usd: number;
+  cost_provenance: UsageProvenance;
   duration_ms: number;
 }
 
@@ -46,8 +54,11 @@ export interface SubagentExperimentRow {
   model_name: string;
   latency_ms: number;
   input_tokens: number;
+  input_tokens_provenance: UsageProvenance;
   output_tokens: number;
+  output_tokens_provenance: UsageProvenance;
   total_cost_usd: number;
+  cost_provenance: UsageProvenance;
   result_preview: string;
   ok: number;
   eval_score?: number | null;
@@ -94,26 +105,47 @@ export interface TelemetryPayload {
   };
 }
 
-function estimateTokensAndCost(run: SubagentRunRow) {
+function normalizeProvenance(value: unknown, fallback: UsageProvenance): UsageProvenance {
+  return value === "measured" || value === "estimated" ? value : fallback;
+}
+
+export function provenanceColumn(column: string, availableColumns: ReadonlySet<string>): string {
+  return availableColumns.has(column) ? column : `'estimated' AS ${column}`;
+}
+
+/**
+ * Fill only values explicitly marked as estimated. A provider-reported zero is
+ * meaningful and must not be replaced by a presentation-layer estimate.
+ */
+export function enrichTelemetryRun(run: SubagentRunRow): SubagentRunRow {
   let inTokens = Number(run.input_tokens || 0);
   let outTokens = Number(run.output_tokens || 0);
   let cost = Number(run.cost_usd || 0);
+  const inputTokensProvenance = normalizeProvenance(
+    run.input_tokens_provenance,
+    inTokens === 0 ? "estimated" : "measured",
+  );
+  const outputTokensProvenance = normalizeProvenance(
+    run.output_tokens_provenance,
+    outTokens === 0 ? "estimated" : "measured",
+  );
+  const costProvenance = normalizeProvenance(run.cost_provenance, cost === 0 ? "estimated" : "measured");
 
   const modelLower = (run.model || "").toLowerCase();
 
   // If input/output tokens were unrecorded (0), estimate from prompt spec/result length & latency
-  if (inTokens === 0) {
+  if (inputTokensProvenance === "estimated" && inTokens === 0) {
     const specLen = (run.spec_preview || "").length;
     const latency = Number(run.latency_ms || 0);
     inTokens = Math.max(1200, Math.round(specLen * 3.5 + (latency > 0 ? Math.min(latency * 0.8, 15000) : 2500)));
   }
 
-  if (outTokens === 0) {
+  if (outputTokensProvenance === "estimated" && outTokens === 0) {
     const resultLen = (run.result_preview || "").length;
     outTokens = Math.max(350, Math.round(resultLen * 3.0 + 400));
   }
 
-  if (cost === 0) {
+  if (costProvenance === "estimated" && cost === 0) {
     let rateIn = 0.002 / 1000;
     let rateOut = 0.006 / 1000;
 
@@ -129,9 +161,13 @@ function estimateTokensAndCost(run: SubagentRunRow) {
   }
 
   return {
+    ...run,
     input_tokens: inTokens,
+    input_tokens_provenance: inputTokensProvenance,
     output_tokens: outTokens,
+    output_tokens_provenance: outputTokensProvenance,
     cost_usd: cost,
+    cost_provenance: costProvenance,
   };
 }
 
@@ -203,6 +239,21 @@ export async function fetchTelemetryData(): Promise<TelemetryPayload> {
   const hasLearnings = missingLearnings.length === 0;
   const hasExperiments = missingExperiments.length === 0;
 
+  const [missingRunColumns, missingEventColumns, missingExperimentColumns] = await Promise.all([
+    hasRuns
+      ? missingColumns("subagent_runs", ["input_tokens_provenance", "output_tokens_provenance", "cost_provenance"])
+      : Promise.resolve([]),
+    hasEvents
+      ? missingColumns("subagent_api_events", ["input_tokens_provenance", "output_tokens_provenance", "cost_provenance"])
+      : Promise.resolve([]),
+    hasExperiments
+      ? missingColumns("subagent_experiments", ["input_tokens_provenance", "output_tokens_provenance", "cost_provenance"])
+      : Promise.resolve([]),
+  ]);
+  const runColumns = new Set(["input_tokens_provenance", "output_tokens_provenance", "cost_provenance"].filter((column) => !missingRunColumns.includes(column)));
+  const eventColumns = new Set(["input_tokens_provenance", "output_tokens_provenance", "cost_provenance"].filter((column) => !missingEventColumns.includes(column)));
+  const experimentColumns = new Set(["input_tokens_provenance", "output_tokens_provenance", "cost_provenance"].filter((column) => !missingExperimentColumns.includes(column)));
+
   const runsQuery = hasRuns
     ? clickhouse
         .query({
@@ -219,8 +270,11 @@ export async function fetchTelemetryData(): Promise<TelemetryPayload> {
           result_preview,
           latency_ms,
           input_tokens,
+          ${provenanceColumn("input_tokens_provenance", runColumns)},
           output_tokens,
+          ${provenanceColumn("output_tokens_provenance", runColumns)},
           cost_usd,
+          ${provenanceColumn("cost_provenance", runColumns)},
           ok
         FROM subagent_runs FINAL
         ORDER BY ts DESC
@@ -243,8 +297,11 @@ export async function fetchTelemetryData(): Promise<TelemetryPayload> {
           agent_name,
           model,
           input_tokens,
+          ${provenanceColumn("input_tokens_provenance", eventColumns)},
           output_tokens,
+          ${provenanceColumn("output_tokens_provenance", eventColumns)},
           cost_usd,
+          ${provenanceColumn("cost_provenance", eventColumns)},
           duration_ms
         FROM subagent_api_events
         ORDER BY ts DESC
@@ -267,8 +324,11 @@ export async function fetchTelemetryData(): Promise<TelemetryPayload> {
           model_name,
           latency_ms,
           input_tokens,
+          ${provenanceColumn("input_tokens_provenance", experimentColumns)},
           output_tokens,
+          ${provenanceColumn("output_tokens_provenance", experimentColumns)},
           total_cost_usd,
+          ${provenanceColumn("cost_provenance", experimentColumns)},
           result_preview,
           ok,
           eval_score,
@@ -310,16 +370,8 @@ export async function fetchTelemetryData(): Promise<TelemetryPayload> {
     learningsQuery,
   ]);
 
-  // Enrich runs with estimated tokens & costs if zero
-  const runs: SubagentRunRow[] = rawRuns.map((r) => {
-    const est = estimateTokensAndCost(r);
-    return {
-      ...r,
-      input_tokens: est.input_tokens,
-      output_tokens: est.output_tokens,
-      cost_usd: est.cost_usd,
-    };
-  });
+  // Enrich only values marked as estimated; preserve measured provider values.
+  const runs: SubagentRunRow[] = rawRuns.map(enrichTelemetryRun);
 
   // Compute model distribution stats (min, Q1, median, Q3, max, violin contours)
   const modelStats = computeModelDistributionStats(runs);
@@ -338,8 +390,11 @@ export async function fetchTelemetryData(): Promise<TelemetryPayload> {
         agent_name: r.agent_id || r.agent_type,
         model: r.model || "claude-3-5-sonnet",
         input_tokens: r.input_tokens,
+        input_tokens_provenance: r.input_tokens_provenance,
         output_tokens: r.output_tokens,
+        output_tokens_provenance: r.output_tokens_provenance,
         cost_usd: r.cost_usd,
+        cost_provenance: r.cost_provenance,
         duration_ms: r.latency_ms,
       });
     }

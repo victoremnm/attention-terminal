@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PR 153 — telemetry provenance evidence</title>
+  <style>
+    :root { color-scheme: dark; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+    body { margin: 0; padding: 32px; background: #0d1117; color: #d1d9e0; }
+    main { max-width: 920px; margin: auto; }
+    h1 { color: #7ee787; font-size: 24px; }
+    h2 { color: #79c0ff; font-size: 16px; margin-top: 28px; }
+    .card { border: 1px solid #30363d; border-radius: 8px; padding: 18px; margin: 12px 0; background: #161b22; }
+    .ok { color: #7ee787; }
+    .muted { color: #8b949e; }
+    code { color: #ffa657; }
+    pre { overflow: auto; padding: 14px; background: #0d1117; border-radius: 6px; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>PR 153 — telemetry provenance</h1>
+    <p class="muted">Review evidence for legacy ClickHouse schemas and provider-reported zero usage.</p>
+
+    <section class="card">
+      <h2>Legacy schema fallback</h2>
+      <p class="ok">✓ Passed</p>
+      <p>Telemetry first checks <code>system.columns</code>. If an older deployment has the table but not the provenance columns, the query selects a literal <code>'estimated'</code> value instead of referencing an unknown column.</p>
+      <pre>input_tokens_provenance  → input_tokens_provenance  (new schema)
+output_tokens_provenance → 'estimated' AS output_tokens_provenance (legacy schema)</pre>
+      <p class="muted">This keeps /analysis and /api/analysis readable while Goose migration 20260722000003 is pending.</p>
+    </section>
+
+    <section class="card">
+      <h2>Measured zero usage</h2>
+      <p class="ok">✓ Preserved</p>
+      <p>Agent telemetry now records provenance from whether the provider returned a usage field. A returned value of <code>0</code> remains measured; only an absent value is estimated.</p>
+      <pre>usage.inputTokens === undefined ? "estimated" : "measured"
+usage.outputTokens === undefined ? "estimated" : "measured"</pre>
+    </section>
+
+    <section class="card">
+      <h2>Verification</h2>
+      <p class="ok">✓ TypeScript, unit tests, and live ClickHouse telemetry query passed.</p>
+      <pre>npx tsc --noEmit --incremental false
+npx vitest run src/lib/telemetry-queries.test.ts --reporter=dot
+fetchTelemetryData() → 50 runs, 76 events, 50 experiments</pre>
+    </section>
+  </main>
+</body>
+</html>

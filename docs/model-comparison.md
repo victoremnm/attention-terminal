@@ -4,7 +4,7 @@ Cross-model comparison harness for the attention-agent (issue #79 track #85).
 
 ## How it works
 
-Each attention-agent run logs to `subagent_runs` (model, tokens, latency, cost). The `subagent_experiments` view picks it up automatically. Run the same drilldown question against both models by switching `ATTENTION_AGENT_MODEL` between runs.
+Each attention-agent run logs to `subagent_runs` (model, tokens, latency, cost). The `subagent_experiments` view picks it up automatically. Token and cost values include provenance: `measured` means the provider reported the value, while `estimated` means the logger or query layer filled a missing value. Run the same drilldown question against both models by switching `ATTENTION_AGENT_MODEL` between runs.
 
 ## Switching models
 
@@ -30,6 +30,9 @@ SELECT
     avg(input_tokens) AS avg_input_tokens,
     avg(output_tokens) AS avg_output_tokens,
     avg(total_cost_usd) AS avg_cost_usd,
+    groupUniqArray(input_tokens_provenance) AS input_token_provenance,
+    groupUniqArray(output_tokens_provenance) AS output_token_provenance,
+    groupUniqArray(cost_provenance) AS cost_provenance,
     avg(eval_score) AS avg_eval_score
 FROM subagent_experiments
 WHERE agent_type = 'attention-agent'

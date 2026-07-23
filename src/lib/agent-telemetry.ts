@@ -13,13 +13,16 @@
 
 import { clickhouseInsert } from "./clickhouse";
 import { drilldownSpecHash } from "./agent-model";
+import type { UsageProvenance } from "./telemetry-queries";
 
 interface AgentRunRecord {
   agentType: string;
   model: string;
   latencyMs: number;
   inputTokens: number;
+  inputTokensProvenance: UsageProvenance;
   outputTokens: number;
+  outputTokensProvenance: UsageProvenance;
   costUsd: number;
   // The user's question + repo context, so runs against the same question
   // across different models share a spec_hash for comparison.
@@ -50,10 +53,15 @@ export async function logAgentRun(record: AgentRunRecord): Promise<void> {
       model: record.model,
       latency_ms: record.latencyMs,
       input_tokens: record.inputTokens,
+      input_tokens_provenance: record.inputTokensProvenance,
       output_tokens: record.outputTokens,
+      output_tokens_provenance: record.outputTokensProvenance,
       cache_read_tokens: 0,
       cache_creation_tokens: 0,
       cost_usd: record.costUsd,
+      // The AI SDK record does not include pricing, so a zero cost is not a
+      // provider-reported measurement and remains eligible for estimation.
+      cost_provenance: "estimated",
       spec_hash,
       result_hash: "",
       result_preview: "",
