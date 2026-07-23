@@ -136,6 +136,7 @@ export interface RankingsPreferences {
   activeColumns: ActiveColumnKey[];
   minStars: number;
   hideBotOnly: boolean;
+  minCommits: number;
 }
 
 export const DEFAULT_PREFERENCES: RankingsPreferences = {
@@ -146,6 +147,7 @@ export const DEFAULT_PREFERENCES: RankingsPreferences = {
   activeColumns: [...DEFAULT_ACTIVE_COLUMNS],
   minStars: 0,
   hideBotOnly: false,
+  minCommits: 1,
 };
 
 const STORAGE_KEY = "attention-terminal:rankings-preferences:v1";
@@ -212,9 +214,10 @@ export function sanitizePreferences(input: unknown): RankingsPreferences {
   );
 
   const minStars = typeof raw.minStars === "number" && Number.isFinite(raw.minStars) && raw.minStars >= 0 ? raw.minStars : 0;
+  const minCommits = typeof raw.minCommits === "number" && Number.isFinite(raw.minCommits) && raw.minCommits >= 0 ? raw.minCommits : 1;
   const hideBotOnly = typeof raw.hideBotOnly === "boolean" ? raw.hideBotOnly : false;
 
-  return { mode, sortField, sortDirection, attentionColumns, activeColumns, minStars, hideBotOnly };
+  return { mode, sortField, sortDirection, attentionColumns, activeColumns, minStars, minCommits, hideBotOnly };
 }
 
 // --- Column toggling / reordering (drag-to-reorder alternative: explicit
