@@ -189,15 +189,25 @@ replied to) should the agent ask the human to approve + merge.
 
 ## Review comments (mandatory)
 
+### Mutation boundary
+
+Idle/background subagents are suggestions-only. They may inspect review
+comments and propose remediation, but they must not edit files, apply fixes,
+reply to or resolve threads, push commits, or add/remove labels. Mutations
+below are performed only by the primary workflow after explicit approval or by
+an explicitly invoked `address-feedback`/`watch-pr` workflow.
+
 All automated review comments (CodeRabbit, Copilot, Codex, Claude Code
 Action) must be resolved before a PR can be merged:
 
-1. **Fix** — apply the fix if relevant and improving
-2. **Reply** — post an inline reply to the comment thread explaining what
+1. **Fix** — the primary or explicitly invoked feedback workflow applies the
+   fix if relevant and improving
+2. **Reply** — that workflow posts an inline reply to the comment thread explaining what
    was changed and the commit SHA: `Fixed in <sha>\n\n<explanation>`
-3. **Defer** — if the feedback is valid but out of scope, create a new
-   issue and reply with `Deferred to #N — <reason>`
-4. **Close** — if the feedback is irrelevant, reply with `Not applicable
+3. **Defer** — if the feedback is valid but out of scope, the primary or
+   explicitly invoked feedback workflow creates a new issue and replies with
+   `Deferred to #N — <reason>`
+4. **Close** — if the feedback is irrelevant, that workflow replies with `Not applicable
    — <reason>` and dismiss
 
 Never leave a review comment unreplied. The PR cannot merge with open
@@ -280,21 +290,37 @@ agent ask the human to approve + merge.
 
 ## Review comments (mandatory)
 
+### Mutation boundary
+
+Idle/background subagents are suggestions-only. They may inspect review
+comments and propose remediation, but they must not edit files, apply fixes,
+reply to or resolve threads, push commits, or add/remove labels. Mutations
+below are performed only by the primary workflow after explicit approval or by
+an explicitly invoked `address-feedback`/`watch-pr` workflow.
+
 All automated review comments (CodeRabbit, Copilot, Codex, Claude Code
 Action) must be resolved before a PR can be merged:
 
-1. **Fix** — apply the fix if relevant and improving
-2. **Reply** — post an inline reply to the comment thread with the commit
+1. **Fix** — the primary or explicitly invoked feedback workflow applies the
+   fix if relevant and improving
+2. **Reply** — that workflow posts an inline reply to the comment thread with the commit
    SHA: `Fixed in <sha>\n\n<explanation>`
-3. **Defer** — if valid but out of scope, create a new issue and reply:
+3. **Defer** — if valid but out of scope, the primary or explicitly invoked
+   feedback workflow creates a new issue and replies:
    `Deferred to #N — <reason>`
-4. **Close** — if irrelevant, reply: `Not applicable — <reason>`
+4. **Close** — if irrelevant, that workflow replies: `Not applicable — <reason>`
 
 Never leave a review comment unreplied.
 
 ## Handling Blocked PRs (mandatory)
 
 The `blocked` GitHub label signals a PR has issues preventing merge, but agents must NOT wait for the label — they must proactively detect issues on ALL open PRs.
+
+**Role boundary:** Idle/background agents may detect blocked conditions and
+return a suggested remediation only. They must not merge `origin/main`, edit
+files, create commits, push, reply to or resolve review threads, or add/remove
+the `blocked` label. The primary workflow, or an explicitly invoked
+`address-feedback`/`watch-pr` workflow, owns those mutations after approval.
 
 **Detection**: Every session start and after every push, scan all open PRs for blocking conditions:
 
@@ -311,9 +337,17 @@ gh pr list --repo victoremnm/attention-terminal --state open --json number,title
 - `CHANGES_REQUESTED` reviews on the PR
 - A `blocked` label applied manually by a human
 
-**Resolution workflow**:
-1. **Merge conflicts**: Fetch `origin/main`, merge into worktree branch, resolve `<<<<<` markers, commit, push.
-2. **Review comments**: Fix code, reply with `Fixed in <sha>`, resolve review threads via GraphQL using the THREAD's node ID (not the comment's node ID):
+**Suggested remediation for idle/background agents**:
+1. Report the blocking condition, affected files or checks, relevant URLs,
+   and a minimal remediation plan.
+2. State that the primary workflow or an explicitly invoked
+   `address-feedback`/`watch-pr` workflow must perform and verify the change.
+
+**Mutation workflow (primary or explicitly invoked feedback/watch workflow)**:
+1. **Merge conflicts**: Fetch `origin/main`, merge into the worktree branch,
+   resolve `<<<<<` markers, commit, and push.
+2. **Review comments**: Fix code, reply with `Fixed in <sha>`, and resolve
+   review threads via GraphQL using the THREAD's node ID (not the comment's node ID):
    ```bash
    # Find unresolved threads
    gh api graphql -f query='
@@ -326,9 +360,12 @@ gh pr list --repo victoremnm/attention-terminal --state open --json number,title
    gh api graphql -f query='
    mutation { resolveReviewThread(input:{threadId:"<THREAD_ID>"}) { thread { isResolved } } }'
    ```
-3. **Failing CI**: Read logs from `statusCheckRollup[].detailsUrl`, fix root cause, verify locally, push.
+3. **Failing CI**: Read logs from `statusCheckRollup[].detailsUrl`, fix the
+   root cause, verify locally, and push.
 4. **Branch behind base**: Merge `origin/main` into the worktree branch.
-5. **Unblock**: Remove `blocked` label (`gh pr edit <PR_NUM> --remove-label blocked`) and log subagent telemetry only when ALL blockers are resolved AND CI is green.
+5. **Unblock**: An independent reviewer or human removes the `blocked` label
+   only after ALL blockers are resolved and CI is green. The implementation
+   agent must not self-clear the label or add `lgtm`.
 
 ## Skills mount (recommended)
 
