@@ -6,7 +6,7 @@
 
 ## 1. Project overview
 
-Attention Terminal presents developer activity as rendered visual answers instead of long text dumps.
+Attention Terminal presents developer activity as charts and cards instead of long text dumps.
 
 The current design centers on three ideas:
 
@@ -20,13 +20,13 @@ The current design centers on three ideas:
 
 | ADR | Title | Summary | Status |
 | :--- | :--- | :--- | :--- |
-| **[ADR 0001](adr/0001-tufte-data-ink-svg-primitives.md)** | **Tufte Data-Ink Maximization & Hand-Rolled SVG Chart Primitives** | Uses custom React SVG primitives instead of a charting library. | **Accepted** |
+| **[ADR 0001](adr/0001-tufte-data-ink-svg-primitives.md)** | **Custom SVG Chart Primitives** | Uses custom React SVG primitives instead of a charting library. | **Accepted** |
 | **[ADR 0002](adr/0002-clickhouse-skipping-index-predicates.md)** | **ClickHouse Case-Insensitive Skipping Index Predicates** | Rewrites bot filters to use ClickHouse-friendly predicates. | **Accepted** |
 | **[ADR 0003](adr/0003-subagent-telemetry-and-session-learnings.md)** | **Subagent Telemetry, Session Learnings & Fail-Open Spooling** | Stores subagent runs in ClickHouse with local spooling fallback. | **Accepted** |
-| **[ADR 0004](adr/0004-pseudo-medallion-clickhouse-data-modeling.md)** | **Pseudo-Medallion Architecture & Dataset Triangulation Trade-offs** | Organizes data into hourly, daily, and monthly rollups with Goose migrations. | **Accepted** |
+| **[ADR 0004](adr/0004-pseudo-medallion-clickhouse-data-modeling.md)** | **Rollup-Based Data Modeling** | Organizes data into hourly, daily, and monthly rollups with Goose migrations. | **Accepted** |
 | **[ADR 0005](adr/0005-double-click-repo-drilldown-card.md)** | **"Double-Click" Repo Drill-Down Card & Single-Pass Velocity Queries** | Defines the repo drill-down layout and query strategy. | **Accepted** |
 | **[ADR 0006](adr/0006-database-family-query-isolation.md)** | **`raw` Database Family for Firehose Query Isolation** | Adds thin `raw.*` views for the firehose tables while keeping storage in `default`. | **Accepted** |
-| **[ADR 0007](adr/0007-storytelling-with-data-and-council-of-agents.md)** | **Storytelling with Data Principles & Council of Agents Architecture** | Describes chart-selection rules and multi-model benchmarking. | **Accepted** |
+| **[ADR 0007](adr/0007-storytelling-with-data-and-council-of-agents.md)** | **Chart Selection & Model Benchmarking** | Describes chart-selection rules and model comparisons. | **Accepted** |
 
 ---
 
@@ -55,7 +55,7 @@ graph LR
 
 ### Related PRs
 
-- **PR #208** — added the first set of hand-rolled SVG chart primitives.
+- **PR #208** — added the first set of custom SVG chart primitives.
 - **PR #204** — optimized bot filtering to match the ClickHouse skip index.
 - **PR #194** — fixed Goose migration versioning and commit count handling.
 - **PR #207** — wired CD to apply migrations on merge to `main`.

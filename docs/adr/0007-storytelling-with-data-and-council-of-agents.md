@@ -1,4 +1,4 @@
-# ADR 0007: Storytelling with Data Principles & Multi-Model Benchmarking
+# ADR 0007: Chart Selection & Model Benchmarking
 
 - **Status**: Accepted
 - **Date**: 2026-07-23
@@ -27,7 +27,7 @@ Instead of choosing chart types ad hoc, the rendering layer maps common data sha
 
 The rendering prompt also asks for one short takeaway and one verdict line before the chart so the user can understand the result without reading the whole card first.
 
-### 2. Multi-model benchmarking
+### 2. Model benchmarking
 
 The agent layer records every run in ClickHouse:
 
