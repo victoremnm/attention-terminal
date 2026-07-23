@@ -12,6 +12,8 @@
   --cyan: #38cdec;
   --mag: #ff4f97;
   --amber: #f5b53d;
+  --emerald: #34d399;
+  --blue: #4f9dff;
   --mono: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
   --sans: system-ui, -apple-system, "Segoe UI", sans-serif;
 }
@@ -1138,6 +1140,58 @@ a { color: inherit; }
 }
 .repo-trend {
   margin: 0;
+}
+.trend-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+  font-size: 11px;
+}
+.trend-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: var(--muted);
+  padding: 3px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  font-family: inherit;
+  font-size: 11px;
+}
+.trend-toggle:hover {
+  border-color: var(--cyan);
+  color: var(--ink);
+}
+.trend-toggle.active {
+  background: rgba(56, 189, 248, 0.12);
+  border-color: var(--cyan);
+  color: var(--ink);
+  font-weight: 600;
+}
+.trend-toggle .swatch {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+  margin-right: 5px;
+}
+.trend-reset {
+  margin-left: auto;
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  font-size: 10.5px;
+  cursor: pointer;
+  text-decoration: underline;
+  font-family: inherit;
+}
+.trend-reset:hover {
+  color: var(--cyan);
 }
 .legend-events {
   color: var(--ink);
