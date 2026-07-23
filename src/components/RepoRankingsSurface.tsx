@@ -3,7 +3,7 @@ import { RepoRankings } from "@/components/RepoRankings";
 import { SurfaceNav } from "@/components/SurfaceNav";
 import { repoActivityWindow, type RepoWindow, type RepoWindowRow } from "@/lib/queries";
 
-const RANKING_LIMIT = 50;
+const RANKING_LIMIT = 100;
 
 export async function RepoRankingsSurface() {
   const [d1, d7, d30] = await Promise.all([

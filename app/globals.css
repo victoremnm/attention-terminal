@@ -1325,6 +1325,32 @@ a { color: inherit; }
   color: var(--ink);
   background: var(--panel);
 }
+.rankings-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 14px;
+  color: var(--muted);
+  font-size: 11px;
+}
+.rankings-pagination-button {
+  border: 1px solid var(--line-soft);
+  padding: 6px 10px;
+  color: var(--ink);
+  background: transparent;
+  font: inherit;
+  cursor: pointer;
+}
+.rankings-pagination-button:hover:not(:disabled),
+.rankings-pagination-button:focus-visible {
+  border-color: var(--line);
+  color: var(--cyan);
+}
+.rankings-pagination-button:disabled {
+  cursor: not-allowed;
+  opacity: .42;
+}
 .rank-head {
   display: grid;
   grid-template-columns: 40px minmax(0, 1fr) 156px minmax(180px, 1fr) 90px;
