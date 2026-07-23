@@ -1983,3 +1983,174 @@ export async function devScatter(window: DevScatterWindow, limit = 40): Promise<
 
   return { ...toQueryResult(data, provenance), note, keptCount };
 }
+
+// --- Top actors and their repos (issue #63) ---
+//
+// Returns the most active non-bot contributors ranked by engagement
+// (commits, PRs, pushes), with their top repos by activity for each actor.
+
+export type ActorRepoWindow = "7d" | "30d";
+
+const ACTOR_REPO_WINDOW_DAYS: Record<ActorRepoWindow, number> = { "7d": 7, "30d": 30 };
+
+export interface ActorRepoDetail {
+  repoName: string;
+  commits: number;
+  distinctCommits: number;
+  pushes: number;
+  prsOpened: number;
+  prsMerged: number;
+  activityScore: number;
+}
+
+export interface ActorRepoRow {
+  actor: string;
+  totalCommits: number;
+  totalPrs: number;
+  totalRepos: number;
+  repos: ActorRepoDetail[];
+  activityScore: number;
+}
+
+export interface TopActorReposResult extends QueryResult<ActorRepoRow[]> {
+  window: ActorRepoWindow;
+  topActorsLimit: number;
+  topReposPerActor: number;
+}
+
+interface ActorRepoBucketSqlRow {
+  actor_login: string;
+  repo_name: string;
+  commits: string;
+  distinct_commits: string;
+  pushes: string;
+  prs_opened: string;
+  prs_merged: string;
+}
+
+interface ActorTopRepoSqlRow {
+  actor: string;
+  total_commits: string;
+  total_prs: string;
+  total_repos: string;
+  repo_name: string;
+  commits: string;
+  distinct_commits: string;
+  pushes: string;
+  prs_opened: string;
+  prs_merged: string;
+  activity_score: string;
+}
+
+export async function topActorRepos(
+  window: ActorRepoWindow,
+  topActorsLimit = 10,
+  topReposPerActor = 5
+): Promise<TopActorReposResult> {
+  const days = ACTOR_REPO_WINDOW_DAYS[window];
+  if (!days) throw new RangeError(`unsupported actor-repo window: ${window}`);
+
+  // Query groups by (actor_login, repo_name), filters out bots, ranks actors by
+  // total engagement across all their repos, and returns top repos for each actor.
+  const sql = `
+    WITH (SELECT max(hour) FROM gh_repo_actor_hourly) AS high_water,
+    actor_repo_buckets AS (
+      SELECT
+        actor_login,
+        repo_name,
+        sum(commits) AS commits,
+        sum(distinct_commits) AS distinct_commits,
+        sum(pushes) AS pushes,
+        sum(prs_opened) AS prs_opened,
+        sum(prs_merged) AS prs_merged
+      FROM gh_repo_actor_hourly
+      WHERE hour > high_water - INTERVAL ${days} DAY
+        AND NOT actor_login ILIKE '%[bot]%'
+      GROUP BY actor_login, repo_name
+      HAVING commits > 0 OR prs_opened > 0 OR prs_merged > 0
+    ),
+    actor_stats AS (
+      SELECT
+        actor_login,
+        sum(commits) AS total_commits,
+        sum(prs_opened + prs_merged) AS total_prs,
+        uniqExact(repo_name) AS total_repos,
+        (sum(distinct_commits) * 4) + (sum(commits) * 2) + (sum(prs_opened) * 2) + (sum(prs_merged) * 5) AS actor_activity_score
+      FROM actor_repo_buckets
+      GROUP BY actor_login
+    ),
+    top_actors AS (
+      SELECT actor_login
+      FROM actor_stats
+      ORDER BY actor_activity_score DESC, total_commits DESC
+      LIMIT {topActorsLimit: UInt32}
+    )
+    SELECT
+      ab.actor_login AS actor,
+      asq.total_commits,
+      asq.total_prs,
+      asq.total_repos,
+      ab.repo_name,
+      toString(ab.commits) AS commits,
+      toString(ab.distinct_commits) AS distinct_commits,
+      toString(ab.pushes) AS pushes,
+      toString(ab.prs_opened) AS prs_opened,
+      toString(ab.prs_merged) AS prs_merged,
+      toString((ab.distinct_commits * 4) + (ab.commits * 2) + (ab.prs_opened * 2) + (ab.prs_merged * 5)) AS activity_score
+    FROM actor_repo_buckets ab
+    INNER JOIN actor_stats asq ON ab.actor_login = asq.actor_login
+    INNER JOIN top_actors ta ON ab.actor_login = ta.actor_login
+    ORDER BY asq.actor_activity_score DESC, ab.repo_name,
+             (ab.distinct_commits * 4) + (ab.commits * 2) + (ab.prs_opened * 2) + (ab.prs_merged * 5) DESC
+  `.trim();
+
+  const { rows, provenance } = await q<ActorTopRepoSqlRow>(
+    sql,
+    ["gh_repo_actor_hourly"],
+    { topActorsLimit, topReposPerActor }
+  );
+
+  // Restructure flat results into nested actor->repos format
+  const actorMap = new Map<string, ActorRepoRow>();
+
+  for (const row of rows) {
+    const actor = row.actor;
+    if (!actorMap.has(actor)) {
+      actorMap.set(actor, {
+        actor,
+        totalCommits: Number(row.total_commits),
+        totalPrs: Number(row.total_prs),
+        totalRepos: Number(row.total_repos),
+        repos: [],
+        activityScore: 0, // Will be computed from first repo row
+      });
+    }
+
+    const actorRow = actorMap.get(actor)!;
+    if (actorRow.repos.length < topReposPerActor) {
+      actorRow.repos.push({
+        repoName: row.repo_name,
+        commits: Number(row.commits),
+        distinctCommits: Number(row.distinct_commits),
+        pushes: Number(row.pushes),
+        prsOpened: Number(row.prs_opened),
+        prsMerged: Number(row.prs_merged),
+        activityScore: Number(row.activity_score),
+      });
+      // Set activityScore from first repo (or compute from actor stats)
+      if (actorRow.activityScore === 0) {
+        actorRow.activityScore = (Number(row.distinct_commits) * 4) + (Number(row.commits) * 2)
+          + (Number(row.prs_opened) * 2) + (Number(row.prs_merged) * 5);
+      }
+    }
+  }
+
+  const data = Array.from(actorMap.values());
+
+  return {
+    ...toQueryResult(data, provenance),
+    window,
+    topActorsLimit,
+    topReposPerActor,
+  };
+}
