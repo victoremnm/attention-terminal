@@ -68,19 +68,19 @@ The processing layer transforms raw external events into structured ClickHouse a
 ```mermaid
 sequenceDiagram
     autonumber
-    participant GH as GitHub / HN APIs
-    participant TD as Trigger.dev v4 Worker
-    participant CH as ClickHouse DB
-    participant MV as Materialized Views
+    participant GH as GitHub APIs
+    participant TD as Trigger.dev worker
+    participant CH as ClickHouse
+    participant MV as Materialized views
 
-    TD->>GH: Poll high-frequency event stream (1min interval)
-    GH-->>TD: Return payload (JSON/NDJSON events)
-    TD->>CH: Async batch INSERT INTO github_events (raw event grain)
-    Note over TD,CH: Bot filtering (lower(actor_login) NOT LIKE '%[bot]%') is applied at query/projection time
-    CH->>MV: Materialize post-creation inserts (gh_repo_activity_feed_mv)
-    Note over CH,MV: Backfilling pre-existing rows requires an explicit INSERT INTO ... SELECT
-    MV-->>CH: Update gh_repo_drilldown_hourly & period rollups
+    TD->>GH: Poll event stream
+    GH-->>TD: Return event payloads
+    TD->>CH: Insert raw events
+    CH->>MV: Materialize new rows
+    MV-->>CH: Update rollups
 ```
+
+Bot filtering happens when queries run, and any historical backfill still uses an explicit `INSERT INTO ... SELECT`.
 
 ### Pseudo-Medallion Data Architecture (Bronze $\rightarrow$ Silver $\rightarrow$ Gold)
 
