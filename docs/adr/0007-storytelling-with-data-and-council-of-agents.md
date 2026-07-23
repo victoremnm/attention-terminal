@@ -1,34 +1,41 @@
-# ADR 0007: Storytelling with Data Principles & Council of Agents Architecture
+# ADR 0007: Storytelling with Data Principles & Multi-Model Benchmarking
 
 - **Status**: Accepted
 - **Date**: 2026-07-23
-- **Context**: Hackathon Innovation & Multi-Agent Benchmarking Strategy
+- **Context**: Hackathon documentation and agent evaluation
 
-## Context & Problem Statement
-To maximize innovation and solve the *Beyond the Wall of Text* challenge, Attention Terminal required two core breakthroughs:
-1. **Visual Intuition System**: Implementing Cole Nussbaumer Knaflic's *Storytelling with Data* principles to map query intent directly to high-cognition SVG charts and instant intuition verdicts.
-2. **Council of Agents**: Benchmarking and orchestrating multiple LLM reasoning models (`Gemini 3.6 Flash`, `Claude 3.5 Sonnet`, `Codex / GPT-5.1`, `GLM-5.2`) logged continuously to ClickHouse telemetry tables (`subagent_runs`, `subagent_experiments`).
+## Context
 
-## Decision Drivers & Technical Specifications
+The project needed two supporting decisions:
 
-### 1. Storytelling with Data Principles
-Rather than picking arbitrary chart types, prompt routing in `RenderedAnswer.tsx` selects SVG primitives based on *Storytelling with Data* cognitive mapping:
+1. A consistent way to map query intent to chart types so the UI stays readable.
+2. A way to record and compare subagent runs across multiple model families.
 
-| Intent & Data Shape | Chart Primitive | Visual Design Rule |
+## Decision
+
+### 1. Chart selection
+
+Instead of choosing chart types ad hoc, the rendering layer maps common data shapes to a small set of chart primitives:
+
+| Data shape | Chart primitive | Reason |
 | :--- | :--- | :--- |
-| **Part-to-Whole Categorical ($\le 7$ items)** | `PieChart` (Donut) | Direct percentage callouts, center aggregate total, and `Other` slice capping. |
-| **Multi-Category Group Comparisons** | `StackedBarChart` | Global key color index mapping (`segmentKeys.indexOf`) across all rows. |
-| **Cumulative Delta Progression** | `WaterfallChart` | Color-coded step progression (+cyan, -magenta, total blue) with zero text overlap. |
-| **2D Volume & Proportional Space** | `TreemapChart` | Proportional 2D tile layout heatmaps for high-density comparisons. |
-| **Multi-Variable Correlation** | `DevScatterChart` | X=repos, Y=pushes, bubble size=commits, color=merged PR ratio. |
+| Small part-to-whole comparison | `PieChart` / donut | Easy to read when the number of slices is limited. |
+| Category comparison | `StackedBarChart` | Shows both totals and composition. |
+| Cumulative change | `WaterfallChart` | Makes step-by-step deltas explicit. |
+| Dense volume comparison | `TreemapChart` | Uses space efficiently for many values. |
+| Multi-variable correlation | `DevScatterChart` | Shows several dimensions at once. |
 
-- **Prompting for Intuition**: Prompts explicitly enforce a single **Headline Takeaway** + **Verdict Badge** preceding every visual component, giving users immediate visual intuition before diving into interactive charts.
+The rendering prompt also asks for one short takeaway and one verdict line before the chart so the user can understand the result without reading the whole card first.
 
-### 2. Council of Agents Multi-Model Framework
-Attention Terminal coordinates a **Council of Agents**—a multi-model agent fleet where subagents run concurrently across model providers:
-- **Telemetry Logging**: Every agent execution invokes `./scripts/log-subagent-run.sh` to record `session_id`, `prompt_id`, `model`, `latency_ms`, `input_tokens`, `output_tokens`, `cost_usd`, and `ok` status in ClickHouse `subagent_runs`.
-- **Benchmarking View**: `subagent_experiments` aggregates performance metrics by model family (`Gemini`, `Claude`, `Codex`, `GLM`) to analyze cost efficiency vs reasoning quality.
-- **Unified Review Protocol**: All agent PRs carry model labels (`gemini`, `codex`, `claude`) and adhere to automated CI polling and unresolved thread resolution gates.
+### 2. Multi-model benchmarking
 
-## Decision Outcome
-Accepted. *Storytelling with Data* charting logic and the *Council of Agents* multi-model benchmarking engine are fully codified and operational.
+The agent layer records every run in ClickHouse:
+
+- `subagent_runs` stores individual executions, latency, token usage, and success state.
+- `subagent_experiments` groups those runs so different models can be compared on the same task.
+
+This makes it possible to measure cost, latency, and output quality over time instead of relying on anecdotal comparisons.
+
+## Outcome
+
+Accepted. The chart-selection rules and the benchmarking approach are now documented as project standards.
