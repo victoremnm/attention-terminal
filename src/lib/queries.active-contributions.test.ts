@@ -63,9 +63,12 @@ describe("active contribution ranking", () => {
     const query = String(mocks.query.mock.calls[0]?.[0]?.query);
     expect(query).toContain("FROM gh_repo_actor_hourly");
     expect(query).not.toContain("FROM github_events");
-    expect(query).toContain("HAVING commits > 0 OR prs_opened > 0 OR prs_merged > 0");
-    expect(query).toContain("pushes > 0 AND commits > 0");
-    expect(query).toContain("ORDER BY distinct_commits DESC, activity_score DESC, repo_name ASC");
+    expect(query).toContain("HAVING commit_total > 0 OR pr_opened_total > 0 OR pr_merged_total > 0");
+    expect(query).toContain("bucket.pushes > 0 AND bucket.commits > 0");
+    expect(query).toContain("sum(bucket.pushes) AS push_total");
+    expect(query).toContain("sum(toUInt64(bucket.pushes > 0 AND bucket.commits > 0)) AS substantive_push_bucket_total");
+    expect(query).toContain("FROM (\n        SELECT repo_name, actor_login, pushes, commits, distinct_commits, prs_opened, prs_merged");
+    expect(query).toContain("ORDER BY distinct_commit_total DESC, activity_score DESC, repo_name ASC");
     expect(result.sql).toBe(query.trim());
   });
 
@@ -73,7 +76,7 @@ describe("active contribution ranking", () => {
     await activeContributionRanking("30d", "pushes", 25);
 
     const query = String(mocks.query.mock.calls[0]?.[0]?.query);
-    expect(query).toContain("ORDER BY substantive_push_buckets DESC, activity_score DESC, repo_name ASC");
+    expect(query).toContain("ORDER BY substantive_push_bucket_total DESC, activity_score DESC, repo_name ASC");
     expect(query).toContain("LIMIT {limit: UInt32}");
     expect(mocks.query.mock.calls[0]?.[0]?.query_params).toEqual({ limit: 25 });
   });

@@ -1569,9 +1569,9 @@ const ACTIVE_CONTRIBUTION_WINDOW_DAYS: Record<ActiveContributionWindow, number> 
 };
 
 const ACTIVE_CONTRIBUTION_SORT_SQL: Record<ActiveContributionSort, string> = {
-  commits: "distinct_commits",
+  commits: "distinct_commit_total",
   // A "pushes" ranking means substantive push buckets, not raw push count.
-  pushes: "substantive_push_buckets",
+  pushes: "substantive_push_bucket_total",
 };
 
 const ACTIVE_CONTRIBUTION_MAX_LIMIT = 100;
@@ -1638,41 +1638,44 @@ export async function activeContributionRanking(
     WITH (SELECT max(hour) FROM gh_repo_actor_hourly) AS high_water
     SELECT
       repo_name,
-      toString(commits) AS commits,
-      toString(distinct_commits) AS distinct_commits,
-      toString(pushes) AS pushes,
-      toString(substantive_push_buckets) AS substantive_push_buckets,
-      toString(pushers) AS pushers,
-      toString(human_pushers) AS human_pushers,
-      toString(bot_pushers) AS bot_pushers,
-      toString(prs_opened) AS prs_opened,
-      toString(prs_merged) AS prs_merged,
+      toString(commit_total) AS commits,
+      toString(distinct_commit_total) AS distinct_commits,
+      toString(push_total) AS pushes,
+      toString(substantive_push_bucket_total) AS substantive_push_buckets,
+      toString(pusher_total) AS pushers,
+      toString(human_pusher_total) AS human_pushers,
+      toString(bot_pusher_total) AS bot_pushers,
+      toString(pr_opened_total) AS prs_opened,
+      toString(pr_merged_total) AS prs_merged,
       toString(
-        (distinct_commits * 4)
-        + (commits * 2)
-        + (substantive_push_buckets * 3)
-        + (prs_opened * 2)
-        + (prs_merged * 5)
+        (distinct_commit_total * 4)
+        + (commit_total * 2)
+        + (substantive_push_bucket_total * 3)
+        + (pr_opened_total * 2)
+        + (pr_merged_total * 5)
       ) AS activity_score,
       'unknown' AS branch_scope,
       'unknown' AS dependency_update_attribution
     FROM (
       SELECT
-        repo_name,
-        sum(commits) AS commits,
-        sum(distinct_commits) AS distinct_commits,
-        sum(pushes) AS pushes,
-        sum(toUInt64(pushes > 0 AND commits > 0)) AS substantive_push_buckets,
-        uniqExactIf(actor_login, pushes > 0) AS pushers,
-        uniqExactIf(actor_login, pushes > 0 AND NOT actor_login ILIKE '%[bot]%') AS human_pushers,
-        uniqExactIf(actor_login, pushes > 0 AND actor_login ILIKE '%[bot]%') AS bot_pushers,
-        sum(prs_opened) AS prs_opened,
-        sum(prs_merged) AS prs_merged
-      FROM gh_repo_actor_hourly
-      WHERE hour > high_water - INTERVAL ${days} DAY
+        bucket.repo_name AS repo_name,
+        sum(bucket.commits) AS commit_total,
+        sum(bucket.distinct_commits) AS distinct_commit_total,
+        sum(bucket.pushes) AS push_total,
+        sum(toUInt64(bucket.pushes > 0 AND bucket.commits > 0)) AS substantive_push_bucket_total,
+        uniqExactIf(bucket.actor_login, bucket.pushes > 0) AS pusher_total,
+        uniqExactIf(bucket.actor_login, bucket.pushes > 0 AND NOT bucket.actor_login ILIKE '%[bot]%') AS human_pusher_total,
+        uniqExactIf(bucket.actor_login, bucket.pushes > 0 AND bucket.actor_login ILIKE '%[bot]%') AS bot_pusher_total,
+        sum(bucket.prs_opened) AS pr_opened_total,
+        sum(bucket.prs_merged) AS pr_merged_total
+      FROM (
+        SELECT repo_name, actor_login, pushes, commits, distinct_commits, prs_opened, prs_merged
+        FROM gh_repo_actor_hourly
+        WHERE hour > high_water - INTERVAL ${days} DAY
+      ) AS bucket
       GROUP BY repo_name
       -- Empty pushes and push-only PR noise do not qualify as active code.
-      HAVING commits > 0 OR prs_opened > 0 OR prs_merged > 0
+      HAVING commit_total > 0 OR pr_opened_total > 0 OR pr_merged_total > 0
     )
     ORDER BY ${sortSql} DESC, activity_score DESC, repo_name ASC
     LIMIT {limit: UInt32}
