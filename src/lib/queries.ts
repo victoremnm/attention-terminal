@@ -18,9 +18,10 @@ export interface Provenance {
 export async function q<T>(
   sql: string,
   tables: string[],
-  query_params?: Record<string, unknown>
+  query_params?: Record<string, unknown>,
+  request?: QueryRequest
 ): Promise<{ rows: T[]; provenance: Provenance }> {
-  await ensureTablesExist(tables);
+  await (request?.tablesReady ?? ensureTablesExist(tables));
   const t0 = Date.now();
   const rs = await clickhouse.query({ query: sql, format: "JSONEachRow", query_params });
   const rows = await rs.json<T>();
@@ -34,6 +35,10 @@ export async function q<T>(
     // provenance stays partial; never block the answer on it
   }
   return { rows, provenance: { sql: sql.trim(), elapsedMs, rowsRead, tables } };
+}
+
+interface QueryRequest {
+  tablesReady: Promise<void>;
 }
 
 // Flat read-stats contract for card-producing read fns (issue #25, AGENT-FLEET-PLAN.md
@@ -323,7 +328,9 @@ interface RepoDrilldownMetadataSqlRow {
   open_issues: string;
 }
 
-interface RepoDrilldownKpiSqlRow {
+interface RepoDrilldownHourlySqlRow {
+  is_total: number | string;
+  hour: string;
   pushes: string;
   commits: string;
   distinct_commits: string;
@@ -335,14 +342,16 @@ interface RepoDrilldownKpiSqlRow {
   actors: string;
 }
 
-interface RepoDrilldownVelocitySqlRow {
-  hour: string;
-  pushes: string;
-  commits: string;
-  forks: string;
-  stars: string;
-  issues_opened: string;
-  prs_opened: string;
+interface RepoDrilldownCommitSqlRow {
+  sha: string;
+  author: string;
+  author_date: string;
+  message: string;
+  is_recent: number | string;
+  is_top_committer: number | string;
+  commit_count: string;
+  commit_authors: string;
+  author_commits: string;
 }
 
 interface RepoDrilldownActorSqlRow {
@@ -374,13 +383,6 @@ interface RepoDrilldownAnalysisSqlRow {
 
 // REST-activity rows (issue #79 track #83). Fetched by the watchlist poller
 // (issue #82) and read here for the drilldown's activity + trends sections.
-interface RepoDrilldownCommitSqlRow {
-  sha: string;
-  author: string;
-  author_date: string;
-  message: string;
-}
-
 interface RepoDrilldownPrSqlRow {
   number: string;
   title: string;
@@ -390,14 +392,6 @@ interface RepoDrilldownPrSqlRow {
   merged_at: string;
   closed_at: string;
   labels: string[];
-}
-
-interface RepoDrilldownReleaseSqlRow {
-  tag: string;
-  name: string;
-  author: string;
-  published_at: string;
-  body: string;
 }
 
 interface RepoDrilldownIssueSqlRow {
@@ -420,13 +414,17 @@ interface RepoDrilldownTrendSqlRow {
   event_type: string; // 'release' | 'pr_merged' | 'issue_opened' | '' (no event)
   event_label: string;
   event_url: string;
+  release_tag: string;
+  release_name: string;
+  release_author: string;
+  release_published_at: string;
+  release_body: string;
+  release_in_activity: number | string;
 }
 
 // Pulse overview (issue #79): GitHub's /pulse page computed en-masse from the
-// REST-activity tables. Three separate result shapes from three queries:
-//   1. PR/issue count breakdown (single row)
-//   2. Commit summary (single row: author count + commit count)
-//   3. Top committers (multiple rows, one per author)
+// REST-activity tables. PR/issue counts remain a single row; commit summary
+// and top-committer flags are carried by the bounded commit rowset.
 interface RepoDrilldownPulseCountSqlRow {
   prs_merged: string;
   prs_opened: string;
@@ -436,14 +434,8 @@ interface RepoDrilldownPulseCountSqlRow {
   issues_open: string;
 }
 
-interface RepoDrilldownPulseCommitSummarySqlRow {
-  commit_authors: string;
-  commit_count: string;
-}
-
-interface RepoDrilldownPulseTopCommitterSqlRow {
-  author: string;
-  commits: string;
+interface RepoDrilldownHighWaterSqlRow {
+  high_water: string;
 }
 
 function repoQuerySql(...parts: Provenance[]) {
@@ -470,10 +462,30 @@ async function repoSeenInGithubEvents(repoName: string): Promise<boolean> {
   return rows.length > 0;
 }
 
-async function hasSeededAggregates(): Promise<boolean> {
+const REPO_DRILLDOWN_TABLES = [
+  "gh_repo_metadata",
+  "github_events",
+  "gh_repo_drilldown_hourly",
+  "gh_repo_actor_hourly",
+  "gh_repo_activity_feed",
+  "gh_repo_actor_activity_feed",
+  "gh_repo_analysis",
+  "gh_repo_commits",
+  "gh_repo_prs",
+  "gh_repo_releases",
+  "gh_repo_issues",
+  "gh_repo_daily",
+] as const;
+
+async function hasSeededAggregates(missing: ReadonlySet<string>): Promise<boolean> {
+  if (
+    missing.has("gh_repo_drilldown_hourly") ||
+    missing.has("gh_repo_actor_hourly") ||
+    missing.has("gh_repo_activity_feed")
+  ) {
+    return false;
+  }
   try {
-    const missing = await missingTables(["gh_repo_drilldown_hourly", "gh_repo_actor_hourly"]);
-    if (missing.length > 0) return false;
     const rs = await clickhouse.query({
       query: `SELECT count() AS c FROM gh_repo_drilldown_hourly LIMIT 1`,
       format: "JSONEachRow",
@@ -486,22 +498,88 @@ async function hasSeededAggregates(): Promise<boolean> {
   }
 }
 
-async function hasAnalysisTable(): Promise<boolean> {
-  try {
-    const missing = await missingTables(["gh_repo_analysis"]);
-    return missing.length === 0;
-  } catch {
-    return false;
-  }
+function requestReadiness(missing: ReadonlySet<string>, tables: string[]): QueryRequest {
+  const missingRequired = tables.filter((table) => missing.has(table));
+  return {
+    tablesReady:
+      missingRequired.length === 0
+        ? Promise.resolve()
+        : Promise.reject(
+            new Error(
+              `Missing ClickHouse table(s): ${missingRequired.join(", ")}. Run the migration or update the query to a known table.`
+            )
+          ),
+  };
 }
 
-async function hasActorActivityFeedTable(): Promise<boolean> {
-  try {
-    const missing = await missingTables(["gh_repo_actor_activity_feed"]);
-    return missing.length === 0;
-  } catch {
-    return false;
-  }
+function isTotalHourlyRow(row: RepoDrilldownHourlySqlRow) {
+  return Number(row.is_total) === 1;
+}
+
+function isFlagged(value: number | string) {
+  return Number(value) === 1;
+}
+
+function sortNewestFirst<T extends { author_date: string }>(rows: T[]) {
+  return [...rows].sort((a, b) => (a.author_date < b.author_date ? 1 : a.author_date > b.author_date ? -1 : 0));
+}
+
+function releaseActivityRows(rows: RepoDrilldownTrendSqlRow[]) {
+  return rows
+    .filter((row) => isFlagged(row.release_in_activity))
+    .sort((a, b) =>
+      a.release_published_at < b.release_published_at
+        ? 1
+        : a.release_published_at > b.release_published_at
+          ? -1
+          : 0
+    );
+}
+
+function requiredRepoDrilldownTables(
+  useAggregates: boolean,
+  canQueryAnalysis: boolean,
+  canQueryActorFeed: boolean
+) {
+  return [
+    "gh_repo_metadata",
+    "gh_repo_commits",
+    "gh_repo_prs",
+    "gh_repo_releases",
+    "gh_repo_issues",
+    "gh_repo_daily",
+    "github_events",
+    ...(useAggregates ? ["gh_repo_drilldown_hourly", "gh_repo_actor_hourly"] : []),
+    ...(useAggregates && canQueryActorFeed ? ["gh_repo_actor_activity_feed"] : []),
+    ...(canQueryAnalysis ? ["gh_repo_analysis"] : []),
+  ];
+}
+
+function repoHighWaterSql(useAggregates: boolean) {
+  return useAggregates
+    ? `SELECT toString(max(hour)) AS high_water FROM gh_repo_drilldown_hourly`
+    : `SELECT toString(max(created_at)) AS high_water FROM github_events`;
+}
+
+function repoHighWaterTable(useAggregates: boolean) {
+  return useAggregates ? "gh_repo_drilldown_hourly" : "github_events";
+}
+
+function highWaterValue(result: { rows: RepoDrilldownHighWaterSqlRow[] }) {
+  return result.rows[0]?.high_water ?? "1970-01-01 00:00:00";
+}
+
+function commitRowsForActivity(rows: RepoDrilldownCommitSqlRow[]) {
+  return sortNewestFirst(rows.filter((row) => isFlagged(row.is_recent)));
+}
+
+function topCommitterRows(rows: RepoDrilldownCommitSqlRow[]) {
+  return rows
+    .filter((row) => isFlagged(row.is_top_committer))
+    .sort((a, b) => {
+      const countDiff = Number(b.author_commits) - Number(a.author_commits);
+      return countDiff || a.author.localeCompare(b.author);
+    });
 }
 
 // Groups the trend UNION ALL rows (one row per day + one row per event) into
@@ -539,11 +617,14 @@ function buildTrends(rows: RepoDrilldownTrendSqlRow[]): Array<{
 
 export async function repoDrilldown(repoName: string): Promise<RepoDrilldownPayload> {
   const queryParams = { repoName };
-  const [useAggregates, canQueryAnalysis, canQueryActorFeed] = await Promise.all([
-    hasSeededAggregates(),
-    hasAnalysisTable(),
-    hasActorActivityFeedTable(),
-  ]);
+  const missing = new Set(await missingTables([...REPO_DRILLDOWN_TABLES]));
+  const useAggregates = await hasSeededAggregates(missing);
+  const canQueryAnalysis = !missing.has("gh_repo_analysis");
+  const canQueryActorFeed = !missing.has("gh_repo_actor_activity_feed");
+  const request = requestReadiness(
+    missing,
+    requiredRepoDrilldownTables(useAggregates, canQueryAnalysis, canQueryActorFeed)
+  );
 
   const metadataQuery = q<RepoDrilldownMetadataSqlRow>(
     `SELECT
@@ -557,101 +638,91 @@ export async function repoDrilldown(repoName: string): Promise<RepoDrilldownPayl
      WHERE repo_name = {repoName: String}
      LIMIT 1`,
     ["gh_repo_metadata"],
-    queryParams
+    queryParams,
+    request
   );
 
-  const kpiQuery = useAggregates
-    ? q<RepoDrilldownKpiSqlRow>(
-        `WITH (SELECT max(hour) FROM gh_repo_drilldown_hourly) AS high_water
-         SELECT
-           toString(sum(pushes)) AS pushes,
-           toString(sum(commits)) AS commits,
-           toString(sum(distinct_commits)) AS distinct_commits,
-           toString(sum(forks)) AS forks,
-           toString(sum(stars)) AS stars,
-           toString(sum(issues_opened)) AS issues_opened,
-           toString(sum(prs_opened)) AS prs_opened,
-           toString(sum(prs_merged)) AS prs_merged,
-           toString(uniqMerge(actors)) AS actors
-         FROM gh_repo_drilldown_hourly
-         WHERE repo_name = {repoName: String}
-           AND hour > high_water - INTERVAL 24 HOUR`,
-        ["gh_repo_drilldown_hourly"],
-        queryParams
-      )
-    : q<RepoDrilldownKpiSqlRow>(
-        `WITH (SELECT max(created_at) FROM github_events) AS high_water
-         SELECT
-           toString(countIf(event_type = 'PushEvent')) AS pushes,
-           toString(sum(commit_count)) AS commits,
-           toString(sum(distinct_commit_count)) AS distinct_commits,
-           toString(countIf(event_type = 'ForkEvent')) AS forks,
-           toString(countIf(event_type = 'WatchEvent')) AS stars,
-           toString(countIf(event_type = 'IssuesEvent' AND action = 'opened')) AS issues_opened,
-           toString(countIf(event_type = 'PullRequestEvent' AND action = 'opened')) AS prs_opened,
-           toString(countIf(event_type = 'PullRequestEvent' AND action = 'closed' AND pr_merged = 1)) AS prs_merged,
-           toString(uniqExact(actor_login)) AS actors
-         FROM github_events
-         WHERE repo_name = {repoName: String}
-           AND created_at > high_water - INTERVAL 24 HOUR
-           AND event_type IN ('PushEvent', 'ForkEvent', 'WatchEvent', 'IssuesEvent', 'PullRequestEvent')`,
-        ["github_events"],
-        queryParams
-      );
+  const highWaterQuery = q<RepoDrilldownHighWaterSqlRow>(
+    repoHighWaterSql(useAggregates),
+    [repoHighWaterTable(useAggregates)],
+    undefined,
+    request
+  );
+  const highWater = highWaterQuery.then(highWaterValue);
 
-  const velocityQuery = useAggregates
-    ? q<RepoDrilldownVelocitySqlRow>(
-        `WITH (SELECT max(hour) FROM gh_repo_drilldown_hourly) AS high_water
-         SELECT
-           toString(bucket_hour) AS hour,
-           toString(pushes) AS pushes,
-           toString(commits) AS commits,
-           toString(forks) AS forks,
-           toString(stars) AS stars,
-           toString(issues_opened) AS issues_opened,
-           toString(prs_opened) AS prs_opened
-         FROM (
-           SELECT
-             hour AS bucket_hour,
-             sum(pushes) AS pushes,
-             sum(commits) AS commits,
-             sum(forks) AS forks,
-             sum(stars) AS stars,
-             sum(issues_opened) AS issues_opened,
-             sum(prs_opened) AS prs_opened
-           FROM gh_repo_drilldown_hourly
-           WHERE repo_name = {repoName: String}
-             AND hour > high_water - INTERVAL 24 HOUR
-           GROUP BY bucket_hour
-         )
-         ORDER BY bucket_hour`,
-        ["gh_repo_drilldown_hourly"],
-        queryParams
-      )
-    : q<RepoDrilldownVelocitySqlRow>(
-        `WITH (SELECT max(created_at) FROM github_events) AS high_water
-         SELECT
-           toString(toStartOfHour(created_at)) AS hour,
-           toString(countIf(event_type = 'PushEvent')) AS pushes,
-           toString(sum(commit_count)) AS commits,
-           toString(countIf(event_type = 'ForkEvent')) AS forks,
-           toString(countIf(event_type = 'WatchEvent')) AS stars,
-           toString(countIf(event_type = 'IssuesEvent' AND action = 'opened')) AS issues_opened,
-           toString(countIf(event_type = 'PullRequestEvent' AND action = 'opened')) AS prs_opened
-         FROM github_events
-         WHERE repo_name = {repoName: String}
-           AND created_at > high_water - INTERVAL 24 HOUR
-           AND event_type IN ('PushEvent', 'ForkEvent', 'WatchEvent', 'IssuesEvent', 'PullRequestEvent')
-         GROUP BY hour
-         ORDER BY hour`,
-        ["github_events"],
-        queryParams
-      );
+  // The total row and hourly rows come from the same bounded source read.
+  // WITH ROLLUP preserves uniqMerge(actors) for the KPI total without asking
+  // ClickHouse to materialize a CTE (which it may inline and scan again).
+  const kpiVelocityQuery = highWater.then((anchor) =>
+    q<RepoDrilldownHourlySqlRow>(
+      useAggregates
+        ? `SELECT
+             toUInt8(grouping(bucket_hour)) AS is_total,
+             toString(bucket_hour) AS hour,
+             toString(sum(pushes)) AS pushes,
+             toString(sum(commits)) AS commits,
+             toString(sum(distinct_commits)) AS distinct_commits,
+             toString(sum(forks)) AS forks,
+             toString(sum(stars)) AS stars,
+             toString(sum(issues_opened)) AS issues_opened,
+             toString(sum(prs_opened)) AS prs_opened,
+             toString(sum(prs_merged)) AS prs_merged,
+             toString(uniqMerge(actors)) AS actors
+           FROM (
+             SELECT
+               hour AS bucket_hour,
+               pushes,
+               commits,
+               distinct_commits,
+               forks,
+               stars,
+               issues_opened,
+               prs_opened,
+               prs_merged,
+               actors
+             FROM gh_repo_drilldown_hourly
+             WHERE repo_name = {repoName: String}
+               AND hour > {highWater: DateTime} - INTERVAL 24 HOUR
+           )
+           GROUP BY bucket_hour WITH ROLLUP
+           ORDER BY is_total, hour`
+        : `SELECT
+             toUInt8(grouping(bucket_hour)) AS is_total,
+             toString(bucket_hour) AS hour,
+             toString(countIf(event_type = 'PushEvent')) AS pushes,
+             toString(sum(commit_count)) AS commits,
+             toString(sum(distinct_commit_count)) AS distinct_commits,
+             toString(countIf(event_type = 'ForkEvent')) AS forks,
+             toString(countIf(event_type = 'WatchEvent')) AS stars,
+             toString(countIf(event_type = 'IssuesEvent' AND action = 'opened')) AS issues_opened,
+             toString(countIf(event_type = 'PullRequestEvent' AND action = 'opened')) AS prs_opened,
+             toString(countIf(event_type = 'PullRequestEvent' AND action = 'closed' AND pr_merged = 1)) AS prs_merged,
+             toString(uniqExact(actor_login)) AS actors
+           FROM (
+             SELECT
+               toStartOfHour(created_at) AS bucket_hour,
+               event_type,
+               action,
+               commit_count,
+               distinct_commit_count,
+               pr_merged,
+               actor_login
+             FROM github_events
+             WHERE repo_name = {repoName: String}
+               AND created_at > {highWater: DateTime} - INTERVAL 24 HOUR
+               AND event_type IN ('PushEvent', 'ForkEvent', 'WatchEvent', 'IssuesEvent', 'PullRequestEvent')
+           )
+           GROUP BY bucket_hour WITH ROLLUP
+           ORDER BY is_total, hour`,
+      [useAggregates ? "gh_repo_drilldown_hourly" : "github_events"],
+      { ...queryParams, highWater: anchor },
+      request
+    )
+  );
 
   const actorsQuery = useAggregates
-    ? q<RepoDrilldownActorSqlRow>(
-        `WITH (SELECT max(hour) FROM gh_repo_drilldown_hourly) AS high_water
-         SELECT
+    ? highWater.then((anchor) => q<RepoDrilldownActorSqlRow>(
+        `SELECT
            actor,
            toString(push_total) AS pushes,
            toString(commit_total) AS commits,
@@ -669,18 +740,18 @@ export async function repoDrilldown(repoName: string): Promise<RepoDrilldownPayl
               (commit_total * 3) + (distinct_commit_total * 2) + (pr_opened_total * 3) + (pr_merged_total * 5) + least(push_total, commit_total) AS activity_score
             FROM gh_repo_actor_hourly
             WHERE repo_name = {repoName: String}
-              AND hour > high_water - INTERVAL 24 HOUR
+              AND hour > {highWater: DateTime} - INTERVAL 24 HOUR
             GROUP BY actor_login
             HAVING commit_total > 0 OR pr_opened_total > 0 OR pr_merged_total > 0
           )
           ORDER BY activity_score DESC, actor
           LIMIT 8`,
-        ["gh_repo_actor_hourly", "gh_repo_drilldown_hourly"],
-        queryParams
-      )
-    : q<RepoDrilldownActorSqlRow>(
-        `WITH (SELECT max(created_at) FROM github_events) AS high_water
-         SELECT
+        ["gh_repo_actor_hourly"],
+        { ...queryParams, highWater: anchor },
+        request
+      ))
+    : highWater.then((anchor) => q<RepoDrilldownActorSqlRow>(
+        `SELECT
            actor,
            toString(push_total) AS pushes,
            toString(commit_total) AS commits,
@@ -698,7 +769,7 @@ export async function repoDrilldown(repoName: string): Promise<RepoDrilldownPayl
              (commit_total * 3) + (distinct_commit_total * 2) + (pr_opened_total * 3) + (pr_merged_total * 5) + least(push_total, commit_total) AS activity_score
            FROM github_events
            WHERE repo_name = {repoName: String}
-             AND created_at > high_water - INTERVAL 24 HOUR
+             AND created_at > {highWater: DateTime} - INTERVAL 24 HOUR
              AND event_type IN ('PushEvent', 'PullRequestEvent')
            GROUP BY actor_login
            HAVING commit_total > 0 OR pr_opened_total > 0 OR pr_merged_total > 0
@@ -706,14 +777,14 @@ export async function repoDrilldown(repoName: string): Promise<RepoDrilldownPayl
          ORDER BY activity_score DESC, actor
          LIMIT 8`,
         ["github_events"],
-        queryParams
-      );
+        { ...queryParams, highWater: anchor },
+        request
+      ));
 
-  const feedQuery =
+  const feedQuery = highWater.then((anchor) =>
     useAggregates && canQueryActorFeed
       ? q<RepoDrilldownFeedSqlRow>(
-          `WITH (SELECT max(hour) FROM gh_repo_drilldown_hourly) AS high_water
-           SELECT
+          `SELECT
              toString(created_at) AS at,
              actor_login AS actor,
              event_type,
@@ -723,31 +794,52 @@ export async function repoDrilldown(repoName: string): Promise<RepoDrilldownPayl
              pr_merged AS merged
            FROM gh_repo_actor_activity_feed FINAL
            WHERE repo_name = {repoName: String}
-             AND created_at > high_water - INTERVAL 24 HOUR
+             AND created_at > {highWater: DateTime} - INTERVAL 24 HOUR
            ORDER BY created_at DESC
            LIMIT 12`,
-          ["gh_repo_actor_activity_feed", "gh_repo_drilldown_hourly"],
-          queryParams
+          ["gh_repo_actor_activity_feed"],
+          { ...queryParams, highWater: anchor },
+          request
         )
-      : q<RepoDrilldownFeedSqlRow>(
-          `WITH (SELECT max(created_at) FROM github_events) AS high_water
-           SELECT
-             toString(created_at) AS at,
-             actor_login AS actor,
-             event_type,
-             action,
-             toString(commit_count) AS commits,
-             toString(distinct_commit_count) AS distinct_commits,
-             pr_merged AS merged
-           FROM github_events
-           WHERE repo_name = {repoName: String}
-             AND created_at > high_water - INTERVAL 24 HOUR
-             AND event_type IN ('PushEvent', 'PullRequestEvent')
-           ORDER BY created_at DESC
-           LIMIT 12`,
-          ["github_events"],
-          queryParams
-        );
+      : useAggregates && !missing.has("gh_repo_activity_feed")
+        ? q<RepoDrilldownFeedSqlRow>(
+            `SELECT
+               toString(created_at) AS at,
+               actor_login AS actor,
+               event_type,
+               action,
+               toString(commits) AS commits,
+               toString(distinct_commits) AS distinct_commits,
+               pr_merged AS merged
+             FROM gh_repo_activity_feed
+             WHERE repo_name = {repoName: String}
+               AND created_at > {highWater: DateTime} - INTERVAL 24 HOUR
+             ORDER BY created_at DESC
+             LIMIT 12`,
+            ["gh_repo_activity_feed"],
+            { ...queryParams, highWater: anchor },
+            request
+          )
+        : q<RepoDrilldownFeedSqlRow>(
+            `SELECT
+               toString(created_at) AS at,
+               actor_login AS actor,
+               event_type,
+               action,
+               toString(commit_count) AS commits,
+               toString(distinct_commit_count) AS distinct_commits,
+               pr_merged AS merged
+             FROM github_events
+             WHERE repo_name = {repoName: String}
+               AND created_at > {highWater: DateTime} - INTERVAL 24 HOUR
+               AND event_type IN ('PushEvent', 'PullRequestEvent')
+             ORDER BY created_at DESC
+             LIMIT 12`,
+            ["github_events"],
+            { ...queryParams, highWater: anchor },
+            request
+          )
+  );
 
   const analysisQuery = canQueryAnalysis
     ? q<RepoDrilldownAnalysisSqlRow>(
@@ -755,13 +847,14 @@ export async function repoDrilldown(repoName: string): Promise<RepoDrilldownPayl
            overview,
            tech_stack,
            key_files,
-           architecture_summary,
-           toString(analyzed_at) AS analyzed_at
+         architecture_summary,
+         toString(analyzed_at) AS analyzed_at
          FROM gh_repo_analysis FINAL
          WHERE repo_name = {repoName: String}
          LIMIT 1`,
         ["gh_repo_analysis"],
-        queryParams
+        queryParams,
+        request
       )
     : Promise.resolve({
         rows: [] as RepoDrilldownAnalysisSqlRow[],
@@ -774,15 +867,39 @@ export async function repoDrilldown(repoName: string): Promise<RepoDrilldownPayl
   // `activity`/`trends` (see the return shaping below). These don't need the
   // `useAggregates` conditional — they read from the new REST tables directly.
   const commitsQuery = q<RepoDrilldownCommitSqlRow>(
-    `SELECT sha, author, toString(author_date) AS author_date, message
+    `SELECT
+       sha,
+       author,
+       toString(author_date) AS author_date,
+       message,
+       toUInt8(recent_rank <= 10) AS is_recent,
+       toUInt8(author_rank = 1 AND committer_rank <= 8) AS is_top_committer,
+       toString(commit_count) AS commit_count,
+       toString(commit_authors) AS commit_authors,
+       toString(author_commits) AS author_commits
      FROM (
-       SELECT sha, author, author_date, message
-       FROM gh_repo_commits FINAL
-       WHERE repo_name = {repoName: String} AND author_date >= now() - INTERVAL 7 DAY
-       ORDER BY author_date DESC LIMIT 10
-     )`,
+       SELECT
+         *,
+         row_number() OVER (ORDER BY author_date DESC) AS recent_rank,
+         row_number() OVER (PARTITION BY author ORDER BY author_date DESC) AS author_rank,
+         dense_rank() OVER (ORDER BY author_commits DESC, author ASC) AS committer_rank
+       FROM (
+         SELECT
+           sha,
+           author,
+           author_date,
+           message,
+           count() OVER () AS commit_count,
+           uniqExact(author) OVER () AS commit_authors,
+           count() OVER (PARTITION BY author) AS author_commits
+         FROM gh_repo_commits FINAL
+         WHERE repo_name = {repoName: String} AND author_date >= now() - INTERVAL 7 DAY
+       )
+     )
+     WHERE recent_rank <= 10 OR (author_rank = 1 AND committer_rank <= 8)`,
     ["gh_repo_commits"],
-    queryParams
+    queryParams,
+    request
   );
   const prsQuery = q<RepoDrilldownPrSqlRow>(
     `SELECT toString(number) AS number, title, state, author,
@@ -800,19 +917,8 @@ export async function repoDrilldown(repoName: string): Promise<RepoDrilldownPayl
        ORDER BY created_at DESC LIMIT 10
      )`,
     ["gh_repo_prs"],
-    queryParams
-  );
-  const releasesQuery = q<RepoDrilldownReleaseSqlRow>(
-    `SELECT tag, name, author, toString(published_at) AS published_at, body
-     FROM (
-       SELECT tag, name, author, published_at, body
-       FROM gh_repo_releases FINAL
-       WHERE repo_name = {repoName: String}
-         AND published_at >= now() - INTERVAL 7 DAY
-       ORDER BY published_at DESC LIMIT 10
-     )`,
-    ["gh_repo_releases"],
-    queryParams
+    queryParams,
+    request
   );
   const issuesQuery = q<RepoDrilldownIssueSqlRow>(
     `SELECT toString(number) AS number, title, state, author,
@@ -826,7 +932,8 @@ export async function repoDrilldown(repoName: string): Promise<RepoDrilldownPayl
        ORDER BY created_at DESC LIMIT 10
      )`,
     ["gh_repo_issues"],
-    queryParams
+    queryParams,
+    request
   );
   // 30-day trend timeline: daily stars/forks from gh_repo_daily, with any
   // release / PR-merge / issue-open events that landed on that date. The
@@ -841,7 +948,13 @@ export async function repoDrilldown(repoName: string): Promise<RepoDrilldownPayl
        toString(forks) AS forks,
        event_type,
        event_label,
-       event_url
+       event_url,
+       release_tag,
+       release_name,
+       release_author,
+       release_published_at,
+       release_body,
+       release_in_activity
      FROM (
        SELECT
          toDate(day) AS day,
@@ -849,7 +962,13 @@ export async function repoDrilldown(repoName: string): Promise<RepoDrilldownPayl
          toUInt64(sum(forks)) AS forks,
          '' AS event_type,
          '' AS event_label,
-         '' AS event_url
+         '' AS event_url,
+         '' AS release_tag,
+         '' AS release_name,
+         '' AS release_author,
+         '' AS release_published_at,
+         '' AS release_body,
+         toUInt8(0) AS release_in_activity
        FROM gh_repo_daily
        WHERE repo_name = {repoName: String} AND day >= today() - 30
        GROUP BY day
@@ -860,9 +979,28 @@ export async function repoDrilldown(repoName: string): Promise<RepoDrilldownPayl
          toUInt64(0) AS forks,
          'release' AS event_type,
          concat('release ', tag) AS event_label,
-         concat('https://github.com/', {repoName: String}, '/releases/tag/', tag) AS event_url
-       FROM gh_repo_releases FINAL
-       WHERE repo_name = {repoName: String} AND published_at >= today() - 30
+         concat('https://github.com/', {repoName: String}, '/releases/tag/', tag) AS event_url,
+         tag AS release_tag,
+         if(in_activity_window AND activity_rank <= 10, name, '') AS release_name,
+         if(in_activity_window AND activity_rank <= 10, author, '') AS release_author,
+         toString(published_at) AS release_published_at,
+         if(in_activity_window AND activity_rank <= 10, body, '') AS release_body,
+         toUInt8(in_activity_window AND activity_rank <= 10) AS release_in_activity
+       FROM (
+         SELECT
+           tag,
+           name,
+           author,
+           published_at,
+           body,
+           published_at >= now() - INTERVAL 7 DAY AS in_activity_window,
+           row_number() OVER (
+             PARTITION BY published_at >= now() - INTERVAL 7 DAY
+             ORDER BY published_at DESC
+           ) AS activity_rank
+         FROM gh_repo_releases FINAL
+         WHERE repo_name = {repoName: String} AND published_at >= today() - 30
+       )
        UNION ALL
        SELECT
          toDate(merged_at) AS day,
@@ -870,7 +1008,13 @@ export async function repoDrilldown(repoName: string): Promise<RepoDrilldownPayl
          toUInt64(0) AS forks,
          'pr_merged' AS event_type,
          concat('#', toString(number), ' ', title) AS event_label,
-         concat('https://github.com/', {repoName: String}, '/pull/', toString(number)) AS event_url
+         concat('https://github.com/', {repoName: String}, '/pull/', toString(number)) AS event_url,
+         '' AS release_tag,
+         '' AS release_name,
+         '' AS release_author,
+         '' AS release_published_at,
+         '' AS release_body,
+         toUInt8(0) AS release_in_activity
        FROM gh_repo_prs FINAL
        WHERE repo_name = {repoName: String} AND merged_at >= today() - 30
        UNION ALL
@@ -880,20 +1024,27 @@ export async function repoDrilldown(repoName: string): Promise<RepoDrilldownPayl
          toUInt64(0) AS forks,
          'issue_opened' AS event_type,
          concat('#', toString(number), ' ', title) AS event_label,
-         concat('https://github.com/', {repoName: String}, '/issues/', toString(number)) AS event_url
+         concat('https://github.com/', {repoName: String}, '/issues/', toString(number)) AS event_url,
+         '' AS release_tag,
+         '' AS release_name,
+         '' AS release_author,
+         '' AS release_published_at,
+         '' AS release_body,
+         toUInt8(0) AS release_in_activity
        FROM gh_repo_issues FINAL
        WHERE repo_name = {repoName: String} AND created_at >= today() - 30
      )
      ORDER BY date ASC`,
     ["gh_repo_daily", "gh_repo_releases", "gh_repo_prs", "gh_repo_issues"],
-    queryParams
+    queryParams,
+    request
   );
 
   // --- Pulse overview queries (issue #79) -----------------------------------
   // GitHub's /pulse page computed en-masse from the REST-activity tables.
-  // 7-day window matches the activity lists. Three queries: PR/issue counts,
-  // commit summary, top committers. All degrade to zero/empty when the
-  // poller hasn't populated the tables.
+  // 7-day window matches the activity lists. PR/issue counts stay separate so
+  // their open-count semantics remain unchanged; commit summary and top
+  // committers come from the bounded commits rowset above.
   const pulseWindowDays = 7;
   const pulseSinceClause = `>= now() - INTERVAL ${pulseWindowDays} DAY`;
 
@@ -911,65 +1062,42 @@ export async function repoDrilldown(repoName: string): Promise<RepoDrilldownPayl
        SELECT number, created_at, toDate('1970-01-01 00:00:00') AS merged_at, closed_at, state FROM gh_repo_issues FINAL WHERE repo_name = {repoName: String}
      )`,
     ["gh_repo_prs", "gh_repo_issues"],
-    queryParams
+    queryParams,
+    request
   );
-
-  const pulseCommitSummaryQuery = q<RepoDrilldownPulseCommitSummarySqlRow>(
-    `SELECT
-       toString(uniqExact(author)) AS commit_authors,
-       toString(count()) AS commit_count
-     FROM gh_repo_commits FINAL
-     WHERE repo_name = {repoName: String} AND author_date ${pulseSinceClause}`,
-    ["gh_repo_commits"],
-    queryParams
-  );
-
-  const pulseTopCommittersQuery = q<RepoDrilldownPulseTopCommitterSqlRow>(
-    `SELECT author, toString(count()) AS commits
-     FROM gh_repo_commits FINAL
-     WHERE repo_name = {repoName: String} AND author_date ${pulseSinceClause}
-     GROUP BY author
-     ORDER BY commits DESC
-     LIMIT 8`,
-    ["gh_repo_commits"],
-    queryParams
-  );
-
-  const [metadata, kpis, velocity, actors, feed, analysisResult, commitsR, prsR, releasesR, issuesR, trendsR, pulseCountsR, pulseCommitSummaryR, pulseTopCommittersR] = await Promise.all([
+  const [metadata, highWaterR, hourlyR, actors, feed, analysisResult, commitsR, prsR, issuesR, trendsR, pulseCountsR] = await Promise.all([
     metadataQuery,
-    kpiQuery,
-    velocityQuery,
+    highWaterQuery,
+    kpiVelocityQuery,
     actorsQuery,
     feedQuery,
     analysisQuery,
     commitsQuery,
     prsQuery,
-    releasesQuery,
     issuesQuery,
     trendsQuery,
     pulseCountsQuery,
-    pulseCommitSummaryQuery,
-    pulseTopCommittersQuery,
   ]);
 
   let meta = metadata.rows[0];
   let analysisRow = analysisResult.rows[0];
-  const totals = kpis.rows[0];
+  const totals = hourlyR.rows.find(isTotalHourlyRow);
+  const velocityRows = hourlyR.rows.filter((row) => !isTotalHourlyRow(row));
+  const commitActivityRows = commitRowsForActivity(commitsR.rows);
+  const topCommitterActivityRows = topCommitterRows(commitsR.rows);
+  const releaseRows = releaseActivityRows(trendsR.rows);
   const provenances = [
     metadata.provenance,
-    kpis.provenance,
-    velocity.provenance,
+    highWaterR.provenance,
+    hourlyR.provenance,
     actors.provenance,
     feed.provenance,
     analysisResult.provenance,
     commitsR.provenance,
     prsR.provenance,
-    releasesR.provenance,
     issuesR.provenance,
     trendsR.provenance,
     pulseCountsR.provenance,
-    pulseCommitSummaryR.provenance,
-    pulseTopCommittersR.provenance,
   ];
 
   if (!meta && process.env.GITHUB_TOKEN) {
@@ -1061,7 +1189,7 @@ export async function repoDrilldown(repoName: string): Promise<RepoDrilldownPayl
       prsMerged: Number(totals?.prs_merged ?? 0),
       actors: Number(totals?.actors ?? 0),
     },
-    velocity: velocity.rows.map((row) => ({
+    velocity: velocityRows.map((row) => ({
       hour: row.hour,
       pushes: Number(row.pushes),
       commits: Number(row.commits),
@@ -1091,9 +1219,9 @@ export async function repoDrilldown(repoName: string): Promise<RepoDrilldownPayl
     // REST-activity enrichment (issue #79 track #83). Omitted when the poller
     // (#82) hasn't populated the tables yet — graceful degradation to v1.
     activity:
-      commitsR.rows.length || prsR.rows.length || releasesR.rows.length || issuesR.rows.length
+      commitActivityRows.length || prsR.rows.length || releaseRows.length || issuesR.rows.length
         ? {
-            commits: commitsR.rows.map((row) => ({
+            commits: commitActivityRows.map((row) => ({
               sha: row.sha,
               author: row.author,
               authorDate: row.author_date,
@@ -1109,12 +1237,12 @@ export async function repoDrilldown(repoName: string): Promise<RepoDrilldownPayl
               closedAt: row.closed_at,
               labels: row.labels ?? [],
             })),
-            releases: releasesR.rows.map((row) => ({
-              tag: row.tag,
-              name: row.name,
-              author: row.author,
-              publishedAt: row.published_at,
-              body: row.body,
+            releases: releaseRows.map((row) => ({
+              tag: row.release_tag,
+              name: row.release_name,
+              author: row.release_author,
+              publishedAt: row.release_published_at,
+              body: row.release_body,
             })),
             issues: issuesR.rows.map((row) => ({
               number: Number(row.number),
@@ -1137,10 +1265,10 @@ export async function repoDrilldown(repoName: string): Promise<RepoDrilldownPayl
     // Pulse overview (issue #79): GitHub's /pulse page computed en-masse from
     // the REST-activity tables. Omitted when the poller hasn't populated the
     // tables yet (all counts zero + no top committers).
-    pulse: (pulseCommitSummaryR.rows.length || pulseTopCommittersR.rows.length)
+    pulse: (pulseCountsR.rows.length || commitsR.rows.length)
       ? (() => {
           const pc = pulseCountsR.rows[0];
-          const cs = pulseCommitSummaryR.rows[0];
+          const cs = commitsR.rows[0];
           const prsMerged = Number(pc?.prs_merged ?? 0);
           const prsOpened = Number(pc?.prs_opened ?? 0);
           const prsOpen = Number(pc?.prs_open ?? 0);
@@ -1159,9 +1287,9 @@ export async function repoDrilldown(repoName: string): Promise<RepoDrilldownPayl
             issuesActive: issuesClosed + issuesOpened + issuesOpen,
             commitAuthors: Number(cs?.commit_authors ?? 0),
             commitCount: Number(cs?.commit_count ?? 0),
-            topCommitters: pulseTopCommittersR.rows.map((row) => ({
+            topCommitters: topCommitterActivityRows.map((row) => ({
               author: row.author,
-              commits: Number(row.commits),
+              commits: Number(row.author_commits),
             })),
           };
         })()
