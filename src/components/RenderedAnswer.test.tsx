@@ -148,6 +148,60 @@ describe("RenderedAnswer", () => {
     expect(screen.getByText("alpha/repo")).toBeInTheDocument();
   });
 
+  it("charts a tool-built Bar Chart card whose metric field is a numeric string with only a tooltip encoding", () => {
+    const payload: RenderPayload = {
+      type: "morphing-card",
+      visualizationType: "Bar Chart",
+      generatedAt: "2026-07-23T08:27:40.000Z",
+      chartConfig: {
+        // buildMorphingCard (src/lib/agent-tools.ts) only emits encoding.tooltip,
+        // never encoding.y -- and ClickHouse aggregates often serialize as strings.
+        encoding: { tooltip: [{ field: "day" }, { field: "stories" }] },
+        data: {
+          values: [
+            { day: "2026-07-22", stories: "1890" },
+            { day: "2026-07-23", stories: "2202" },
+          ],
+        },
+        mark: { type: "bar" },
+      },
+    } as RenderPayload;
+
+    const { container } = render(<RenderedAnswer payload={payload} />);
+
+    expect(container.querySelector("figure.chart.bar-chart-vertical svg")).toBeInTheDocument();
+    expect(container.querySelectorAll("figure.chart svg rect").length).toBeGreaterThan(0);
+  });
+
+  it("falls back to the data table for a Stacked Bar Chart even though its Vega mark is \"bar\"", () => {
+    // Vega-Lite expresses stacking via encoding, not a distinct mark type, so a
+    // Stacked Bar Chart config also has mark.type === "bar". Gating on markType
+    // alone would misrender it as a simplified single-series bar chart.
+    const payload: RenderPayload = {
+      type: "morphing-card",
+      visualizationType: "Stacked Bar Chart",
+      generatedAt: "2026-07-23T08:27:40.000Z",
+      chartConfig: {
+        encoding: {
+          x: { field: "repo", type: "nominal" },
+          y: { field: "github_forks", type: "quantitative" },
+        },
+        data: {
+          values: [
+            { repo: "alpha/repo", github_forks: 100 },
+            { repo: "beta/repo", github_forks: 200 },
+          ],
+        },
+        mark: { type: "bar" },
+      },
+    } as RenderPayload;
+
+    const { container } = render(<RenderedAnswer payload={payload} />);
+
+    expect(container.querySelector("figure.chart")).not.toBeInTheDocument();
+    expect(screen.getByText("alpha/repo")).toBeInTheDocument();
+  });
+
   it("does not crash and does not chart when data.values is empty or insufficient", () => {
     const baseEncoding = {
       x: { field: "repo", type: "nominal" },

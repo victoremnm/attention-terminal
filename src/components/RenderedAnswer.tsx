@@ -116,6 +116,15 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
+// Query rows often serialize numeric aggregates as strings (e.g. ClickHouse's
+// UInt64 counts), so a plain `typeof === "number"` check misses valid metric
+// candidates like { stories: "2202" }.
+function isFiniteNumeric(value: unknown): boolean {
+  if (typeof value === "number") return Number.isFinite(value);
+  if (typeof value === "string" && value.trim().length > 0) return Number.isFinite(Number(value));
+  return false;
+}
+
 function humanizeKey(key: string) {
   return key
     .replace(/_/g, " ")
@@ -718,7 +727,7 @@ function buildMorphingChart(
 
   const yField = typeof yEncoding?.field === "string"
     ? yEncoding.field
-    : Object.keys(firstRow).find((key) => key !== xField && typeof firstRow[key] === "number");
+    : Object.keys(firstRow).find((key) => key !== xField && isFiniteNumeric(firstRow[key]));
   if (!yField) return null;
 
   const yTitle = typeof yEncoding?.title === "string" && yEncoding.title.trim().length > 0 ? yEncoding.title : yField;
@@ -736,9 +745,12 @@ function buildMorphingChart(
   const labels = rows.map((r) => r.label);
   const values = rows.map((r) => r.value);
 
-  const isBar = visualizationType === "Bar Chart" || markType === "bar";
-  const isLineOrArea =
-    visualizationType === "Line Graph" || visualizationType === "Area Chart" || markType === "line" || markType === "area";
+  // Gate on the taxonomy visualizationType, not the raw Vega-Lite mark: Stacked
+  // Bar Chart configs also use mark "bar" (Vega-Lite expresses stacking via
+  // encoding, not a distinct mark type), so matching on markType alone would
+  // misrender an unsupported taxonomy type as a simplified single-series chart.
+  const isBar = visualizationType === "Bar Chart";
+  const isLineOrArea = visualizationType === "Line Graph" || visualizationType === "Area Chart";
 
   if (isBar) {
     const positives = values.filter((v) => v > 0);
