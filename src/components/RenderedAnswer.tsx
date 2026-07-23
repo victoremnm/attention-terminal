@@ -44,10 +44,10 @@ function CopyBtn({ payload }: { payload: RenderPayload }) {
   );
 }
 
-function CopyableAnswer({ payload, children }: { payload: RenderPayload; children: React.ReactNode }) {
+function CopyableAnswer({ payload, showCopy = true, children }: { payload: RenderPayload; showCopy?: boolean; children: React.ReactNode }) {
   return (
     <div className="agent-answer-wrapper">
-      <CopyBtn payload={payload} />
+      {showCopy && <CopyBtn payload={payload} />}
       {children}
     </div>
   );
@@ -771,7 +771,7 @@ function MorphingCardAnswer({ payload }: { payload: MorphingCardPayload }) {
   );
 }
 
-export function RenderedAnswer({ payload }: { payload: RenderPayload }) {
+export function RenderedAnswer({ payload, showCopy = true }: { payload: RenderPayload; showCopy?: boolean }) {
   let answer: React.ReactNode;
   if (payload.type === "digest") answer = <DigestAnswer payload={payload} />;
   else if (payload.type === "ticker") answer = <TickerAnswer payload={payload} />;
@@ -782,5 +782,5 @@ export function RenderedAnswer({ payload }: { payload: RenderPayload }) {
   else if (payload.type === "morphing-card") answer = <MorphingCardAnswer payload={payload} />;
   else answer = <MatrixAnswer payload={payload} />;
 
-  return <CopyableAnswer payload={payload}>{answer}</CopyableAnswer>;
+  return <CopyableAnswer payload={payload} showCopy={showCopy}>{answer}</CopyableAnswer>;
 }

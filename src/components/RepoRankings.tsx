@@ -6,6 +6,7 @@ import type { RepoDrilldownPayload } from "@/lib/render-payload";
 import { RenderedAnswer } from "./RenderedAnswer";
 import { Sparkline } from "./charts";
 import { useChatContext } from "@/lib/chat-context";
+import { copyToClipboard } from "@/lib/asset-export";
 import {
   ACTIVE_COLUMNS,
   ATTENTION_COLUMNS,
@@ -113,6 +114,27 @@ export function RepoRankings({ windows }: { windows: Record<RepoWindow, RepoWind
   const [prefs, setPrefs] = useState<RankingsPreferences>(DEFAULT_PREFERENCES);
   const [isHydrated, setIsHydrated] = useState(false);
   const [activeWindowTab, setActiveWindowTab] = useState<RepoWindow>("1d");
+  const [copiedRankingsMd, setCopiedRankingsMd] = useState(false);
+
+  async function handleCopyRankingsMd() {
+    try {
+      const modeLabel = modeConfig(prefs.mode).label;
+      const lines: string[] = [
+        `### TRENDING REPOSITORIES · ${modeLabel}`,
+        ``,
+        `| # | Repo | Primary Metric | Description |`,
+        `| :--- | :--- | :--- | :--- |`,
+      ];
+      filteredRows.slice(0, 50).forEach((v, idx) => {
+        lines.push(`| ${idx + 1} | [**${v.repoName}**](https://github.com/${v.repoName}) | ${NUMBER.format(v.primaryValue)} ${v.primaryLabel} | ${v.description || "-"} |`);
+      });
+      await copyToClipboard(lines.join("\n"), "markdown");
+      setCopiedRankingsMd(true);
+      setTimeout(() => setCopiedRankingsMd(false), 2000);
+    } catch {
+      setCopiedRankingsMd(false);
+    }
+  }
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(0);
   const [panelOpen, setPanelOpen] = useState(false);
@@ -423,6 +445,15 @@ export function RepoRankings({ windows }: { windows: Record<RepoWindow, RepoWind
           onClick={() => setPanelOpen((o) => !o)}
         >
           Filters & Columns
+        </button>
+        <button
+          type="button"
+          className={`asset-copy-btn${copiedRankingsMd ? " copied" : ""}`}
+          onClick={handleCopyRankingsMd}
+          style={{ opacity: 1, position: "static" }}
+          aria-label="Copy Trending Repositories as Markdown"
+        >
+          {copiedRankingsMd ? "Copied MD!" : "Copy Markdown"}
         </button>
       </div>
       <p className="rankings-mode-caption">{modeConfig(prefs.mode).description}</p>
