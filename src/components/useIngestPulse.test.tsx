@@ -33,7 +33,7 @@ describe("useIngestPulse", () => {
     );
   });
 
-  it("turns realtime off after the first subscription error", async () => {
+  it("keeps realtime enabled after a subscription error so consumers can recover", async () => {
     realtimeMock.useRealtimeRunsWithTag.mockReturnValue({ runs: [], error: new Error("boom") });
 
     renderHook(() => useIngestPulse("public-token"));
@@ -43,7 +43,7 @@ describe("useIngestPulse", () => {
         "ingest",
         expect.objectContaining({
           accessToken: "public-token",
-          enabled: false,
+          enabled: true,
         })
       );
     });
