@@ -1,18 +1,18 @@
 ---
 name: idle-pickup
-description: When idle, spawn cheap subagents (Haiku, escalating to Sonnet) to pick up ready-labeled open issues and review still-open PRs in the current repo, producing gated draft PRs and review suggestions for a human to approve. USE WHEN user says "pick up open work", "work the backlog", "review open PRs", "use idle time", "spawn cheap agents on issues", OR another skill (e.g. watch-pr) has idle wait time and wants the backlog worked with cheap models.
+description: When idle, spawn cheap subagents (Haiku, escalating to Sonnet) to inspect ready-labeled open issues and review still-open PRs in the current repo, producing gated suggestions for the primary workflow or a human to approve. USE WHEN user says "pick up open work", "work the backlog", "review open PRs", "use idle time", "spawn cheap agents on issues", OR another skill (e.g. watch-pr) has idle wait time and wants the backlog inspected with cheap models.
 version: 1.0.0
 ---
 
 # Idle Pickup
 
-Turn otherwise-wasted idle time into progress: dispatch **cheap subagents** at the current repo's backlog — open issues that are ready, and open PRs that need a review — and bring back **gated proposals**, never merged changes. Runs standalone ("pick up open work") or is invoked by another skill during its waits (e.g. `watch-pr` between reviewer rounds).
+Turn otherwise-wasted idle time into progress: dispatch **cheap subagents** to inspect the current repo's backlog — open issues that are ready, and open PRs that need a review — and bring back **gated suggestions**, never repository or GitHub mutations. Runs standalone ("pick up open work") or is invoked by another skill during its waits (e.g. `watch-pr` between reviewer rounds).
 
-The unit of value is a **draft**: a draft PR for an issue, or review suggestions on an open PR. A human (or the main agent) approves before anything ships.
+The unit of value is a **suggestion**: a proposed implementation, review finding, or remediation plan. A human or the primary workflow must explicitly approve and execute any mutation.
 
 ## Hard Rules
 
-1. **Gated output only.** A subagent may branch, commit, and open a **draft** PR, or post review comments as **suggestions** — nothing more. Never mark a PR ready, never merge, never push to `main`, never resolve someone else's review thread.
+1. **Suggestions-only.** A subagent may inspect issues and PRs and return proposed changes, test plans, or review findings. It must not edit files, create branches or commits, open or update PRs, apply fixes, reply to or resolve/dismiss review threads, mutate another PR, add or remove labels (including `blocked`), mark a PR ready, merge, or push. Route mutations to an explicitly invoked feedback/watch workflow such as `address-feedback` or `watch-pr`, or have the primary workflow perform them after approval.
 2. **Cheap by default.** Spawn subagents at **Haiku**. Escalate a single item to **Sonnet** only after Haiku stalls or returns low-confidence on it. Never reach for Opus here — this skill exists to offload work *off* the expensive tier.
 3. **Ready work only.** Pick up an issue only if it carries the configured ready label (default `ready-for-agent`) and is unassigned. Review an open PR only if it is not a draft and not already reviewed this session. Skip anything ambiguous rather than guessing scope.
 4. **Idle means idle.** Yield immediately when the caller needs the turn back (e.g. `watch-pr`'s next round is ready). Idle work is preemptible; never let it delay the primary task.
@@ -38,38 +38,35 @@ Present the picked queue before dispatching so the user can veto items. When cal
 
 One subagent per item, at Haiku, each with a **self-contained** brief — the subagent has none of this conversation's context.
 
-### Issue → draft PR
+### Issue → implementation suggestion
 
 Brief the subagent to:
-1. **Claim the issue**: Immediately assign the maintainer (`victoremnm`) via `gh issue edit <n> --add-assignee victoremnm` to signal that it is claimed.
-2. **Implement fix**: Read the issue, explore the repo, make minimal changes, branch as `fix/issue-<n>`, commit with model trailer (`Co-authored-by: <model-id> <agent@attention-terminal>`), and open a **draft** PR linking the issue (`Closes #<n>`).
-3. **Tag Model & Label**: Apply the high-level model family GitHub label via `gh pr edit <n> --add-label "<ModelFamily>"` (e.g. `Gemini`, `Codex`, `DeepSeek`, `Claude`, `Qwen`, `GLM`) and specify detailed model info in the PR title/body (e.g. `Model: Gemini 3.6 Flash`).
-4. **Report back**: Report branch name, PR number, model name, one-line summary, and confidence level.
+1. **Inspect without claiming**: Read the issue, explore the repo, and identify the minimal files, tests, and risks. Do not assign the issue or otherwise change GitHub state.
+2. **Return a suggestion**: Report the proposed implementation, validation commands, model, and confidence. Do not edit files, create a branch, commit, or open a PR; the primary workflow must perform those actions after approval.
 
 ### Open PR → review suggestions
 
-Brief the subagent to: read the diff, check correctness/security/tests against repo conventions, tag the LLM model family (`Model: Gemini`, `Model: DeepSeek`, `Model: Codex`, etc.), and post findings as PR **review comments phrased as suggestions** — not approvals, not resolutions. It reports the count and severity of findings.
+Brief the subagent to: read the diff, check correctness/security/tests against repo conventions, identify the LLM model family (`Model: Gemini`, `Model: DeepSeek`, `Model: Codex`, etc.) in its report, and return findings as **suggestions** — not PR comments, approvals, or resolutions. It reports the count and severity of findings.
 
-### Blocked PR → resolution
+### Blocked PR → suggested remediation
 
 Brief the subagent to:
 1. Detect `blocked` label, merge conflicts, failing CI, or unresolved review comments on a PR.
-2. Merge `origin/main` cleanly into the branch and resolve conflict markers.
-3. Apply code fixes, reply inline with commit SHA (`Fixed in <sha>\n\n<explanation>`), and resolve GraphQL review threads.
-4. Verify build and tests (`npm run build && npx vitest run`).
-5. Remove `blocked` label via `gh pr edit <PR_NUM> --remove-label "blocked"` once CI is 100% green.
+2. Report the exact blockers, affected files, relevant CI or thread URLs, and the safest remediation steps.
+3. If useful, provide a patch outline and validation commands, but do not merge `origin/main`, edit code, reply to or resolve review threads, change labels, or clear `blocked`.
+4. State that the primary workflow or an explicitly invoked `address-feedback`/`watch-pr` workflow must perform and verify the remediation before any unblock action.
 
 ## Collecting Results
 
-Gather each subagent's structured report and present a single roll-up:
+Gather each subagent's structured suggestion and present a single roll-up:
 
-| Item | Subagent | Model | Result | Needs review |
+| Item | Subagent | Model | Suggestion | Needs review |
 |---|---|---|---|---|
-| issue #42 | fix/issue-42 | Haiku | draft PR #58 | yes |
+| issue #42 | inspect | Haiku | proposed fix and tests | yes |
 | PR #17 | review | Haiku | 3 suggestions (1 correctness) | yes |
-| issue #51 | — | Haiku→Sonnet | no PR: scope unclear | escalate to user |
+| issue #51 | — | Haiku→Sonnet | no suggestion: scope unclear | escalate to user |
 
-Everything in the roll-up is a **proposal awaiting a human gate**. Do not represent a draft PR or a suggestion as done work.
+Everything in the roll-up is a **suggestion awaiting a human gate**. Do not represent a recommendation as implemented, reviewed, resolved, or merged work.
 
 ## Model Note
 
