@@ -28,6 +28,30 @@ describe.skipIf(!hasCH)("query layer (integration)", () => {
     }
   }, 120_000);
 
+  it("supports paginated sorting and returns a safe query proof", async () => {
+    const result = await repoActivityWindow("30d", {
+      limit: 2,
+      offset: 1,
+      sort: "commits",
+      direction: "asc",
+      search: "github",
+    });
+    expect(result.data.length).toBeLessThanOrEqual(2);
+    expect(result.proof).toEqual({
+      queryId: "repo_activity_window",
+      params: {
+        limit: 2,
+        offset: 1,
+        sort: "commits",
+        direction: "asc",
+        search: "github",
+      },
+      sourceTables: ["gh_repo_daily", "gh_repo_metadata"],
+    });
+    expect(result.sql).toContain("LIMIT {limit: UInt32} OFFSET {offset: UInt32}");
+    expect(result.sql).toContain("repo_name ASC");
+  }, 120_000);
+
   it("tickerLanes executes all lanes", async () => {
     const lanes = await tickerLanes();
     for (const key of ["newRepos", "topForked", "shippingVelocity", "starBreakouts", "risingStories"] as const) {
