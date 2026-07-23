@@ -192,7 +192,8 @@ describe("repoDrilldown query consolidation", () => {
 
     const statements = payload.query.sql.split("-- repo drill-down query ").length - 1;
     expect(statements).toBe(11);
-    expect(payload.query.sql).toContain("GROUP BY hour WITH ROLLUP");
+    expect(payload.query.sql).toContain("hour AS bucket_hour");
+    expect(payload.query.sql).toContain("GROUP BY bucket_hour WITH ROLLUP");
     expect(payload.query.sql).toContain("release_in_activity");
     expect(payload.query.sql).toContain("row_number() OVER (ORDER BY author_date DESC)");
     expect(payload.query.sql).toContain("countIf(state = 'open')");

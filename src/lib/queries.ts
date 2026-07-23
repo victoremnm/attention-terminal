@@ -670,8 +670,8 @@ export async function repoDrilldown(repoName: string): Promise<RepoDrilldownPayl
     q<RepoDrilldownHourlySqlRow>(
       useAggregates
         ? `SELECT
-             toUInt8(grouping(hour)) AS is_total,
-             toString(hour) AS hour,
+             toUInt8(grouping(bucket_hour)) AS is_total,
+             toString(bucket_hour) AS hour,
              toString(sum(pushes)) AS pushes,
              toString(sum(commits)) AS commits,
              toString(sum(distinct_commits)) AS distinct_commits,
@@ -681,10 +681,23 @@ export async function repoDrilldown(repoName: string): Promise<RepoDrilldownPayl
              toString(sum(prs_opened)) AS prs_opened,
              toString(sum(prs_merged)) AS prs_merged,
              toString(uniqMerge(actors)) AS actors
-           FROM gh_repo_drilldown_hourly
-           WHERE repo_name = {repoName: String}
-             AND hour > {highWater: DateTime} - INTERVAL 24 HOUR
-           GROUP BY hour WITH ROLLUP
+           FROM (
+             SELECT
+               hour AS bucket_hour,
+               pushes,
+               commits,
+               distinct_commits,
+               forks,
+               stars,
+               issues_opened,
+               prs_opened,
+               prs_merged,
+               actors
+             FROM gh_repo_drilldown_hourly
+             WHERE repo_name = {repoName: String}
+               AND hour > {highWater: DateTime} - INTERVAL 24 HOUR
+           )
+           GROUP BY bucket_hour WITH ROLLUP
            ORDER BY is_total, hour`
         : `SELECT
              toUInt8(grouping(bucket_hour)) AS is_total,
