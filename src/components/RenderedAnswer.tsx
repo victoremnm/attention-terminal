@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import type { CandlesPayload, DigestPayload, DivergencePayload, MatrixPayload, MorphingCardPayload, RenderPayload, RepoDrilldownPayload, RepoDrilldownActivity, RepoDrilldownPulse, RepoDrilldownTrend, TickerPayload, VerdictTile } from "@/lib/render-payload";
 import { VERDICT_COLOR } from "@/lib/verdict-color";
 import { AreaChart, DualLine, HorizontalBarChart, Sparkline, VerticalBarChart } from "./charts";
@@ -692,6 +692,52 @@ function RepoDrilldownAnswer({ payload }: { payload: RepoDrilldownPayload }) {
   );
 }
 
+// Adapter: turns a morphing-card's raw row objects + Vega-Lite-ish chartConfig
+// into one of the existing SVG chart components (see ./charts). Returns null
+// whenever the visualizationType/mark isn't chart-capable (yet) or the data
+// is too sparse to plot — callers fall back to the MorphingCardTable in
+// that case, they never crash. Supported set is intentionally minimal:
+// Bar Chart, Line Graph, Area Chart. Everything else (Pie Chart, Treemap,
+// Stacked Bar Chart, Scatterplot, ...) has no matching component and must
+// keep rendering the table.
+function buildMorphingChart(
+  markType: string,
+  visualizationType: MorphingCardPayload["visualizationType"],
+  dataValues: MorphingCardRow[],
+  config: Record<string, unknown>,
+): ReactNode | null {
+  if (dataValues.length < 2) return null;
+
+  const firstRow = dataValues[0];
+  const encoding = isRecord(config.encoding) ? config.encoding : undefined;
+  const xEncoding = isRecord(encoding?.x) ? encoding.x : undefined;
+  const yEncoding = isRecord(encoding?.y) ? encoding.y : undefined;
+
+  const xField = typeof xEncoding?.field === "string" ? xEncoding.field : Object.keys(firstRow)[0];
+  if (!xField) return null;
+
+  const yField = typeof yEncoding?.field === "string"
+    ? yEncoding.field
+    : Object.keys(firstRow).find((key) => key !== xField && typeof firstRow[key] === "number");
+  if (!yField) return null;
+
+  const yTitle = typeof yEncoding?.title === "string" && yEncoding.title.trim().length > 0 ? yEncoding.title : yField;
+  const labels = dataValues.map((row) => String(row[xField] ?? ""));
+  const values = dataValues.map((row) => Number(row[yField]) || 0);
+
+  const isBar = visualizationType === "Bar Chart" || markType === "bar";
+  const isLineOrArea =
+    visualizationType === "Line Graph" || visualizationType === "Area Chart" || markType === "line" || markType === "area";
+
+  if (isBar) {
+    return <VerticalBarChart items={labels.map((label, i) => ({ label, value: values[i] }))} title={yTitle} />;
+  }
+  if (isLineOrArea) {
+    return <AreaChart days={labels} values={values} label={yTitle} />;
+  }
+  return null;
+}
+
 function MorphingCardAnswer({ payload }: { payload: MorphingCardPayload }) {
   const config = payload.chartConfig as Record<string, unknown>;
   const title = typeof config.title === "string" && config.title.trim().length > 0 ? config.title : undefined;
@@ -699,6 +745,7 @@ function MorphingCardAnswer({ payload }: { payload: MorphingCardPayload }) {
   const dataValues = isRecord(config.data) && Array.isArray(config.data.values)
     ? config.data.values.filter(isRecord)
     : [];
+  const chart = buildMorphingChart(markType, payload.visualizationType, dataValues, config);
 
   return (
     <div className="agent-answer morphing-card">
@@ -708,11 +755,23 @@ function MorphingCardAnswer({ payload }: { payload: MorphingCardPayload }) {
       </div>
       <div className="agent-caption">
         {payload.summary && <MarkdownText text={payload.summary} />}
-        <p className="mono">
-          previewing {markType} markup · {dataValues.length.toLocaleString()} rows shown while the visualization is prepared
-        </p>
+        {!chart && (
+          <p className="mono">
+            previewing {markType} markup · {dataValues.length.toLocaleString()} rows shown while the visualization is prepared
+          </p>
+        )}
       </div>
-      <MorphingCardTable rows={dataValues} chartConfig={payload.chartConfig} />
+      {chart ? (
+        <>
+          {chart}
+          <details className="agent-query">
+            <summary className="mono">data table · {dataValues.length.toLocaleString()} rows</summary>
+            <MorphingCardTable rows={dataValues} chartConfig={payload.chartConfig} />
+          </details>
+        </>
+      ) : (
+        <MorphingCardTable rows={dataValues} chartConfig={payload.chartConfig} />
+      )}
       {payload.query && (
         <details className="agent-query">
           <summary className="mono">
