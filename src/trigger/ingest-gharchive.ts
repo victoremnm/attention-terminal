@@ -52,13 +52,20 @@ export const ingestGhArchive = schedules.task({
           query: `
             INSERT INTO github_events
               (event_id, event_type, actor_login, repo_name, created_at, action, ref_type,
-               commit_count, distinct_commit_count, pr_merged, number)
+               commit_count, distinct_commit_count, pr_merged, number, title, labels)
             SELECT toUInt64OrZero(id), type, tupleElement(actor,'login'), tupleElement(repo,'name'), created_at,
                    JSONExtractString(payload,'action'), JSONExtractString(payload,'ref_type'),
                    toUInt16(JSONExtractUInt(payload,'size')),
                    toUInt16(JSONExtractUInt(payload,'distinct_size')),
                    toUInt8(JSONExtractBool(payload,'pull_request','merged')),
-                   toUInt32(JSONExtractUInt(payload,'number'))
+                   toUInt32(JSONExtractUInt(payload,'number')),
+                   if(type = 'PullRequestEvent', JSONExtractString(payload, 'pull_request', 'title'),
+                      if(type = 'IssuesEvent', JSONExtractString(payload, 'issue', 'title'), null)),
+                   if(type = 'PullRequestEvent',
+                      arrayMap(x -> JSONExtractString(x, 'name'), JSONExtractArrayRaw(payload, 'pull_request.labels')),
+                      if(type = 'IssuesEvent',
+                         arrayMap(x -> JSONExtractString(x, 'name'), JSONExtractArrayRaw(payload, 'issue.labels')),
+                         []))
             FROM url('${url}', 'JSONEachRow',
                      'id String, type String, actor Tuple(login String), repo Tuple(name String), payload String, created_at DateTime')
             SETTINGS input_format_json_read_objects_as_strings = 1,

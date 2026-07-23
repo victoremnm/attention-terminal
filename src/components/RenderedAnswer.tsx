@@ -658,12 +658,17 @@ function RepoDrilldownAnswer({ payload }: { payload: RepoDrilldownPayload }) {
         </div>
       )}
       <div className="repo-feed">
-        <div className="repo-section-title mono">LATEST PUSH / PR EVENTS</div>
+        <div className="repo-section-title mono">LATEST PUSH / PR / ISSUE EVENTS</div>
         {payload.feed.length ? payload.feed.map((item) => (
           <div key={`${item.at}-${item.actor}-${item.eventType}`} className="repo-feed-row">
             <span className="mono">{shortTime(item.at)}</span>
             <b>{item.actor}</b>
-            <i className="mono">{item.eventType === "PushEvent" ? "push" : item.merged ? "merged PR" : item.action || "PR"}</i>
+            <i className="mono">
+              {item.eventType === "PushEvent" ? "push" : item.eventType === "IssuesEvent" ? "issue" : item.merged ? "merged PR" : item.action || "PR"}
+            </i>
+            {item.title && (item.eventType === "PullRequestEvent" || item.eventType === "IssuesEvent") && (
+              <span className="repo-feed-title">{item.title.substring(0, 60)}</span>
+            )}
             <em className="mono">
               {item.eventType === "PushEvent"
                 ? item.distinctCommits > 0
@@ -671,10 +676,12 @@ function RepoDrilldownAnswer({ payload }: { payload: RepoDrilldownPayload }) {
                   : item.commits > 0
                   ? `${item.commits} commit${item.commits === 1 ? "" : "s"}`
                   : ""
+                : item.labels && item.labels.length > 0
+                ? item.labels.slice(0, 2).join(", ")
                 : ""}
             </em>
           </div>
-        )) : <div className="repo-empty mono">no push or PR events in the latest 24h window</div>}
+        )) : <div className="repo-empty mono">no push, PR, or issue events in the latest 24h window</div>}
       </div>
       {payload.trends && payload.trends.length > 0 && (
         <div className="repo-trends">
