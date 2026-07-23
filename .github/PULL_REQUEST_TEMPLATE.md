@@ -29,6 +29,27 @@ What a human must check that the agent cannot. Be specific — name the UI eleme
 
 If this PR adds new optional fields/tables/endpoints, how does the system behave when they're absent or empty? If not applicable, say "n/a — no new optional surfaces".
 
+## Agent attribution
+
+Every PR must identify the agent (or human) that authored it. This is for
+traceability — when reviewing a PR, the reviewer needs to know who/what
+wrote the code.
+
+- **Authored by**: [agent name or model ID, e.g. `glm-5.2:cloud` or `human: victoremnm`]
+- **Subagent runs**: [count of subagent runs logged to `subagent_runs` for this PR, or `0` if none]
+
+Commit messages must include a `Co-authored-by:` trailer identifying the
+agent. Example:
+
+```
+feat: add Octokit activity client
+
+Co-authored-by: glm-5.2:cloud <agent@attention-terminal>
+```
+
+If multiple agents worked on the PR, each agent's commits must carry their
+own trailer. If a human authored a commit, no trailer is needed.
+
 ## Notes for review
 
 Context the reviewer needs that isn't in the bullets above: merge conflicts resolved, pre-existing bugs fixed along the way, env vars added, anything that might surprise a reviewer.

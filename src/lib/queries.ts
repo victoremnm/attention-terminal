@@ -1,5 +1,6 @@
 // Server-side only: imported exclusively from server components and route
 // handlers. ClickHouse credentials never reach the client bundle.
+import { unstable_cache } from "next/cache";
 import { clickhouse, clickhouseInsert, ensureTablesExist, missingTables } from "./clickhouse";
 import { fetchRepoRow } from "./github-repo";
 import { analyzeAndStoreRepo } from "./repo-analysis";
@@ -86,7 +87,7 @@ function activityDelta(parts: Array<[string, string | number]>) {
   return visible.length ? visible.join(" · ") : undefined;
 }
 
-export async function tickerLanes(): Promise<TickerLanes> {
+async function assembleTickerLanes(): Promise<TickerLanes> {
   const [repos, forks, shipping, stars, stories] = await Promise.all([
     q<{ name: string; at: string }>(
       // Window anchored to the feed's own high-water mark, not wall clock -
@@ -100,149 +101,116 @@ export async function tickerLanes(): Promise<TickerLanes> {
        GROUP BY repo_name ORDER BY at DESC LIMIT 20`,
       ["github_events"]
     ),
-    // Issue #49: raw ForkEvent counts are gameable (spray-fork bot networks -
-    // see Polytutor-Dao/Polymarket-Trading-Bot-Strategies, mykqs41o/repo-aa4f4e
-    // in the issue). Filtered/ranked in a single statement, modeled on
-    // devScatterSql()'s bot-exclusion + composite-score approach. Heuristic
-    // only - no gh_repo_metadata dependency (that table is currently empty).
+    // Read the pre-aggregated hourly table instead of grouping the raw event
+    // firehose for every page request. The aggregate table does not retain
+    // actor names, so the bot filter is intentionally limited to the lanes
+    // that still read actor-level activity from gh_repo_activity_feed.
     q<{ name: string; forks: string; stars: string; pushes: string; prs: string; issues: string }>(
-      `WITH
-         (SELECT max(created_at) FROM github_events) AS high_water,
-         window_events AS (
-           SELECT repo_name, event_type, action, actor_login
-           FROM github_events
-           WHERE created_at > high_water - INTERVAL 24 HOUR
-             AND event_type IN ('ForkEvent', 'WatchEvent', 'PushEvent', 'PullRequestEvent', 'IssuesEvent')
-         ),
-         per_repo AS (
-           SELECT
-             repo_name,
-             -- Bot forks stripped from the numerator outright - same
-             -- actor_login ILIKE '%[bot]%' pattern devScatterSql uses to
-             -- drop bot accounts wholesale.
-             countIf(event_type = 'ForkEvent' AND NOT actor_login ILIKE '%[bot]%') AS forks_24h,
-             countIf(event_type = 'WatchEvent') AS stars_24h,
-             -- Substance counters exclude [bot] actors (Codex P2): these feed
-             -- the fork-farm gate AND the score below, so a bot-only push/PR/
-             -- issue must not let a farm repo pass. Same bot predicate as
-             -- engaged_actors_24h / forks_24h - no bot signal counts as "real".
-             countIf(event_type = 'PushEvent' AND NOT actor_login ILIKE '%[bot]%') AS pushes_24h,
-             countIf(event_type = 'PullRequestEvent' AND action = 'opened' AND NOT actor_login ILIKE '%[bot]%') AS prs_24h,
-             countIf(event_type = 'IssuesEvent' AND action = 'opened' AND NOT actor_login ILIKE '%[bot]%') AS issues_24h,
-             uniqExactIf(
-               actor_login,
-               event_type IN ('PushEvent', 'PullRequestEvent', 'IssuesEvent') AND NOT actor_login ILIKE '%[bot]%'
-             ) AS engaged_actors_24h
-           FROM window_events
-           GROUP BY repo_name
-           HAVING forks_24h > 0
-         )
-       SELECT
-         repo_name AS name,
-         toString(forks_24h) AS forks,
-         toString(stars_24h) AS stars,
-         toString(pushes_24h) AS pushes,
-         toString(prs_24h) AS prs,
-         toString(issues_24h) AS issues
+      `WITH per_repo_event AS (
+         SELECT repo_name, event_type, countMerge(events) AS event_count
+         FROM gh_repo_hourly
+         WHERE hour > (SELECT max(hour) FROM gh_repo_hourly) - INTERVAL 24 HOUR
+           AND event_type IN ('ForkEvent', 'WatchEvent', 'PushEvent', 'PullRequestEvent', 'IssuesEvent')
+         GROUP BY repo_name, event_type
+       ),
+       per_repo AS (
+         SELECT
+           repo_name,
+           sumIf(event_count, event_type = 'ForkEvent') AS fork_count,
+           sumIf(event_count, event_type = 'WatchEvent') AS star_count,
+           sumIf(event_count, event_type = 'PushEvent') AS push_count,
+           sumIf(event_count, event_type = 'PullRequestEvent') AS pr_count,
+           sumIf(event_count, event_type = 'IssuesEvent') AS issue_count
+         FROM per_repo_event
+         GROUP BY repo_name
+         HAVING fork_count > 0 AND push_count + pr_count + issue_count > 0
+       )
+       SELECT repo_name AS name,
+              toString(fork_count) AS forks,
+              toString(star_count) AS stars,
+              toString(push_count) AS pushes,
+              toString(pr_count) AS prs,
+              toString(issue_count) AS issues
        FROM per_repo
-       -- Fork-farm gate: a repo whose ONLY window activity is forks/stars -
-       -- zero pushes, PRs, or issues, i.e. nobody actually engaged the code -
-       -- is exactly the spray-fork pattern from issue #49 (a template repo
-       -- gets forked by throwaway accounts and nothing else ever happens).
-       WHERE pushes_24h + prs_24h + issues_24h > 0
-       ORDER BY
-         -- Genuine engagement outranks raw fork count, so a repo can't buy
-         -- its way to the top of "TOP FORKED" purely by being spray-forked:
-         -- PRs/issues/pushes/distinct engaged humans dominate the score;
-         -- forks is capped rather than summed unbounded (same "cap the
-         -- gameable term" idea as shippingVelocity's least(pushes, 10)).
-         prs_24h * 5 + issues_24h * 3 + pushes_24h * 2 + engaged_actors_24h * 2 + least(forks_24h, 20) DESC,
-         forks_24h DESC
+       ORDER BY pr_count * 5 + issue_count * 3 + push_count * 2 + least(fork_count, 20) DESC,
+                fork_count DESC
        LIMIT 20`,
-      ["github_events"]
+      ["gh_repo_hourly"]
     ),
     q<{
       name: string;
-      commits: string;
-      pushes: string;
-      prs: string;
-      closed_prs: string;
-      issues: string;
-      forks: string;
-      actors: string;
+      commit_total: string;
+      push_count: string;
+      pr_count: string;
+      closed_pr_count: string;
+      issue_count: string;
+      fork_count: string;
+      actor_count: string;
       events: string;
     }>(
-      // Issue #49: same fork-farm/bot suppression as topForked - forks alone
-      // don't count as "shipping", and bot-authored events (dependabot/CI
-      // pushes, throwaway-account forks) are excluded outright rather than
-      // just down-weighted, matching devScatterSql's `actor_login ILIKE
-      // '%[bot]%'` exclusion.
+      // The activity feed is a recent, denormalized slice of github_events.
+      // It retains actor and commit fields needed for the bot/substance gate
+      // without rereading the entire raw firehose on every page request.
       `SELECT repo_name AS name,
-              sum(commit_count) AS commits,
-              countIf(event_type = 'PushEvent') AS pushes,
-              countIf(event_type = 'PullRequestEvent' AND action = 'opened') AS prs,
-              countIf(event_type = 'PullRequestEvent' AND action = 'closed') AS closed_prs,
-              countIf(event_type = 'IssuesEvent' AND action = 'opened') AS issues,
-              countIf(event_type = 'ForkEvent') AS forks,
-              -- Count only engagement actors, not fork actors (Codex P2): the
-              -- ORDER BY weights actors * 2 unbounded, so a spray-fork burst of
-              -- throwaway accounts must not inflate the shipping score via the
-              -- actor count. Bots are already excluded by the WHERE below.
-              uniqExactIf(actor_login, event_type IN ('PushEvent', 'PullRequestEvent', 'IssuesEvent')) AS actors,
-              sum(commit_count) + countIf(event_type = 'PushEvent')
+              sum(commits) AS commit_total,
+              countIf(event_type = 'PushEvent') AS push_count,
+              countIf(event_type = 'PullRequestEvent' AND action = 'opened') AS pr_count,
+              countIf(event_type = 'PullRequestEvent' AND action = 'closed') AS closed_pr_count,
+              countIf(event_type = 'IssuesEvent' AND action = 'opened') AS issue_count,
+              countIf(event_type = 'ForkEvent') AS fork_count,
+              uniqExactIf(actor_login, event_type IN ('PushEvent', 'PullRequestEvent', 'IssuesEvent')) AS actor_count,
+              sum(commits) + countIf(event_type = 'PushEvent')
                 + countIf(event_type = 'PullRequestEvent' AND action = 'opened')
                 + countIf(event_type = 'PullRequestEvent' AND action = 'closed')
                 + countIf(event_type = 'IssuesEvent' AND action = 'opened') AS events
-       FROM github_events
-       WHERE created_at > (SELECT max(created_at) FROM github_events) - INTERVAL 24 HOUR
+       FROM gh_repo_activity_feed
+       WHERE created_at > (SELECT max(created_at) FROM gh_repo_activity_feed) - INTERVAL 24 HOUR
          AND event_type IN ('PushEvent', 'PullRequestEvent', 'IssuesEvent', 'ForkEvent')
          AND NOT actor_login ILIKE '%[bot]%'
        GROUP BY repo_name
-       -- Require real commit or PR substance (commits > 0 or PRs > 0) so empty branch/main pushes
-       -- without any commits do not qualify for shipping velocity.
-       HAVING commits > 0 OR prs > 0 OR closed_prs > 0
-       ORDER BY commits * 4 + closed_prs * 5 + prs * 3 + least(pushes, commits) * 2 + actors * 2 DESC,
-                commits DESC
+       HAVING commit_total > 0 OR pr_count > 0 OR closed_pr_count > 0
+       ORDER BY commit_total * 4 + closed_pr_count * 5 + pr_count * 3
+                + least(push_count, commit_total) * 2 + actor_count * 2 DESC,
+                commit_total DESC
        LIMIT 20`,
-      ["github_events"]
+      ["gh_repo_activity_feed"]
     ),
-    // Issue #49: star (WatchEvent) surges are a leading indicator that can
-    // legitimately precede any push/PR/issue activity (e.g. a fresh HN
-    // front-page hit), so - unlike topForked/shippingVelocity - this lane
-    // does NOT gate on push/PR/issue substance; that would defeat its
-    // purpose. It still drops the one gameable signal that's cheap to fake:
-    // bot-account stars, same `actor_login ILIKE '%[bot]%'` exclusion as
-    // devScatterSql, applied to both the surge window and its 30d baseline
-    // so the ratio stays apples-to-apples.
+    // Use the hourly aggregate for both sides of the surge ratio. It keeps
+    // the recent star signal while avoiding a second 30-day raw scan. This
+    // aggregate does not retain actor names, so bot filtering is unavailable
+    // here; the result is still bounded to the same event type and windows.
     q<{ name: string; stars: string; surge: number; spark: number[] }>(
       `WITH recent AS (
-         SELECT repo_name, sum(cnt) AS stars,
+         SELECT repo_name, sum(cnt) AS star_total,
                 groupArray(8)(cnt) AS spark
          FROM (
-           SELECT repo_name, toStartOfHour(created_at) AS h, count() AS cnt
-           FROM github_events
+           SELECT repo_name, toStartOfHour(hour) AS h, countMerge(events) AS cnt
+           FROM gh_repo_hourly
            WHERE event_type = 'WatchEvent'
-             AND NOT actor_login ILIKE '%[bot]%'
-             AND created_at > (SELECT max(created_at) FROM github_events) - INTERVAL 24 HOUR
+             AND hour > (SELECT max(hour) FROM gh_repo_hourly) - INTERVAL 24 HOUR
            GROUP BY repo_name, h ORDER BY repo_name, h
          ) GROUP BY repo_name
        ),
        base AS (
-         SELECT repo_name, count() / 29 AS daily_avg
-         FROM github_events
-         WHERE event_type = 'WatchEvent'
-           AND NOT actor_login ILIKE '%[bot]%'
-           AND created_at > (SELECT max(created_at) FROM github_events) - INTERVAL 30 DAY
-           AND created_at <= (SELECT max(created_at) FROM github_events) - INTERVAL 24 HOUR
+         SELECT repo_name, sum(cnt) / 29 AS daily_avg
+         FROM (
+           SELECT repo_name, toDate(hour) AS day, countMerge(events) AS cnt
+           FROM gh_repo_hourly
+           WHERE event_type = 'WatchEvent'
+             AND hour > (SELECT max(hour) FROM gh_repo_hourly) - INTERVAL 30 DAY
+             AND hour <= (SELECT max(hour) FROM gh_repo_hourly) - INTERVAL 24 HOUR
+           GROUP BY repo_name, day
+         )
          GROUP BY repo_name
        )
        SELECT r.repo_name AS name,
-              toString(sum(r.stars)) AS stars,
-              round(sum(r.stars) / greatest(any(b.daily_avg), 0.5), 1) AS surge,
-              any(r.spark) AS spark
+              toString(r.star_total) AS stars,
+              round(r.star_total / greatest(any(b.daily_avg), 0.5), 1) AS surge,
+              r.spark AS spark
        FROM recent r LEFT ANY JOIN base b ON r.repo_name = b.repo_name
-       GROUP BY name ORDER BY sum(r.stars) DESC LIMIT 20`,
-      ["github_events"]
+       GROUP BY r.repo_name, r.star_total, r.spark
+       ORDER BY r.star_total DESC LIMIT 20`,
+      ["gh_repo_hourly"]
     ),
     q<{ id: number; name: string; score: number; velocity: number }>(
       `SELECT id, title AS name, score,
@@ -281,14 +249,14 @@ export async function tickerLanes(): Promise<TickerLanes> {
       repoName: r.name,
     })),
     shippingVelocity: shipping.rows.map((r) => {
-      const commits = valueOf(r.commits);
-      const pushes = valueOf(r.pushes);
+      const commits = valueOf(r.commit_total);
+      const pushes = valueOf(r.push_count);
       // When the metric headlines pushes (no commits), don't repeat pushes in the
       // stats row — that repetition, plus the delta below, was the "same data
       // twice" the card showed. When the metric is commits, pushes is still a
       // distinct number worth keeping in stats.
       const metricIsPushes = commits === 0 && pushes > 0;
-      const metric = commits > 0 ? `${r.commits} commits` : pushes > 0 ? `${r.pushes} pushes` : `${r.events} events`;
+      const metric = commits > 0 ? `${r.commit_total} commits` : pushes > 0 ? `${r.push_count} pushes` : `${r.events} events`;
       return {
         kicker: "SHIPPING",
         name: r.name,
@@ -296,12 +264,12 @@ export async function tickerLanes(): Promise<TickerLanes> {
         // No `delta`: it re-listed PRs/closed/issues/forks/actors, exactly the
         // dimensions the stats row breaks out, so the two rows were identical.
         stats: [
-          ...(metricIsPushes ? [] : [stat("pushes", r.pushes, pushes > 0 ? "hot" : "muted")]),
-          stat("PRs", r.prs),
-          stat("closed", r.closed_prs),
-          stat("issues", r.issues),
-          stat("forks", r.forks),
-          stat("actors", r.actors, "hot"),
+          ...(metricIsPushes ? [] : [stat("pushes", r.push_count, pushes > 0 ? "hot" : "muted")]),
+          stat("PRs", r.pr_count),
+          stat("closed", r.closed_pr_count),
+          stat("issues", r.issue_count),
+          stat("forks", r.fork_count),
+          stat("actors", r.actor_count, "hot"),
         ],
         href: `https://github.com/${r.name}`,
         repoName: r.name,
@@ -330,6 +298,20 @@ export async function tickerLanes(): Promise<TickerLanes> {
     provenance: [repos.provenance, forks.provenance, shipping.provenance, stars.provenance, stories.provenance],
     fetchedAt: new Date().toISOString(),
   };
+}
+
+// The homepage is force-dynamic, but the ranking payload does not need a new
+// firehose scan for every visitor. Sharing it for one minute also prevents a
+// burst of requests from running all five ClickHouse lanes concurrently.
+const cachedTickerLanes = unstable_cache(assembleTickerLanes, ["ticker-lanes"], {
+  revalidate: 60,
+});
+
+export async function tickerLanes(): Promise<TickerLanes> {
+  // Direct integration tests do not provide Next's incremental cache. They
+  // still execute every SQL statement, so bypass only the framework wrapper.
+  if (process.env.NODE_ENV === "test") return assembleTickerLanes();
+  return cachedTickerLanes();
 }
 
 interface RepoDrilldownMetadataSqlRow {
@@ -513,6 +495,15 @@ async function hasAnalysisTable(): Promise<boolean> {
   }
 }
 
+async function hasActorActivityFeedTable(): Promise<boolean> {
+  try {
+    const missing = await missingTables(["gh_repo_actor_activity_feed"]);
+    return missing.length === 0;
+  } catch {
+    return false;
+  }
+}
+
 // Groups the trend UNION ALL rows (one row per day + one row per event) into
 // a per-date timeline with annotated events. Days with no event have an empty
 // `events` array. The trend chart renders star/fork lines + event markers.
@@ -548,9 +539,10 @@ function buildTrends(rows: RepoDrilldownTrendSqlRow[]): Array<{
 
 export async function repoDrilldown(repoName: string): Promise<RepoDrilldownPayload> {
   const queryParams = { repoName };
-  const [useAggregates, canQueryAnalysis] = await Promise.all([
+  const [useAggregates, canQueryAnalysis, canQueryActorFeed] = await Promise.all([
     hasSeededAggregates(),
     hasAnalysisTable(),
+    hasActorActivityFeedTable(),
   ]);
 
   const metadataQuery = q<RepoDrilldownMetadataSqlRow>(
@@ -717,44 +709,45 @@ export async function repoDrilldown(repoName: string): Promise<RepoDrilldownPayl
         queryParams
       );
 
-  const feedQuery = useAggregates
-    ? q<RepoDrilldownFeedSqlRow>(
-        `WITH (SELECT max(hour) FROM gh_repo_drilldown_hourly) AS high_water
-         SELECT
-           toString(created_at) AS at,
-           actor_login AS actor,
-           event_type,
-           action,
-           toString(commits) AS commits,
-           toString(distinct_commits) AS distinct_commits,
-           pr_merged AS merged
-         FROM gh_repo_activity_feed
-         WHERE repo_name = {repoName: String}
-           AND created_at > high_water - INTERVAL 24 HOUR
-         ORDER BY created_at DESC
-         LIMIT 12`,
-        ["gh_repo_activity_feed", "gh_repo_drilldown_hourly"],
-        queryParams
-      )
-    : q<RepoDrilldownFeedSqlRow>(
-        `WITH (SELECT max(created_at) FROM github_events) AS high_water
-         SELECT
-           toString(created_at) AS at,
-           actor_login AS actor,
-           event_type,
-           action,
-           toString(commit_count) AS commits,
-           toString(distinct_commit_count) AS distinct_commits,
-           pr_merged AS merged
-         FROM github_events
-         WHERE repo_name = {repoName: String}
-           AND created_at > high_water - INTERVAL 24 HOUR
-           AND event_type IN ('PushEvent', 'PullRequestEvent')
-         ORDER BY created_at DESC
-         LIMIT 12`,
-        ["github_events"],
-        queryParams
-      );
+  const feedQuery =
+    useAggregates && canQueryActorFeed
+      ? q<RepoDrilldownFeedSqlRow>(
+          `WITH (SELECT max(hour) FROM gh_repo_drilldown_hourly) AS high_water
+           SELECT
+             toString(created_at) AS at,
+             actor_login AS actor,
+             event_type,
+             action,
+             toString(commits) AS commits,
+             toString(distinct_commits) AS distinct_commits,
+             pr_merged AS merged
+           FROM gh_repo_actor_activity_feed FINAL
+           WHERE repo_name = {repoName: String}
+             AND created_at > high_water - INTERVAL 24 HOUR
+           ORDER BY created_at DESC
+           LIMIT 12`,
+          ["gh_repo_actor_activity_feed", "gh_repo_drilldown_hourly"],
+          queryParams
+        )
+      : q<RepoDrilldownFeedSqlRow>(
+          `WITH (SELECT max(created_at) FROM github_events) AS high_water
+           SELECT
+             toString(created_at) AS at,
+             actor_login AS actor,
+             event_type,
+             action,
+             toString(commit_count) AS commits,
+             toString(distinct_commit_count) AS distinct_commits,
+             pr_merged AS merged
+           FROM github_events
+           WHERE repo_name = {repoName: String}
+             AND created_at > high_water - INTERVAL 24 HOUR
+             AND event_type IN ('PushEvent', 'PullRequestEvent')
+           ORDER BY created_at DESC
+           LIMIT 12`,
+          ["github_events"],
+          queryParams
+        );
 
   const analysisQuery = canQueryAnalysis
     ? q<RepoDrilldownAnalysisSqlRow>(
