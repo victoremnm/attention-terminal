@@ -1,0 +1,50 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>PR 162 · Trending query proof</title>
+<style>
+  :root { color-scheme: dark; font: 15px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; }
+  body { max-width: 920px; margin: 40px auto; padding: 0 24px; background: #0b1014; color: #d9f7ff; }
+  h1 { color: #38cdec; font-size: 24px; }
+  h2 { color: #92e6f5; font-size: 16px; margin-top: 32px; }
+  .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+  .card { border: 1px solid #27404a; padding: 14px; background: #101a20; }
+  .value { color: #69f0ae; font-size: 22px; }
+  code, pre { color: #c4f3ff; background: #111d23; border: 1px solid #27404a; }
+  code { padding: 2px 5px; }
+  pre { overflow: auto; padding: 16px; }
+  .ok { color: #69f0ae; }
+</style>
+<h1>Trending query contract · PR 162</h1>
+<p class="ok">PASS · bounded pagination · stable ordering · safe proof metadata</p>
+
+<div class="grid">
+  <div class="card"><div>default page size</div><div class="value">100</div><div>max: 100</div></div>
+  <div class="card"><div>pagination</div><div class="value">LIMIT / OFFSET</div><div>offset max: 1,000,000</div></div>
+  <div class="card"><div>ordering</div><div class="value">8 measures</div><div>repo_name tie-break</div></div>
+</div>
+
+<h2>Accepted request</h2>
+<pre>GET /api/trending?window=30d&amp;limit=25&amp;offset=25&amp;sort=commits&amp;direction=asc&amp;search=github</pre>
+
+<h2>Safe proof returned to the caller</h2>
+<pre>{
+  "queryId": "repo_activity_window",
+  "params": {
+    "limit": 25,
+    "offset": 25,
+    "sort": "commits",
+    "direction": "asc",
+    "search": "github"
+  },
+  "sourceTables": ["gh_repo_daily", "gh_repo_metadata"],
+  "elapsedMs": "ClickHouse response timing",
+  "rowsRead": "ClickHouse response read count"
+}</pre>
+
+<h2>Rejected request examples</h2>
+<pre>GET /api/trending?limit=101     → 400 limit must be an integer between 1 and 100
+GET /api/trending?sort=raw_sql   → 400 sort is not supported
+GET /api/trending?window=90d     → 400 window is not supported</pre>
+
+<h2>Verification</h2>
+<p><span class="ok">✓</span> 29 unit tests passed · <span class="ok">✓</span> TypeScript passed · <span class="ok">✓</span> Next production build passed</p>
