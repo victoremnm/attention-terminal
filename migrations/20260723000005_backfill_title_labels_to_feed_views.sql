@@ -15,7 +15,7 @@
 ALTER TABLE gh_repo_actor_activity_feed ADD COLUMN IF NOT EXISTS title Nullable(String);
 ALTER TABLE gh_repo_actor_activity_feed ADD COLUMN IF NOT EXISTS labels Array(String) DEFAULT [];
 
-DROP VIEW IF EXISTS gh_repo_actor_activity_feed_mv;
+DROP TABLE IF EXISTS gh_repo_actor_activity_feed_mv;
 CREATE MATERIALIZED VIEW IF NOT EXISTS gh_repo_actor_activity_feed_mv TO gh_repo_actor_activity_feed AS
 SELECT
     repo_name,
@@ -34,8 +34,7 @@ WHERE repo_name != ''
 
 -- 2. gh_repo_activity_feed: a plain view (thin projection, no stored state),
 --    so it's just a column-list update -- no backfill concern.
-DROP VIEW IF EXISTS gh_repo_activity_feed;
-CREATE VIEW IF NOT EXISTS gh_repo_activity_feed AS
+CREATE OR REPLACE VIEW gh_repo_activity_feed AS
 SELECT
     repo_name,
     actor_login,

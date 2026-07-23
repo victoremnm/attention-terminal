@@ -188,14 +188,14 @@ async function assembleTickerLanes(): Promise<TickerLanes> {
       `WITH
          (SELECT max(created_at) FROM gh_repo_activity_feed) AS max_time
        SELECT repo_name AS name,
-              sum(commits) AS commit_total,
+              sum(commit_count) AS commit_total,
               countIf(event_type = 'PushEvent') AS push_count,
               countIf(event_type = 'PullRequestEvent' AND action = 'opened') AS pr_count,
               countIf(event_type = 'PullRequestEvent' AND action = 'closed') AS closed_pr_count,
               countIf(event_type = 'IssuesEvent' AND action = 'opened') AS issue_count,
               countIf(event_type = 'ForkEvent') AS fork_count,
               uniqExactIf(actor_login, event_type IN ('PushEvent', 'PullRequestEvent', 'IssuesEvent')) AS actor_count,
-              sum(commits) + countIf(event_type = 'PushEvent')
+              sum(commit_count) + countIf(event_type = 'PushEvent')
                 + countIf(event_type = 'PullRequestEvent' AND action = 'opened')
                 + countIf(event_type = 'PullRequestEvent' AND action = 'closed')
                 + countIf(event_type = 'IssuesEvent' AND action = 'opened') AS events,
@@ -850,8 +850,8 @@ export async function repoDrilldown(repoName: string): Promise<RepoDrilldownPayl
                actor_login AS actor,
                event_type,
                action,
-               toString(commits) AS commits,
-               toString(distinct_commits) AS distinct_commits,
+               toString(commit_count) AS commits,
+               toString(distinct_commit_count) AS distinct_commits,
                pr_merged AS merged,
                title,
                labels
