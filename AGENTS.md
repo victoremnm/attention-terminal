@@ -135,6 +135,41 @@ the reviewer must add the `blocked` label and explain the blocker in a PR
 comment. These labels are review signals, not merge approval; the human merge
 gate still applies.
 
+### Blocked-label protocol (mandatory, model-agnostic)
+
+`blocked` is an active work signal, not a final disposition. It means the PR
+has a known issue that must be handled before it can return to the merge gate:
+
+- a merge conflict;
+- an unresolved review comment or requested change;
+- failing or incomplete CI;
+- a correctness, security, performance, evidence, or verification defect; or
+- a general issue raised in a PR comment, even when it is not attached to a
+  source line.
+
+Every agent — including Codex, Claude, Gemini, DeepSeek, and any other model —
+must do the following when it sees `blocked` on a PR it is working on:
+
+1. Inspect the PR timeline, review threads, CI rollup, and current head to
+   identify the concrete blocker. Do not treat the label as someone else's
+   queue item without checking its cause.
+2. Claim the associated issue/PR when the harness permits it, then fix the
+   blocker in an isolated worktree. Preserve unrelated work and resolve
+   conflicts against the current base branch.
+3. Verify the repair with the narrowest relevant tests plus CI. For query or
+   data changes, include a current query proof or an explicit credential-gated
+   skip and fallback behavior.
+4. Reply to the originating review/comment with the commit SHA and observed
+   verification. If the work is valid but out of scope, create/link a follow-up
+   issue and explain the deferral instead of leaving the blocker silent.
+5. Remove `blocked` only after the cause is resolved and documented. An
+   independent reviewer may then add `lgtm` if all other merge-gate conditions
+   are current. The implementation agent must never self-apply `lgtm`.
+
+The PR body or a review comment must record the blocker, resolution, evidence,
+agent identity, model, and commit SHA. A `blocked` label without an explanatory
+comment is incomplete harness state and must be corrected.
+
 ### Commit message convention (mandatory)
 
 Every commit authored by an agent must include a `Co-authored-by:` trailer
@@ -291,6 +326,44 @@ Action) must be resolved before a PR can be merged:
 4. **Close** — if irrelevant, reply: `Not applicable — <reason>`
 
 Never leave a review comment unreplied.
+
+## Handling Blocked PRs (mandatory)
+
+The `blocked` GitHub label signals a PR has issues preventing merge, but agents must NOT wait for the label — they must proactively detect issues on ALL open PRs.
+
+**Detection**: Every session start and after every push, scan all open PRs for blocking conditions:
+
+```bash
+gh pr list --repo victoremnm/attention-terminal --state open --json number,title,mergeStateStatus,mergeable,labels \
+  --jq '.[] | select(.mergeStateStatus != "CLEAN" or .mergeable == "CONFLICTING") | "PR #\(.number): \(.mergeStateStatus) \(.mergeable) \([.labels[].name] | join(","))"'
+```
+
+**Blocking conditions** (check ALL, not just those with a `blocked` label):
+- `mergeable == "CONFLICTING"` — merge conflict with main
+- `mergeStateStatus == "DIRTY"` or `"UNSTABLE"` — CI failures or pending
+- `mergeStateStatus == "BLOCKED"` — review required or branch behind base
+- Open review threads (`.reviewThreads[].isResolved == false`) — includes automated reviews (Codex, CodeRabbit, Copilot, Claude)
+- `CHANGES_REQUESTED` reviews on the PR
+- A `blocked` label applied manually by a human
+
+**Resolution workflow**:
+1. **Merge conflicts**: Fetch `origin/main`, merge into worktree branch, resolve `<<<<<` markers, commit, push.
+2. **Review comments**: Fix code, reply with `Fixed in <sha>`, resolve review threads via GraphQL using the THREAD's node ID (not the comment's node ID):
+   ```bash
+   # Find unresolved threads
+   gh api graphql -f query='
+   query { repository(owner:"victoremnm",name:"attention-terminal") {
+     pullRequest(number:<PR>) { reviewThreads(first:10) {
+       nodes { id isResolved comments(first:5) { nodes { id body(limit:80) } } }
+     } }
+   } }'
+   # Resolve each unresolved thread
+   gh api graphql -f query='
+   mutation { resolveReviewThread(input:{threadId:"<THREAD_ID>"}) { thread { isResolved } } }'
+   ```
+3. **Failing CI**: Read logs from `statusCheckRollup[].detailsUrl`, fix root cause, verify locally, push.
+4. **Branch behind base**: Merge `origin/main` into the worktree branch.
+5. **Unblock**: Remove `blocked` label (`gh pr edit <PR_NUM> --remove-label blocked`) and log subagent telemetry only when ALL blockers are resolved AND CI is green.
 
 ## Skills mount (recommended)
 

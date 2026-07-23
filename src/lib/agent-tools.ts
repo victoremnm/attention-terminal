@@ -101,6 +101,8 @@ function requireDescribedTables(query: string) {
   return extractTableCandidates(query).filter((table) => !knownSchemas.has(table));
 }
 
+const TABLE_LIST_LIMIT = 50;
+
 export const listTables = tool({
   ...listTablesDef,
   execute: async () => {
@@ -110,8 +112,10 @@ export const listTables = tool({
         FROM system.tables
         WHERE database NOT IN ('system', 'information_schema', 'INFORMATION_SCHEMA')
         ORDER BY database, name
+        LIMIT {limit: UInt32}
       `,
       format: "JSONEachRow",
+      query_params: { limit: TABLE_LIST_LIMIT },
       clickhouse_settings: {
         readonly: "2",
         max_execution_time: 10,

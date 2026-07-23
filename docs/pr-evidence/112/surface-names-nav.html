@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>PR #112 Evidence: Distinct Surface Names & Navigation</title>
+  <style>
+    body { font-family: system-ui, -apple-system, sans-serif; background: #0f172a; color: #f8fafc; padding: 2rem; }
+    h1 { color: #38bdf8; font-size: 1.5rem; }
+    .card { background: #1e293b; border: 1px solid #334155; border-radius: 0.5rem; padding: 1.5rem; margin-bottom: 1.5rem; }
+    .badge { display: inline-block; padding: 0.25rem 0.5rem; background: #0284c7; color: white; border-radius: 0.25rem; font-size: 0.75rem; font-weight: bold; }
+    .nav { display: flex; gap: 1rem; font-family: monospace; background: #090d16; padding: 0.75rem; border-radius: 0.25rem; margin-top: 0.5rem; }
+    .nav a { color: #94a3b8; text-decoration: none; padding: 0.25rem 0.5rem; border-radius: 0.25rem; }
+    .nav a.active { color: #38bdf8; background: #1e293b; font-weight: bold; }
+  </style>
+</head>
+<body>
+  <h1>PR #112 Evidence: Distinct Surface Names for Live Feed vs Repo Rankings</h1>
+  
+  <div class="card">
+    <span class="badge">VERIFIED</span>
+    <h2>1. Route `/` — Home Surface ("Live Feed")</h2>
+    <p><strong>Route identity:</strong> Live GitHub and Hacker News breakout ticker signals.</p>
+    <p><strong>Header H1:</strong> <code>Live Feed</code> | <strong>Kicker:</strong> <code>LIVE_FEED</code></p>
+    <p><strong>Page Metadata:</strong> <code>Attention Terminal - Live Feed</code></p>
+    <div class="nav">
+      <a href="/" class="active">Live Feed</a>
+      <a href="/trending">Repo Rankings</a>
+      <a href="/chat">Chat</a>
+      <a href="/skinny">Daily Skinny</a>
+    </div>
+  </div>
+
+  <div class="card">
+    <span class="badge">VERIFIED</span>
+    <h2>2. Route `/trending` — Rankings Surface ("Repo Rankings")</h2>
+    <p><strong>Route identity:</strong> Top GitHub repositories ranked by activity across 1d / 7d / 30d windows.</p>
+    <p><strong>Header H1:</strong> <code>Repo Rankings</code> | <strong>Kicker:</strong> <code>REPO_RANKINGS</code></p>
+    <p><strong>Page Metadata:</strong> <code>Attention Terminal - Repo Rankings</code></p>
+    <div class="nav">
+      <a href="/">Live Feed</a>
+      <a href="/trending" class="active">Repo Rankings</a>
+      <a href="/chat">Chat</a>
+      <a href="/skinny">Daily Skinny</a>
+    </div>
+  </div>
+</body>
+</html>
