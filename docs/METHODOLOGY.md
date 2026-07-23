@@ -21,6 +21,7 @@ Traditional AI chat agents deliver a **wall of text**—paragraphs, bullet point
 | **[ADR 0001](adr/0001-tufte-data-ink-svg-primitives.md)** | **Tufte Data-Ink Maximization & Hand-Rolled SVG Primitives** | Replaced heavy third-party charting libraries with 5 zero-dependency React SVG primitives (`PieChart`, `StackedBarChart`, `WaterfallChart`, `TreemapChart`, `HorizontalBarChart`). | **Accepted** |
 | **[ADR 0002](adr/0002-clickhouse-skipping-index-predicates.md)** | **ClickHouse Case-Insensitive Skipping Index Predicates** | Refactored `actor_login ILIKE '%[bot]%'` to `lower(actor_login) LIKE '%[bot]%'` to leverage ClickHouse `idx_github_events_actor_login` token bloom filter index. | **Accepted** |
 | **[ADR 0003](adr/0003-subagent-telemetry-and-session-learnings.md)** | **Subagent Telemetry, Session Learnings & Fail-Open Spooling** | Standardized ClickHouse telemetry tracking (`subagent_runs`, `session_learnings`) with local NDJSON spooling fallbacks. | **Accepted** |
+| **[ADR 0004](adr/0004-pseudo-medallion-clickhouse-data-modeling.md)** | **Pseudo-Medallion Architecture & Dataset Triangulation Trade-offs** | Implemented Bronze/Silver/Gold `_hourly`/`_daily`/`_weekly` `AggregatingMergeTree` rollups and Goose DDL migrations instead of Kimball star schemas. | **Accepted** |
 
 ---
 

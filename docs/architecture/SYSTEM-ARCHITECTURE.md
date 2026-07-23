@@ -81,6 +81,22 @@ sequenceDiagram
     MV-->>CH: Update hourly & 30-day aggregate projections
 ```
 
+### Pseudo-Medallion Data Architecture (Bronze $\rightarrow$ Silver $\rightarrow$ Gold)
+
+Instead of a traditional Kimball star schema (which introduces expensive joins in real-time OLAP queries), Attention Terminal structures data using a **Pseudo-Medallion Architecture**:
+
+```mermaid
+flowchart TD
+    BRONZE["Bronze Layer (Raw Ingestion)\ngithub_events / hn_stories\nAppend-only JSON event stream"] --> SILVER
+    SILVER["Silver Layer (Cleansed Facts & Indexes)\nFiltered bot accounts (lower(actor_login) NOT LIKE '%[bot]%')\nToken bloom filter index (idx_github_events_actor_login)"] --> GOLD
+    GOLD["Gold Layer (Rollup Projections)\n_hourly, _daily, _weekly AggregatingMergeTrees\ngh_repo_activity_feed_mv / gh_repo_period_rollups"]
+```
+
+1. **Bronze (Raw Append-Only)**: Ingests GitHub Archive and Hacker News raw event payloads at high throughput into `github_events` and `hn_stories`.
+2. **Silver (Cleansed & Indexed Facts)**: Cleansed event facts utilizing `idx_github_events_actor_login` token bloom filter skipping indexes to filter bot traffic (`[bot]`, `copilot`, `dependabot`) without full-table scans.
+3. **Gold (AggregatingMergeTree Rollups)**: Continuous rollups pre-computed into `_hourly`, `_daily`, and `_weekly` `AggregatingMergeTree` tables and Materialized Views (`gh_repo_activity_feed_mv`, `gh_repo_period_rollups`), reducing query scan sizes by >95%.
+4. **Goose Schema Migrations**: All ClickHouse DDL transformations are version-controlled via **Goose DDL migrations** (`migrations/*.sql` + `./scripts/migrate.sh`) and automatically deployed via CD on merge to `main`.
+
 ### Data Layer Schema Map
 
 ```mermaid

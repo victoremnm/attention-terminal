@@ -17,6 +17,18 @@ Attention Terminal leverages a high-throughput dual-engine architecture:
 - **ClickHouse**: Serves as the ultra-fast real-time data layer executing sub-second analytical queries across millions of developer events (`github_events`, `hn_stories`) using specialized skipping indexes (`idx_github_events_actor_login`).
 - **Trigger.dev v3**: Orchestrates background ingestion workers, dbt continuous transformations, and async agent execution loops.
 
+### 1.3 Unpursued Exploration & Dataset Comparison: Hacker News vs. GitHub Stream
+During initial discovery, we attempted to cross-reference and triangulate Hacker News stories and comments with developer activity. However, we met **limited success** due to the shape of the data:
+- **Hacker News**: Unstructured text titles, URL links, and comment threads with sparse dimensional attributes. Triangulation yielded weak correlation signals and high noise.
+- **GitHub Archive Stream**: Exceptionally rich with explicit facts, timestamps, and multi-dimensional entities (`repo_name`, `actor_login`, `org`, event types). The deep structure of GitHub events provided superior introspection capabilities.
+
+### 1.4 Data Warehousing Rationale: Pseudo-Medallion vs. Kimball Modeling
+Rather than implementing a traditional **Kimball star schema** (which imposes join penalties across dimensional lookup tables in real-time analytical queries), we designed a **Pseudo-Medallion Architecture**:
+- **Bronze Layer**: Append-only raw facts in `github_events`.
+- **Silver Layer**: Cleansed events with bot-filtering (`lower(actor_login) NOT LIKE '%[bot]%'`) and token bloom filter skipping indexes (`idx_github_events_actor_login`).
+- **Gold Layer**: Pre-aggregated rollups via `_hourly`, `_daily`, and `_weekly` `AggregatingMergeTree` tables and Materialized Views (`gh_repo_activity_feed_mv`, `gh_repo_period_rollups`), reducing scan sizes by >95%.
+- **Migration System**: Version-controlled DDL evolution using **Goose DDL migrations** (`migrations/*.sql` + `./scripts/migrate.sh`) integrated into production CD pipelines.
+
 ---
 
 ## 2. Key Interactive Components Built for Discovery
