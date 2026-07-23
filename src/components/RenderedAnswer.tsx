@@ -53,23 +53,25 @@ function parseMetricValue(metric: string): number | null {
   if (lower.includes("utc") || lower.includes("born") || lower.includes("ago")) {
     return null;
   }
-  const cleaned = metric.replace(/\/(1h|24h|7d|30d)/gi, "").trim();
-  const match = cleaned.match(/[\d,]+(?:\.\d+)?/);
-  if (!match) return null;
-  const num = parseFloat(match[0].replace(/,/g, ""));
-  return isNaN(num) ? null : num;
+  const cleaned = metric
+    .replace(/\b\d+(?:\.\d+)?\s*(?:s|m|h|d|w|mo|y)\b/gi, " ")
+    .replace(/\/(1h|24h|7d|30d)/gi, " ")
+    .trim();
+  const matches = cleaned.match(/(?<![\w.])[-+]?\d[\d,]*(?:\.\d+)?(?![\w.])/g);
+  const token = matches?.at(-1);
+  if (!token) return null;
+  const num = Number(token.replace(/,/g, ""));
+  return Number.isFinite(num) ? num : null;
 }
 
 function TickerAnswer({ payload }: { payload: TickerPayload }) {
   const barItems = payload.items
-    .map((item, idx) => {
+    .map((item) => {
       const val = parseMetricValue(item.metric);
       if (val === null) return null;
-      const colors = ["var(--cyan)", "var(--mag)", "var(--emerald)", "var(--amber)", "var(--blue)", "var(--purple)"];
       return {
         label: item.name,
         value: val,
-        color: colors[idx % colors.length],
       };
     })
     .filter((item): item is NonNullable<typeof item> => item !== null)
@@ -98,6 +100,82 @@ function TickerAnswer({ payload }: { payload: TickerPayload }) {
           </a>
         ))}
       </div>
+    </div>
+  );
+}
+
+type MorphingCardRow = Record<string, unknown>;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function humanizeKey(key: string) {
+  return key
+    .replace(/_/g, " ")
+    .replace(/\b([a-z])/g, (match) => match.toUpperCase());
+}
+
+function formatTableCell(value: unknown) {
+  if (value === null || value === undefined || value === "") return "—";
+  if (typeof value === "number") return Number.isFinite(value) ? value.toLocaleString() : "—";
+  if (typeof value === "boolean") return value ? "true" : "false";
+  if (Array.isArray(value)) return value.map((item) => formatTableCell(item)).join(", ");
+  if (isRecord(value)) return JSON.stringify(value);
+  return String(value);
+}
+
+function MorphingCardTable({
+  rows,
+  chartConfig,
+}: {
+  rows: MorphingCardRow[];
+  chartConfig: MorphingCardPayload["chartConfig"];
+}) {
+  const config = chartConfig as Record<string, unknown>;
+  const encoding = isRecord(config.encoding) ? config.encoding : undefined;
+  const tooltip = Array.isArray(encoding?.tooltip) ? encoding.tooltip.filter(isRecord) : [];
+  const firstRow = rows[0] ?? {};
+
+  const columns = (
+    tooltip.length
+      ? tooltip
+          .map((item) => {
+            const field = typeof item.field === "string" ? item.field : "";
+            if (!field) return null;
+            return {
+              field,
+              label: typeof item.title === "string" && item.title.trim().length > 0 ? item.title : humanizeKey(field),
+            };
+          })
+          .filter((column): column is { field: string; label: string } => column !== null)
+      : Object.keys(firstRow).map((field) => ({ field, label: humanizeKey(field) }))
+  ).slice(0, 6);
+
+  if (columns.length === 0) {
+    return <div className="repo-empty mono">no tabular values were provided for this chart</div>;
+  }
+
+  return (
+    <div className="table-responsive">
+      <table className="telemetry-table">
+        <thead>
+          <tr>
+            {columns.map((column) => (
+              <th key={column.field}>{column.label}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.slice(0, 8).map((row, index) => (
+            <tr key={`${index}-${columns[0]?.field ?? "row"}`}>
+              {columns.map((column) => (
+                <td key={column.field}>{formatTableCell(row[column.field])}</td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }
@@ -607,15 +685,34 @@ function RepoDrilldownAnswer({ payload }: { payload: RepoDrilldownPayload }) {
 }
 
 function MorphingCardAnswer({ payload }: { payload: MorphingCardPayload }) {
+  const config = payload.chartConfig as Record<string, unknown>;
+  const title = typeof config.title === "string" && config.title.trim().length > 0 ? config.title : undefined;
+  const markType = isRecord(config.mark) && typeof config.mark.type === "string" ? config.mark.type : payload.visualizationType.toLowerCase();
+  const dataValues = isRecord(config.data) && Array.isArray(config.data.values)
+    ? config.data.values.filter(isRecord)
+    : [];
+
   return (
     <div className="agent-answer morphing-card">
       <div className="agent-answer-head mono">
         {payload.visualizationType.toUpperCase()}
+        <span>{title ?? `${dataValues.length} rows`}</span>
       </div>
-      <div className="agent-chart-placeholder" style={{ padding: '1rem', background: '#f5f5f5', color: '#000', margin: '1rem 0' }}>
-        {payload.summary && <p style={{ marginBottom: '0.5rem' }}>{payload.summary}</p>}
-        <i>[Morphing Canvas for {payload.visualizationType}]</i>
+      <div className="agent-caption">
+        {payload.summary && <p>{payload.summary}</p>}
+        <p className="mono">
+          previewing {markType} markup · {dataValues.length.toLocaleString()} rows shown while the visualization is prepared
+        </p>
       </div>
+      <MorphingCardTable rows={dataValues} chartConfig={payload.chartConfig} />
+      {payload.query && (
+        <details className="agent-query">
+          <summary className="mono">
+            query analytics · {payload.query.rowsRead.toLocaleString()} rows read · {payload.query.elapsedMs}ms
+          </summary>
+          <pre className="mono">{payload.query.sql}</pre>
+        </details>
+      )}
     </div>
   );
 }

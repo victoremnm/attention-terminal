@@ -143,6 +143,7 @@ export const MorphingCardSchema = z.object({
   generatedAt: z.string(),
   chartConfig: z.record(z.string(), z.unknown()),
   summary: z.string().optional(),
+  query: CardQuerySchema.optional(),
 });
 
 // --- Daily Skinny deck (tactile finishable card deck; see docs/architecture/AGENT-FLEET-PLAN.md §4.2) ---
