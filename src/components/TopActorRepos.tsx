@@ -12,12 +12,21 @@ export function TopActorRepos({
   window: string;
   fetchedAt?: string;
 }) {
+  // formatFreshness() calls Date.now(), so it must not run during SSR/hydration --
+  // the elapsed-seconds text computed on the server almost never matches what the
+  // client recomputes a moment later, which throws React hydration error #418.
+  // Deferring it to a post-mount effect makes the freshness text client-only.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
   return (
     <div className="actor-repos-container">
       <h2 className="section-title">Top Contributors & Their Repos</h2>
       <p className="section-meta">
         Most active non-bot contributors over the last {window}, ranked by engagement
-        {fetchedAt && <span className="freshness"> · {formatFreshness(fetchedAt)}</span>}
+        {mounted && fetchedAt && <span className="freshness"> · {formatFreshness(fetchedAt)}</span>}
       </p>
 
       <div className="actors-leaderboard">
