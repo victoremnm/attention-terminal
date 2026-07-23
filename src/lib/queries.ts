@@ -88,16 +88,20 @@ function activityDelta(parts: Array<[string, string | number]>) {
 
 export async function tickerLanes(): Promise<TickerLanes> {
   const [repos, forks, shipping, stars, stories] = await Promise.all([
-    q<{ name: string; at: string }>(
+    q<{ name: string; at: string; spark: number[] }>(
       // Window anchored to the feed's own high-water mark, not wall clock -
       // GH Archive is hourly and may lag during catch-up; the freshness strip
       // tells the user exactly how far behind the feed is.
-      `SELECT repo_name AS name, max(created_at) AS at
-       FROM github_events
-       WHERE event_type = 'CreateEvent'
-         AND ref_type = 'repository'
-         AND created_at > (SELECT max(created_at) FROM github_events) - INTERVAL 6 HOUR
-       GROUP BY repo_name ORDER BY at DESC LIMIT 20`,
+      `SELECT repo_name AS name, max(created_at) AS at,
+              groupArray(6)(cnt) AS spark
+       FROM (
+         SELECT repo_name, toStartOfHour(created_at) AS h, count() AS cnt
+         FROM github_events
+         WHERE event_type = 'CreateEvent'
+           AND ref_type = 'repository'
+           AND created_at > (SELECT max(created_at) FROM github_events) - INTERVAL 6 HOUR
+         GROUP BY repo_name, h ORDER BY repo_name, h
+       ) GROUP BY repo_name ORDER BY at DESC LIMIT 20`,
       ["github_events"]
     ),
     // Issue #49: raw ForkEvent counts are gameable (spray-fork bot networks -
@@ -105,7 +109,7 @@ export async function tickerLanes(): Promise<TickerLanes> {
     // in the issue). Filtered/ranked in a single statement, modeled on
     // devScatterSql()'s bot-exclusion + composite-score approach. Heuristic
     // only - no gh_repo_metadata dependency (that table is currently empty).
-    q<{ name: string; forks: string; stars: string; pushes: string; prs: string; issues: string }>(
+    q<{ name: string; forks: string; stars: string; pushes: string; prs: string; issues: string; spark: number[] }>(
       `WITH
          (SELECT max(created_at) FROM github_events) AS high_water,
          window_events AS (
@@ -136,15 +140,28 @@ export async function tickerLanes(): Promise<TickerLanes> {
            FROM window_events
            GROUP BY repo_name
            HAVING forks_24h > 0
+         ),
+         fork_spark AS (
+           SELECT repo_name, groupArray(8)(cnt) AS spark
+           FROM (
+             SELECT repo_name, toStartOfHour(created_at) AS h,
+                    countIf(NOT actor_login ILIKE '%[bot]%') AS cnt
+             FROM github_events
+             WHERE created_at > (SELECT max(created_at) FROM github_events) - INTERVAL 24 HOUR
+               AND event_type = 'ForkEvent'
+             GROUP BY repo_name, h ORDER BY repo_name, h
+           ) GROUP BY repo_name
          )
        SELECT
-         repo_name AS name,
-         toString(forks_24h) AS forks,
-         toString(stars_24h) AS stars,
-         toString(pushes_24h) AS pushes,
-         toString(prs_24h) AS prs,
-         toString(issues_24h) AS issues
-       FROM per_repo
+         p.repo_name AS name,
+         toString(p.forks_24h) AS forks,
+         toString(p.stars_24h) AS stars,
+         toString(p.pushes_24h) AS pushes,
+         toString(p.prs_24h) AS prs,
+         toString(p.issues_24h) AS issues,
+         any(fs.spark) AS spark
+       FROM per_repo p
+       LEFT JOIN fork_spark fs ON p.repo_name = fs.repo_name
        -- Fork-farm gate: a repo whose ONLY window activity is forks/stars -
        -- zero pushes, PRs, or issues, i.e. nobody actually engaged the code -
        -- is exactly the spray-fork pattern from issue #49 (a template repo
@@ -171,13 +188,14 @@ export async function tickerLanes(): Promise<TickerLanes> {
       forks: string;
       actors: string;
       events: string;
+      spark: number[];
     }>(
       // Issue #49: same fork-farm/bot suppression as topForked - forks alone
       // don't count as "shipping", and bot-authored events (dependabot/CI
       // pushes, throwaway-account forks) are excluded outright rather than
       // just down-weighted, matching devScatterSql's `actor_login ILIKE
       // '%[bot]%'` exclusion.
-      `SELECT repo_name AS name,
+      `SELECT ge.repo_name AS name,
               sum(commit_count) AS commits,
               countIf(event_type = 'PushEvent') AS pushes,
               countIf(event_type = 'PullRequestEvent' AND action = 'opened') AS prs,
@@ -192,12 +210,24 @@ export async function tickerLanes(): Promise<TickerLanes> {
               sum(commit_count) + countIf(event_type = 'PushEvent')
                 + countIf(event_type = 'PullRequestEvent' AND action = 'opened')
                 + countIf(event_type = 'PullRequestEvent' AND action = 'closed')
-                + countIf(event_type = 'IssuesEvent' AND action = 'opened') AS events
-       FROM github_events
+                + countIf(event_type = 'IssuesEvent' AND action = 'opened') AS events,
+              any(ss.spark) AS spark
+       FROM github_events ge
+       LEFT JOIN (
+         SELECT repo_name, groupArray(8)(cnt) AS spark
+         FROM (
+           SELECT repo_name, toStartOfHour(created_at) AS h, sum(commit_count) AS cnt
+           FROM github_events
+           WHERE created_at > (SELECT max(created_at) FROM github_events) - INTERVAL 24 HOUR
+             AND event_type = 'PushEvent'
+             AND NOT actor_login ILIKE '%[bot]%'
+           GROUP BY repo_name, h ORDER BY repo_name, h
+         ) GROUP BY repo_name
+       ) ss ON ge.repo_name = ss.repo_name
        WHERE created_at > (SELECT max(created_at) FROM github_events) - INTERVAL 24 HOUR
          AND event_type IN ('PushEvent', 'PullRequestEvent', 'IssuesEvent', 'ForkEvent')
          AND NOT actor_login ILIKE '%[bot]%'
-       GROUP BY repo_name
+       GROUP BY ge.repo_name
        -- Fork-farm gate: require at least one push/commit/PR/issue - the same
        -- substance requirement as topForked, so a spray-forked repo with zero
        -- real activity can't land in this lane either.
@@ -261,6 +291,7 @@ export async function tickerLanes(): Promise<TickerLanes> {
       kicker: "NEW REPO",
       name: r.name,
       metric: "born " + r.at.slice(11, 16) + " UTC",
+      spark: r.spark,
       href: `https://github.com/${r.name}`,
       repoName: r.name,
     })),
@@ -268,6 +299,7 @@ export async function tickerLanes(): Promise<TickerLanes> {
       kicker: "FORKED 24H",
       name: r.name,
       metric: `+${r.forks} new forks`,
+      spark: r.spark,
       // No `delta`: it re-listed stars/pushes/PRs/issues, which the stats row
       // below already breaks out — the two rows rendered the same numbers twice.
       // stats carries the supporting dimensions (never `new forks` again, since
@@ -294,6 +326,7 @@ export async function tickerLanes(): Promise<TickerLanes> {
         kicker: "SHIPPING",
         name: r.name,
         metric,
+        spark: r.spark,
         // No `delta`: it re-listed PRs/closed/issues/forks/actors, exactly the
         // dimensions the stats row breaks out, so the two rows were identical.
         stats: [
@@ -326,6 +359,9 @@ export async function tickerLanes(): Promise<TickerLanes> {
       name: r.name,
       metric: `${r.velocity} pts/hr`,
       delta: `${r.score} pts`,
+      // No spark: HN stores only current score per story, not hourly snapshots.
+      // A per-story trendline would require point-in-time score history which
+      // we don't collect. The lane's velocity (pts/hr) is the temporal signal.
       href: `https://news.ycombinator.com/item?id=${r.id}`,
     })),
     provenance: [repos.provenance, forks.provenance, shipping.provenance, stars.provenance, stories.provenance],
