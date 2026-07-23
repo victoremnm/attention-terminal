@@ -45,11 +45,13 @@ function RankRow({
   rank,
   state,
   onOpen,
+  columns,
 }: {
   view: RankingRowView;
   rank: number;
   state: "idle" | "selected" | "loading";
   onOpen: (repo: string) => void;
+  columns: readonly { key: string; label: string }[];
 }) {
   const subline = [view.language, view.description].filter(Boolean).join(" · ");
   const spark = view.spark;
@@ -62,31 +64,30 @@ function RankRow({
           : "stable"
       : "";
   const chipSummary = view.chips.map((c) => `${NUMBER.format(c.value)} ${c.label}`).join(", ");
+  const chipValue = (key: string) => view.chips.find((c) => c.key === key)?.value ?? 0;
   return (
-    <button
-      type="button"
-      className="rank-row mono"
-      data-state={state}
-      onClick={() => onOpen(view.repoName)}
-      aria-pressed={state === "selected"}
-      aria-label={`${view.repoName}. ${NUMBER.format(view.primaryValue)} ${view.primaryLabel}${trend ? `, ${trend}` : ""}. ${chipSummary}.`}
-    >
-      <span className="rank-num">{rank}</span>
-      <span className="rank-repo">
-        <b>{view.repoName}</b>
-        {subline ? <em>{subline}</em> : null}
-        {view.botOnly ? <span className="rank-bot-badge">bot-only</span> : null}
-      </span>
-      <span className="rank-spark">{spark ? <Sparkline data={spark} color="var(--cyan)" w={148} h={24} /> : null}</span>
-      <span className="rank-stats">
-        {view.chips.map((c) => (
-          <span key={c.key}>
-            <b>{NUMBER.format(c.value)}</b> {c.label}
-          </span>
-        ))}
-      </span>
-      <span className="rank-events">{NUMBER.format(view.primaryValue)}</span>
-    </button>
+    <tr className="rank-row mono" data-state={state}>
+      <td className="rank-num">{rank}</td>
+      <td className="rank-repo">
+        <button
+          type="button"
+          onClick={() => onOpen(view.repoName)}
+          aria-pressed={state === "selected"}
+          aria-label={`${view.repoName}. ${NUMBER.format(view.primaryValue)} ${view.primaryLabel}${trend ? `, ${trend}` : ""}. ${chipSummary}.`}
+        >
+          <b>{view.repoName}</b>
+          {subline ? <em>{subline}</em> : null}
+          {view.botOnly ? <span className="rank-bot-badge">bot-only</span> : null}
+        </button>
+      </td>
+      <td className="rank-spark">{spark ? <Sparkline data={spark} color="var(--cyan)" w={110} h={22} /> : null}</td>
+      {columns.map((col) => (
+        <td key={col.key} className="rank-cell-num">
+          {NUMBER.format(chipValue(col.key))}
+        </td>
+      ))}
+      <td className="rank-events">{NUMBER.format(view.primaryValue)}</td>
+    </tr>
   );
 }
 
@@ -111,6 +112,7 @@ export function RepoRankings({ windows }: { windows: Record<RepoWindow, RepoWind
 
   const dataRequestId = useRef(0);
   const mountedGuard = useRef(false);
+  const [refreshNonce, setRefreshNonce] = useState(0);
 
   useEffect(() => () => drilldownAbort.current?.abort(), []);
 
@@ -166,7 +168,12 @@ export function RepoRankings({ windows }: { windows: Record<RepoWindow, RepoWind
 
     return () => controller.abort();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [prefs.mode, prefs.sortField, prefs.sortDirection, activeWindowTab, page]);
+  }, [prefs.mode, prefs.sortField, prefs.sortDirection, activeWindowTab, page, refreshNonce]);
+
+  const attentionRowsFiltered = useMemo(
+    () => attentionRawRows.filter((r) => r.commits >= prefs.minCommits),
+    [attentionRawRows, prefs.minCommits]
+  );
 
   const activeRowsFiltered = useMemo(
     () => activeRawRows.filter((r) => r.distinctCommits >= prefs.minCommits),
@@ -175,10 +182,10 @@ export function RepoRankings({ windows }: { windows: Record<RepoWindow, RepoWind
 
   const rows = useMemo<RankingRowView[]>(() => {
     if (source === "attention") {
-      return attentionRawRows.map((r) => attentionRowView(r, prefs.sortField, prefs.attentionColumns));
+      return attentionRowsFiltered.map((r) => attentionRowView(r, prefs.sortField, prefs.attentionColumns));
     }
     return activeRowsFiltered.map((r) => activeRowView(r, prefs.sortField, prefs.activeColumns));
-  }, [source, attentionRawRows, activeRowsFiltered, prefs.sortField, prefs.attentionColumns, prefs.activeColumns]);
+  }, [source, attentionRowsFiltered, activeRowsFiltered, prefs.sortField, prefs.attentionColumns, prefs.activeColumns]);
 
   const filteredRows = useMemo(() => {
     const needle = query.trim().toLowerCase();
@@ -248,6 +255,12 @@ export function RepoRankings({ windows }: { windows: Record<RepoWindow, RepoWind
 
   function handleMoveActiveColumn(key: ActiveColumnKey, direction: -1 | 1) {
     setPrefs((prev) => ({ ...prev, activeColumns: moveColumn(prev.activeColumns, key, direction) }));
+  }
+
+  function handleRefresh() {
+    setPrefs((prev) => (prev.sortDirection === "desc" ? prev : { ...prev, sortDirection: "desc" }));
+    setPage(0);
+    setRefreshNonce((n) => n + 1);
   }
 
   function handleResetDefaults() {
@@ -343,7 +356,7 @@ export function RepoRankings({ windows }: { windows: Record<RepoWindow, RepoWind
           <div className="rankings-controls-section">
             <h3>Filters</h3>
             <label className="rankings-controls-field">
-              Min ★ stars
+              Min total ★ (all-time, independent of window)
               <input
                 type="number"
                 min={0}
@@ -351,19 +364,17 @@ export function RepoRankings({ windows }: { windows: Record<RepoWindow, RepoWind
                 onChange={(e) => setPrefs((prev) => ({ ...prev, minStars: Math.max(0, Number(e.target.value) || 0) }))}
               />
             </label>
-            {source === "active" ? (
-              <label className="rankings-controls-field">
-                Min commits
-                <input
-                  type="number"
-                  min={0}
-                  value={prefs.minCommits}
-                  onChange={(e) =>
-                    setPrefs((prev) => ({ ...prev, minCommits: Math.max(0, Number(e.target.value) || 0) }))
-                  }
-                />
-              </label>
-            ) : null}
+            <label className="rankings-controls-field">
+              Min commits (substantive-work floor, applies to every mode)
+              <input
+                type="number"
+                min={0}
+                value={prefs.minCommits}
+                onChange={(e) =>
+                  setPrefs((prev) => ({ ...prev, minCommits: Math.max(0, Number(e.target.value) || 0) }))
+                }
+              />
+            </label>
             <label className="rankings-controls-field rankings-controls-checkbox">
               <input
                 type="checkbox"
@@ -487,56 +498,72 @@ export function RepoRankings({ windows }: { windows: Record<RepoWindow, RepoWind
         )}
       </p>
 
-      <div className="rank-head mono">
-        <span className="rank-num">#</span>
-        <span className="rank-repo">REPO</span>
-        <span className="rank-spark">ACTIVITY</span>
-        <span className="rank-stats-head">
-          {headerColumns.map((col) => {
-            const pressed = prefs.sortField === col.key;
-            const directionWord = pressed ? (prefs.sortDirection === "desc" ? "descending" : "ascending") : "not sorted";
-            return (
-              <button
-                key={col.key}
-                type="button"
-                className="rank-sort-header"
-                aria-pressed={pressed}
-                aria-label={`Sort by ${col.label}, currently ${directionWord}`}
-                onClick={() => handleSort(col.key)}
-              >
-                {col.label}
-              </button>
-            );
-          })}
-        </span>
-        <span className="rank-events">{primaryHeaderLabel}</span>
+      <div className="rankings-table-wrap">
+        <table className="rank-table mono">
+          <thead>
+            <tr className="rank-head rank-stats-head">
+              <th scope="col" className="rank-num">#</th>
+              <th scope="col" className="rank-repo">REPO</th>
+              <th scope="col" className="rank-spark">ACTIVITY</th>
+              {headerColumns.map((col) => {
+                const pressed = prefs.sortField === col.key;
+                const directionWord = pressed ? (prefs.sortDirection === "desc" ? "descending" : "ascending") : "not sorted";
+                return (
+                  <th scope="col" key={col.key}>
+                    <button
+                      type="button"
+                      className="rank-sort-header"
+                      aria-pressed={pressed}
+                      aria-label={`Sort by ${col.label}, currently ${directionWord}`}
+                      onClick={() => handleSort(col.key)}
+                    >
+                      {col.label}
+                    </button>
+                  </th>
+                );
+              })}
+              <th scope="col" className="rank-events">{primaryHeaderLabel}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rowsError ? (
+              <tr>
+                <td colSpan={headerColumns.length + 4} className="repo-empty mono" role="alert">
+                  ! {rowsError}
+                </td>
+              </tr>
+            ) : rows.length === 0 && !query ? (
+              <tr>
+                <td colSpan={headerColumns.length + 4} className="rankings-loading mono" role="status">
+                  No ranking data available for the <b>{activeWindowTab}</b> window
+                  {source === "active" ? " and this mode" : ""}. Data appears after the first ingestion run populates
+                  per-day aggregates.{" "}
+                  <button type="button" className="rankings-refresh-button" onClick={handleRefresh}>
+                    Refresh
+                  </button>
+                </td>
+              </tr>
+            ) : filteredRows.length === 0 ? (
+              <tr>
+                <td colSpan={headerColumns.length + 4} className="repo-empty mono" role="status">
+                  No repos match &ldquo;{query}&rdquo; in the <b>{activeWindowTab}</b> window.
+                </td>
+              </tr>
+            ) : (
+              filteredRows.map((view, i) => (
+                <RankRow
+                  key={view.key}
+                  view={view}
+                  rank={page * PAGE_SIZE + i + 1}
+                  columns={headerColumns}
+                  state={loadingRepo === view.repoName ? "loading" : selectedRepo === view.repoName ? "selected" : "idle"}
+                  onOpen={openRepo}
+                />
+              ))
+            )}
+          </tbody>
+        </table>
       </div>
-
-      {rowsError ? (
-        <div className="repo-empty mono" role="alert">
-          ! {rowsError}
-        </div>
-      ) : rows.length === 0 && !query ? (
-        <div className="rankings-loading mono" role="status">
-          No ranking data available for the <b>{activeWindowTab}</b> window
-          {source === "active" ? " and this mode" : ""}. Data appears after the first ingestion run populates per-day
-          aggregates.
-        </div>
-      ) : filteredRows.length === 0 ? (
-        <div className="repo-empty mono" role="status">
-          No repos match &ldquo;{query}&rdquo; in the <b>{activeWindowTab}</b> window.
-        </div>
-      ) : (
-        filteredRows.map((view, i) => (
-          <RankRow
-            key={view.key}
-            view={view}
-            rank={page * PAGE_SIZE + i + 1}
-            state={loadingRepo === view.repoName ? "loading" : selectedRepo === view.repoName ? "selected" : "idle"}
-            onOpen={openRepo}
-          />
-        ))
-      )}
 
       {source === "attention" ? (
         <div className="rankings-pagination mono" aria-label="Trending pagination">
