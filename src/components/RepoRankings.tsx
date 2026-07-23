@@ -5,6 +5,7 @@ import type { ActiveContributionRow, RepoWindow, RepoWindowRow } from "@/lib/que
 import type { RepoDrilldownPayload } from "@/lib/render-payload";
 import { RenderedAnswer } from "./RenderedAnswer";
 import { Sparkline } from "./charts";
+import { useChatContext } from "@/lib/chat-context";
 import {
   ACTIVE_COLUMNS,
   ATTENTION_COLUMNS,
@@ -68,6 +69,7 @@ function RankRow({
       : "";
   const chipSummary = view.chips.map((c) => `${NUMBER.format(c.value)} ${c.label}`).join(", ");
   const chipValue = (key: string) => view.chips.find((c) => c.key === key)?.value ?? 0;
+  const chat = useChatContext();
   return (
     <tr className="rank-row mono" data-state={state}>
       <td className="rank-num">{rank}</td>
@@ -90,6 +92,19 @@ function RankRow({
         </td>
       ))}
       <td className="rank-events">{NUMBER.format(view.primaryValue)}</td>
+      <td className="rank-ask-cell">
+        <button
+          type="button"
+          className="rank-ask"
+          onClick={(e) => { e.stopPropagation(); chat.ask(`tell me about ${view.repoName}`); }}
+          aria-label={`Ask about ${view.repoName}`}
+          title="Ask the terminal about this repo"
+        >
+          <svg width="14" height="14" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+            <path d="M2 2h16v12H6l-4 4V2z" stroke="currentColor" strokeWidth="1.5" fill="none" />
+          </svg>
+        </button>
+      </td>
     </tr>
   );
 }
@@ -586,18 +601,19 @@ export function RepoRankings({ windows }: { windows: Record<RepoWindow, RepoWind
                 );
               })}
               <th scope="col" className="rank-events">{primaryHeaderLabel}</th>
+              <th scope="col" className="rank-ask-head" aria-label="Ask the terminal">ASK</th>
             </tr>
           </thead>
           <tbody>
             {rowsError ? (
               <tr>
-                <td colSpan={headerColumns.length + 4} className="repo-empty mono" role="alert">
+                <td colSpan={headerColumns.length + 5} className="repo-empty mono" role="alert">
                   ! {rowsError}
                 </td>
               </tr>
             ) : rows.length === 0 && !query ? (
               <tr>
-                <td colSpan={headerColumns.length + 4} className="rankings-loading mono" role="status">
+                <td colSpan={headerColumns.length + 5} className="rankings-loading mono" role="status">
                   No ranking data available for the <b>{activeWindowTab}</b> window
                   {source === "active" ? " and this mode" : ""}. Data appears after the first ingestion run populates
                   per-day aggregates.{" "}
@@ -608,7 +624,7 @@ export function RepoRankings({ windows }: { windows: Record<RepoWindow, RepoWind
               </tr>
             ) : filteredRows.length === 0 ? (
               <tr>
-                <td colSpan={headerColumns.length + 4} className="repo-empty mono" role="status">
+                <td colSpan={headerColumns.length + 5} className="repo-empty mono" role="status">
                   No repos match &ldquo;{query}&rdquo; in the <b>{activeWindowTab}</b> window.
                 </td>
               </tr>

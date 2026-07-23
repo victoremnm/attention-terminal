@@ -5,6 +5,7 @@ import type { CandlesPayload, DigestPayload, DivergencePayload, MatrixPayload, M
 import { VERDICT_COLOR } from "@/lib/verdict-color";
 import { AreaChart, DualLine, HorizontalBarChart, Sparkline, VerticalBarChart } from "./charts";
 import { SkinnyDeck } from "./SkinnyDeck";
+import { copyToClipboard, exportAssetAsHTML } from "@/lib/asset-export";
 
 function VerdictBadge({ verdict }: { verdict: VerdictTile }) {
   return (
@@ -717,13 +718,46 @@ function MorphingCardAnswer({ payload }: { payload: MorphingCardPayload }) {
   );
 }
 
+function CopyBtn({ payload }: { payload: RenderPayload }) {
+  const [copied, setCopied] = useState(false);
+
+  async function handleCopy() {
+    try {
+      const html = exportAssetAsHTML(payload);
+      await copyToClipboard(html);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      setCopied(false);
+    }
+  }
+
+  return (
+    <button type="button" className={`asset-copy-btn${copied ? " copied" : ""}`} onClick={handleCopy} aria-label="Copy as HTML">
+      {copied ? "Copied!" : "Copy as HTML"}
+    </button>
+  );
+}
+
+function CopyableAnswer({ payload, children }: { payload: RenderPayload; children: React.ReactNode }) {
+  return (
+    <div className="agent-answer-wrapper">
+      <CopyBtn payload={payload} />
+      {children}
+    </div>
+  );
+}
+
 export function RenderedAnswer({ payload }: { payload: RenderPayload }) {
-  if (payload.type === "digest") return <DigestAnswer payload={payload} />;
-  if (payload.type === "ticker") return <TickerAnswer payload={payload} />;
-  if (payload.type === "divergence") return <DivergenceAnswer payload={payload} />;
-  if (payload.type === "candles") return <CandlesAnswer payload={payload} />;
-  if (payload.type === "skinny-deck") return <SkinnyDeck payload={payload} />;
-  if (payload.type === "repo-drilldown") return <RepoDrilldownAnswer payload={payload} />;
-  if (payload.type === "morphing-card") return <MorphingCardAnswer payload={payload} />;
-  return <MatrixAnswer payload={payload} />;
+  let answer: React.ReactNode;
+  if (payload.type === "digest") answer = <DigestAnswer payload={payload} />;
+  else if (payload.type === "ticker") answer = <TickerAnswer payload={payload} />;
+  else if (payload.type === "divergence") answer = <DivergenceAnswer payload={payload} />;
+  else if (payload.type === "candles") answer = <CandlesAnswer payload={payload} />;
+  else if (payload.type === "skinny-deck") answer = <SkinnyDeck payload={payload} />;
+  else if (payload.type === "repo-drilldown") answer = <RepoDrilldownAnswer payload={payload} />;
+  else if (payload.type === "morphing-card") answer = <MorphingCardAnswer payload={payload} />;
+  else answer = <MatrixAnswer payload={payload} />;
+
+  return <CopyableAnswer payload={payload}>{answer}</CopyableAnswer>;
 }
