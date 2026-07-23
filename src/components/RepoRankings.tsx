@@ -27,7 +27,8 @@ function RankRow({
   onOpen: (repo: string) => void;
 }) {
   const subline = [row.language, row.description].filter(Boolean).join(" · ");
-  const sparkLabel = `${row.events} events over the selected window`;
+  const spark = row.spark;
+  const trend = spark.length >= 2 ? (spark[spark.length - 1] > spark[0] ? "trending up" : spark[spark.length - 1] < spark[0] ? "trending down" : "stable") : "";
   return (
     <button
       type="button"
@@ -35,7 +36,7 @@ function RankRow({
       data-state={state}
       onClick={() => onOpen(row.repo_name)}
       aria-pressed={state === "selected"}
-      aria-label={`${row.repo_name}. ${sparkLabel}. ${row.pushes} pushes, ${row.commits} commits, ${row.actors} actors, ${row.stars} stars, ${row.forks} forks.`}
+      aria-label={`${row.repo_name}. ${row.events} events, ${trend}. ${row.pushes} pushes, ${row.commits} commits, ${row.actors} actors, ${row.stars} stars, ${row.forks} forks.`}
     >
       <span className="rank-num">{rank}</span>
       <span className="rank-repo">
@@ -43,7 +44,7 @@ function RankRow({
         {subline ? <em>{subline}</em> : null}
       </span>
       <span className="rank-spark">
-        <Sparkline data={row.spark} color="var(--cyan)" w={148} h={24} label={`${row.repo_name} activity trend, ${row.spark.length} days, ${row.events} total events`} />
+        <Sparkline data={spark} color="var(--cyan)" w={148} h={24} />
       </span>
       <span className="rank-stats">
         <span><b>{NUMBER.format(row.pushes)}</b> pushes</span>

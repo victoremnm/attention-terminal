@@ -30,26 +30,31 @@ describe("Sparkline", () => {
     expect(screen.getByRole("img", { name: /Repo-X activity trend/ })).toBeInTheDocument();
   });
 
-  it("generates default aria-label when no label is provided", () => {
+  it("is aria-hidden when no label is provided", () => {
     const { container } = render(<Sparkline data={[3, 1, 2, 0, 4]} />);
+    expect(container.querySelector("svg")).toHaveAttribute("aria-hidden", "true");
+  });
+
+  it("sets role=img with aria-label when label is provided", () => {
+    const { container } = render(<Sparkline data={[1, 2, 3]} label="Upward trend" />);
     const svg = container.querySelector("svg");
-    expect(svg).toHaveAttribute("aria-label");
-    expect(svg?.getAttribute("aria-label")).toContain("trending");
+    expect(svg).toHaveAttribute("role", "img");
+    expect(svg).toHaveAttribute("aria-label", "Upward trend");
   });
 
-  it("detects upward trend direction", () => {
-    const { container } = render(<Sparkline data={[1, 2, 3]} />);
-    expect(container.querySelector("svg")?.getAttribute("aria-label")).toContain("up");
+  it("detects upward trend direction in label", () => {
+    render(<Sparkline data={[1, 2, 3]} label="upward" />);
+    expect(screen.getByRole("img", { name: /upward/ })).toBeInTheDocument();
   });
 
-  it("detects downward trend direction", () => {
-    const { container } = render(<Sparkline data={[5, 3, 1]} />);
-    expect(container.querySelector("svg")?.getAttribute("aria-label")).toContain("down");
+  it("detects downward trend direction in label", () => {
+    render(<Sparkline data={[5, 3, 1]} label="downward" />);
+    expect(screen.getByRole("img", { name: /downward/ })).toBeInTheDocument();
   });
 
-  it("detects stable trend direction", () => {
-    const { container } = render(<Sparkline data={[4, 4, 4]} />);
-    expect(container.querySelector("svg")?.getAttribute("aria-label")).toContain("stable");
+  it("detects stable trend direction in label", () => {
+    render(<Sparkline data={[4, 4, 4]} label="stable" />);
+    expect(screen.getByRole("img", { name: /stable/ })).toBeInTheDocument();
   });
 
   it("applies custom dimensions", () => {

@@ -15,11 +15,11 @@ export function Sparkline({ data, color = "var(--cyan)", w = 64, h = 18, label }
   const pts = data
     .map((v, i) => `${x(i)},${y(v)}`)
     .join(" ");
-  const last = data[data.length - 1];
-  const first = data[0];
-  const direction = last > first ? "up" : last < first ? "down" : "stable";
+  const attrs = label
+    ? { role: "img" as const, "aria-label": label }
+    : { "aria-hidden": true as const };
   return (
-    <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} role="img" aria-label={label ?? `${data.length} data points, trending ${direction}`}>
+    <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} {...attrs}>
       <polyline points={pts} fill="none" stroke={color} strokeWidth="1.5" strokeLinejoin="round" />
       {data.map((v, i) => (
         <circle
