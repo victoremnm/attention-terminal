@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import type { CandlesPayload, DigestPayload, DivergencePayload, MatrixPayload, MorphingCardPayload, RenderPayload, RepoDrilldownPayload, RepoDrilldownActivity, RepoDrilldownPulse, RepoDrilldownTrend, TickerPayload, VerdictTile } from "@/lib/render-payload";
 import { VERDICT_COLOR } from "@/lib/verdict-color";
 import { AreaChart, DualLine, HorizontalBarChart, Sparkline, VerticalBarChart } from "./charts";
@@ -202,68 +203,156 @@ function RepoVelocityChart({ payload }: { payload: RepoDrilldownPayload }) {
 }
 
 function RepoTrendChart({ trends }: { trends: RepoDrilldownTrend[] }) {
-  const W = 640, H = 180, padL = 34, padR = 10, padT = 12, padB = 24;
-  const iw = W - padL - padR, ih = H - padT - padB;
-  if (trends.length < 2) {
+  const [showStars, setShowStars] = useState(true);
+  const [showForks, setShowForks] = useState(true);
+  const [showReleases, setShowReleases] = useState(true);
+  const [showPrs, setShowPrs] = useState(true);
+  const [showIssues, setShowIssues] = useState(true);
+
+  if (!trends || trends.length < 2) {
     return <div className="repo-empty mono">not enough trend data for a 30-day chart</div>;
   }
+
+  const allHidden = !showStars && !showForks && !showReleases && !showPrs && !showIssues;
+  const resetAll = () => {
+    setShowStars(true);
+    setShowForks(true);
+    setShowReleases(true);
+    setShowPrs(true);
+    setShowIssues(true);
+  };
+
   const stars = trends.map((t) => t.stars);
   const forks = trends.map((t) => t.forks);
-  const max = Math.max(...stars, ...forks, 1);
+
+  const activeSeriesMaxVals: number[] = [];
+  if (showStars) activeSeriesMaxVals.push(...stars);
+  if (showForks) activeSeriesMaxVals.push(...forks);
+  const max = Math.max(...activeSeriesMaxVals, 1);
+
+  const W = 640, H = 180, padL = 34, padR = 10, padT = 12, padB = 24;
+  const iw = W - padL - padR, ih = H - padT - padB;
   const x = (i: number) => padL + (i / (trends.length - 1)) * iw;
   const y = (v: number) => padT + ih - (v / max) * ih;
   const line = (values: number[]) => values.map((v, i) => `${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(" ");
   const labelStep = Math.max(1, Math.floor((trends.length - 1) / 4));
-  const eventMarker = (type: RepoDrilldownTrend["events"][number]["type"]) =>
-    type === "release" ? "▲" : type === "pr_merged" ? "●" : "◆";
-  const eventColor = (type: RepoDrilldownTrend["events"][number]["type"]) =>
-    type === "release" ? "var(--amber)" : type === "pr_merged" ? "var(--cyan)" : "var(--mag)";
+
+  const isEventVisible = (type: RepoDrilldownTrend["events"][number]["type"]) => {
+    if (type === "release") return showReleases;
+    if (type === "pr_merged") return showPrs;
+    if (type === "issue_opened") return showIssues;
+    return true;
+  };
+
+  const activeSummary = [
+    showStars && "stars",
+    showForks && "forks",
+    showReleases && "releases",
+    showPrs && "PR merges",
+    showIssues && "issues",
+  ].filter(Boolean).join(", ") || "none";
 
   return (
     <figure className="chart repo-trend">
-      <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`${trends.length}-day trend timeline with release, PR-merge, and issue-open event markers`}>
-        {[0, 0.5, 1].map((t) => (
-          <g key={t}>
-            <line x1={padL} x2={W - padR} y1={y(max * t)} y2={y(max * t)} stroke="var(--line)" strokeWidth="1" />
-            <text x={padL - 6} y={y(max * t) + 3} fontSize="9.5" fill="var(--muted)" textAnchor="end" className="mono">
-              {Math.round(max * t)}
+      <div className="trend-controls mono" role="group" aria-label="Trend chart series toggles">
+        <button
+          type="button"
+          className={`trend-toggle ${showStars ? "active" : ""}`}
+          aria-pressed={showStars}
+          onClick={() => setShowStars(!showStars)}
+        >
+          <i className="swatch" style={{ background: "var(--amber)" }} /> stars
+        </button>
+        <button
+          type="button"
+          className={`trend-toggle ${showForks ? "active" : ""}`}
+          aria-pressed={showForks}
+          onClick={() => setShowForks(!showForks)}
+        >
+          <i className="swatch" style={{ background: "var(--cyan)" }} /> forks
+        </button>
+        <button
+          type="button"
+          className={`trend-toggle ${showReleases ? "active" : ""}`}
+          aria-pressed={showReleases}
+          onClick={() => setShowReleases(!showReleases)}
+        >
+          ▲ releases
+        </button>
+        <button
+          type="button"
+          className={`trend-toggle ${showPrs ? "active" : ""}`}
+          aria-pressed={showPrs}
+          onClick={() => setShowPrs(!showPrs)}
+        >
+          ● PR merges
+        </button>
+        <button
+          type="button"
+          className={`trend-toggle ${showIssues ? "active" : ""}`}
+          aria-pressed={showIssues}
+          onClick={() => setShowIssues(!showIssues)}
+        >
+          ◆ issues
+        </button>
+        <button type="button" className="trend-reset" onClick={resetAll}>
+          Reset
+        </button>
+      </div>
+
+      {allHidden ? (
+        <div className="repo-empty mono" style={{ padding: "2rem", textAlign: "center" }}>
+          Every series is hidden. Toggle a series above to view data.
+        </div>
+      ) : (
+        <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`${trends.length}-day trend timeline (showing: ${activeSummary})`}>
+          {[0, 0.5, 1].map((t) => (
+            <g key={t}>
+              <line x1={padL} x2={W - padR} y1={y(max * t)} y2={y(max * t)} stroke="var(--line)" strokeWidth="1" />
+              <text x={padL - 6} y={y(max * t) + 3} fontSize="9.5" fill="var(--muted)" textAnchor="end" className="mono">
+                {Math.round(max * t)}
+              </text>
+            </g>
+          ))}
+          {trends.map((row, i) => i % labelStep === 0 || i === trends.length - 1 ? (
+            <text
+              key={row.date}
+              x={Math.min(Math.max(x(i), padL + 14), W - padR - 14)}
+              y={H - 6}
+              fontSize="9.5"
+              fill="var(--muted)"
+              textAnchor="middle"
+              className="mono"
+            >
+              {row.date.slice(5)}
             </text>
-          </g>
-        ))}
-        {trends.map((row, i) => i % labelStep === 0 || i === trends.length - 1 ? (
-          <text
-            key={row.date}
-            x={Math.min(Math.max(x(i), padL + 14), W - padR - 14)}
-            y={H - 6}
-            fontSize="9.5"
-            fill="var(--muted)"
-            textAnchor="middle"
-            className="mono"
-          >
-            {row.date.slice(5)}
-          </text>
-        ) : null)}
-        <polyline points={line(stars)} fill="none" stroke="var(--amber)" strokeWidth="2" strokeLinejoin="round" />
-        <polyline points={line(forks)} fill="none" stroke="var(--cyan)" strokeWidth="2" strokeLinejoin="round" />
-        {trends.map((row, i) => row.events.map((ev, j) => (
-          <text
-            key={`${row.date}-${ev.type}-${j}`}
-            x={x(i)}
-            y={padT + 10 + j * 11}
-            fontSize="11"
-            fill={eventColor(ev.type)}
-            textAnchor="middle"
-            className="mono"
-          >
-            {eventMarker(ev.type)}
-          </text>
-        )))}
-      </svg>
-      <figcaption className="legend">
-        <span><i className="swatch" style={{ background: "var(--amber)" }} /> stars</span>
-        <span><i className="swatch" style={{ background: "var(--cyan)" }} /> forks</span>
-        <span className="legend-events">▲ release · ● PR merged · ◆ issue opened</span>
-      </figcaption>
+          ) : null)}
+          {showStars && (
+            <polyline points={line(stars)} fill="none" stroke="var(--amber)" strokeWidth="2" strokeLinejoin="round" />
+          )}
+          {showForks && (
+            <polyline points={line(forks)} fill="none" stroke="var(--cyan)" strokeWidth="2" strokeLinejoin="round" />
+          )}
+          {trends.map((row, i) =>
+            row.events
+              .filter((ev) => isEventVisible(ev.type))
+              .map((ev, j) => (
+                <text
+                  key={`${row.date}-${ev.type}-${j}`}
+                  x={x(i)}
+                  y={padT + 10 + j * 11}
+                  fontSize="11"
+                  fill={ev.type === "release" ? "var(--amber)" : ev.type === "pr_merged" ? "var(--cyan)" : "var(--mag)"}
+                  textAnchor="middle"
+                  className="mono"
+                >
+                  <title>{`${row.date} [${ev.type}]: ${ev.label}`}</title>
+                  {ev.type === "release" ? "▲" : ev.type === "pr_merged" ? "●" : "◆"}
+                </text>
+              ))
+          )}
+        </svg>
+      )}
     </figure>
   );
 }
