@@ -58,7 +58,7 @@ ORDER BY runs DESC
 ## Issue claiming and Model Tagging (mandatory)
 
 1. **Issue Claiming**: When an agent begins work on an issue (or calls dibs), it must immediately assign the maintainer (`victoremnm`) to the issue via `gh issue edit <issue_number> --add-assignee victoremnm` to indicate that it is claimed and avoid redundant work across agents.
-2. **Model Tagging**: Every PR body, review comment, and commit trailer authored by an agent must explicitly state the high-level LLM model family/provider being used (e.g. `Model: Gemini`, `Model: DeepSeek`, `Model: Codex`, `Model: Claude`, `Model: Qwen`). High-level family names are preferred over granular version numbers for clear visibility across agents.
+2. **Model Tagging & GitHub Labels**: Every PR authored by an agent must apply a GitHub label matching the high-level LLM model family (e.g. `Gemini`, `DeepSeek`, `Codex`, `Claude`, `Qwen`) via `gh pr edit <pr_num> --add-label "<ModelFamily>"`. Additionally, the PR body, review comments, and commit trailers must state `Model: <ModelFamily>`. High-level family names are preferred over granular version numbers for clear visibility across agents.
 
 ## PR template (mandatory)
 
