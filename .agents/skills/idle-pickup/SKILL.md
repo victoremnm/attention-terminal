@@ -43,7 +43,7 @@ One subagent per item, at Haiku, each with a **self-contained** brief — the su
 Brief the subagent to:
 1. **Claim the issue**: Immediately assign the maintainer (`victoremnm`) via `gh issue edit <n> --add-assignee victoremnm` to signal that it is claimed.
 2. **Implement fix**: Read the issue, explore the repo, make minimal changes, branch as `fix/issue-<n>`, commit with model trailer (`Co-authored-by: <model-id> <agent@attention-terminal>`), and open a **draft** PR linking the issue (`Closes #<n>`).
-3. **Tag Model & Label**: Apply the model family GitHub label via `gh pr edit <n> --add-label "<ModelFamily>"` and explicitly state the LLM model family (e.g. `Model: Gemini`, `Model: DeepSeek`, `Model: Codex`, `Model: Claude`, `Model: Qwen`) in the PR title and body.
+3. **Tag Model & Label**: Apply the high-level model family GitHub label via `gh pr edit <n> --add-label "<ModelFamily>"` (e.g. `Gemini`, `Codex`, `DeepSeek`, `Claude`, `Qwen`, `GLM`) and specify detailed model info in the PR title/body (e.g. `Model: Gemini 3.6 Flash`).
 4. **Report back**: Report branch name, PR number, model name, one-line summary, and confidence level.
 
 ### Open PR → review suggestions
