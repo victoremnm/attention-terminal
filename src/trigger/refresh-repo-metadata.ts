@@ -82,7 +82,7 @@ async function pickRepos(): Promise<string[]> {
     // instead of push-spam/data-dump repos.
     selectRows<{ repo_name: string }>(
       `SELECT repo_name,
-              uniqExactIf(actor_login, NOT lower(actor_login) LIKE '%[bot]%') AS human_actors,
+              uniqExactIf(actor_login, lower(actor_login) NOT LIKE '%[bot]%') AS human_actors,
               countIf(event_type = 'PushEvent') AS push_count
        FROM github_events
        WHERE created_at > (SELECT max(created_at) FROM github_events) - INTERVAL ${ACTIVITY_WINDOW_DAYS} DAY

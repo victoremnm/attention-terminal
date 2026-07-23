@@ -1739,7 +1739,7 @@ export async function activeContributionRanking(
         sum(bucket.pushes) AS push_total,
         sum(toUInt64(bucket.pushes > 0 AND bucket.commits > 0)) AS substantive_push_bucket_total,
         uniqExactIf(bucket.actor_login, bucket.pushes > 0) AS pusher_total,
-        uniqExactIf(bucket.actor_login, bucket.pushes > 0 AND NOT lower(bucket.actor_login) LIKE '%[bot]%') AS human_pusher_total,
+        uniqExactIf(bucket.actor_login, bucket.pushes > 0 AND lower(bucket.actor_login) NOT LIKE '%[bot]%') AS human_pusher_total,
         uniqExactIf(bucket.actor_login, bucket.pushes > 0 AND lower(bucket.actor_login) LIKE '%[bot]%') AS bot_pusher_total,
         sum(bucket.prs_opened) AS pr_opened_total,
         sum(bucket.prs_merged) AS pr_merged_total
