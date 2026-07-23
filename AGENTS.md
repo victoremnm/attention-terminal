@@ -170,6 +170,32 @@ The PR body or a review comment must record the blocker, resolution, evidence,
 agent identity, model, and commit SHA. A `blocked` label without an explanatory
 comment is incomplete harness state and must be corrected.
 
+### API verification and PR evidence (mandatory)
+
+When a PR changes or adds an API route, the agent must exercise the route
+itself whenever the preview and required credentials are available. Do not
+make the human perform the primary API test when the harness can perform it.
+The PR body must record:
+
+- the exact preview URL, HTTP method, query parameters, and relevant request
+  body;
+- the observed HTTP status and a representative response payload or schema;
+- query provenance and runtime data when applicable (`queryId`, source tables,
+  elapsed time, rows read, pagination/window parameters); and
+- the tested commit/deployment and the command or tool used.
+
+Never include cookies, authorization headers, API keys, database credentials,
+or other secrets in the command, PR body, logs, or evidence artifact. Redact
+them while preserving enough request shape to reproduce the test.
+
+If preview SSO, credentials, or an external service prevents the agent from
+running the request, the agent must say so explicitly, provide a safe
+reproduction command or exact request shape, and mark that interaction as
+human verification required. It must not claim the API is verified based only
+on a build, a mocked unit test, or a deployment-created event. After the final
+code commit is deployed, repeat the request against that current deployment
+and update the PR evidence before requesting independent `lgtm`.
+
 ### Commit message convention (mandatory)
 
 Every commit authored by an agent must include a `Co-authored-by:` trailer
