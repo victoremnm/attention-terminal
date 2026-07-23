@@ -58,7 +58,9 @@ export function useIngestPulse(accessToken?: string) {
   const { runs, error } = useRealtimeRunsWithTag<IngestTask>("ingest", realtimeOptions);
 
   useEffect(() => {
-    if (error) setRealtimeEnabled(false);
+    // Keep realtime subscribed so consumers without a polling fallback can recover
+    // after transient network errors without going stale.
+    if (error) setRealtimeEnabled(true);
   }, [error]);
 
   let lastIngestAt: Date | null = null;
