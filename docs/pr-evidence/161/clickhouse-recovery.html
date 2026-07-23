@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ClickHouse connection recovery evidence</title>
+    <style>
+      :root { color-scheme: dark; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+      body { max-width: 900px; margin: 0 auto; padding: 32px; background: #0b1020; color: #e5eefc; }
+      h1 { color: #6ee7f9; font-size: 22px; }
+      h2 { color: #b6c8e6; font-size: 15px; margin-top: 28px; }
+      table { width: 100%; border-collapse: collapse; margin: 12px 0; }
+      th, td { border: 1px solid #263452; padding: 10px; text-align: left; vertical-align: top; }
+      th { color: #9ed9ff; background: #111a31; }
+      code { color: #a7f3d0; }
+      .pass { color: #6ee7b7; }
+      .warn { color: #fbbf24; }
+      .note { padding: 12px; border-left: 3px solid #6ee7f9; background: #111a31; }
+    </style>
+  </head>
+  <body>
+    <h1>ClickHouse TLS connection recovery</h1>
+    <p class="note">Evidence for PR #161. No credentials are included. The endpoint was reachable over TCP but closed the TLS handshake before HTTP authentication.</p>
+
+    <h2>Observed failure</h2>
+    <table>
+      <tr><th>Run</th><td><code>run_cmrwzsrat002s0ioet5h4wnfj</code></td></tr>
+      <tr><th>Task</th><td><code>refresh-actor-pr-stats</code></td></tr>
+      <tr><th>Failure</th><td><code>ECONNRESET — Client network socket disconnected before secure TLS connection was established</code></td></tr>
+      <tr><th>Attempts</th><td>3 task attempts, each failing during connection setup before SQL execution</td></tr>
+    </table>
+
+    <h2>Before / after</h2>
+    <table>
+      <tr><th>Before</th><td>A process-level lazy client remained unusable after a transient socket/TLS failure; the task immediately failed and relied only on Trigger task retries.</td></tr>
+      <tr><th>After</th><td><code>selectRows()</code> and the idempotent actor-stats insert reset the client, wait 250ms then 1s, and retry up to three total attempts. SQL errors are not retried.</td></tr>
+    </table>
+
+    <h2>Verification</h2>
+    <table>
+      <tr><th class="pass">PASS</th><td><code>npx tsc --noEmit</code></td><td>0 errors</td></tr>
+      <tr><th class="pass">PASS</th><td><code>npx vitest run src/lib/clickhouse.test.ts</code></td><td>3 tests passed</td></tr>
+      <tr><th class="pass">PASS</th><td><code>npm test</code></td><td>23 passed, 11 skipped</td></tr>
+      <tr><th class="pass">PASS</th><td><code>npm run build</code></td><td>Next.js production build completed</td></tr>
+      <tr><th class="warn">REPRODUCED</th><td><code>curl</code> and <code>openssl s_client</code> to the configured ClickHouse Cloud host</td><td>TCP connected; TLS ended with <code>SSL_ERROR_SYSCALL</code> / <code>unexpected eof while reading</code></td></tr>
+    </table>
+
+    <h2>Interpretation</h2>
+    <p>The reproduction occurs before credentials are sent or ClickHouse can return an HTTP status. A bad password would normally produce a post-handshake authentication response, so the endpoint/network path must also be checked in ClickHouse Cloud and Trigger.dev.</p>
+  </body>
+</html>
