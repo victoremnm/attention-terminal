@@ -7,9 +7,9 @@
 ## 1. Hackathon Brief & Product Intentions
 
 ### 1.1 Theme: Beyond the Wall of Text
-Traditional AI chat agents deliver a **wall of text**—paragraphs, bullet points, or raw log dumps. Attention Terminal rejects text dumps in favor of rendered visual components:
-- **ClickHouse + Trigger.dev Dual Engine**: ClickHouse handles real-time OLAP queries while Trigger.dev v3 orchestrates background jobs and continuous transformations (25% hackathon score focus).
-- **Persistent Floating Chatbox (Gemini Drawer)**: Persistent [`FloatingChat.tsx`](file:///Users/victorem/Code/Repositories/victoremnm/clickhouse-trigger-hackathon/src/components/FloatingChat.tsx) drawer UI allows users to introspect datasets, ask natural language questions, and discover insights without losing dashboard context.
+Traditional AI chat agents deliver a **wall of text**—paragraphs, bullet points, or raw log dumps. Attention Terminal replaces them with rendered visual components:
+- **ClickHouse + Trigger.dev Dual Engine**: ClickHouse handles real-time OLAP queries while Trigger.dev orchestrates background jobs and continuous transformations (the 25% dual-tool judging criterion).
+- **Floating Chatbox (Gemini Drawer)**: A persistent [`FloatingChat.tsx`](../src/components/FloatingChat.tsx) drawer lets users introspect datasets, ask natural-language questions, and discover insights without losing dashboard context.
 - **Morphing Figures**: Custom SVG primitives (`PieChart`, `StackedBarChart`, `WaterfallChart`, `TreemapChart`, `DevScatterChart`, `HorizontalBarChart`) rendered dynamically via `RenderedAnswer.tsx`.
 
 ---
@@ -22,6 +22,7 @@ Traditional AI chat agents deliver a **wall of text**—paragraphs, bullet point
 | **[ADR 0002](adr/0002-clickhouse-skipping-index-predicates.md)** | **ClickHouse Case-Insensitive Skipping Index Predicates** | Refactored `actor_login ILIKE '%[bot]%'` to `lower(actor_login) LIKE '%[bot]%'` to leverage ClickHouse `idx_github_events_actor_login` token bloom filter index. | **Accepted** |
 | **[ADR 0003](adr/0003-subagent-telemetry-and-session-learnings.md)** | **Subagent Telemetry, Session Learnings & Fail-Open Spooling** | Standardized ClickHouse telemetry tracking (`subagent_runs`, `session_learnings`) with local NDJSON spooling fallbacks. | **Accepted** |
 | **[ADR 0004](adr/0004-pseudo-medallion-clickhouse-data-modeling.md)** | **Pseudo-Medallion Architecture & Dataset Triangulation Trade-offs** | Implemented Bronze/Silver/Gold `_hourly`/`_daily`/`_weekly` `AggregatingMergeTree` rollups and Goose DDL migrations instead of Kimball star schemas. | **Accepted** |
+| **[ADR 0005](adr/0005-double-click-repo-drilldown-card.md)** | **"Double-Click" Repo Drill-Down Card & Single-Pass Velocity Queries** | Standardized 4-tier drill-down card layout, single-pass hourly velocity SQL query strategy, and Push Preview Feed payload column mapping. | **Accepted** |
 
 ---
 

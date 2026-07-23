@@ -76,6 +76,33 @@ flowchart TD
   - **`DevScatterChart`**: Multidimensional correlation (X=repos, Y=pushes, size=commits, color=PR merges).
   - **`HorizontalBarChart`**: Tabular nominal rankings with zero rotated text.
 
+### 2.3 The "Double-Click" Repo Drill-Down Card Specification
+When a user "double-clicks" on a repository in the terminal, Attention Terminal renders a structured 4-tier drill-down card powered by single-pass ClickHouse queries:
+
+1. **Header (The Context)**: Repo Name, Total Stars, and a badge displaying the primary language.
+2. **Top Row (Hero KPIs)**: 24-hour deltas (`+42 Pushes`, `+120 Commits`, `+15 Forks`).
+3. **Middle Section (The 24-Hour Velocity Chart)**: A synchronized multi-metric area chart displaying hourly push, commit, fork, and issue volume computed in a **single pass** over `github_events`:
+   ```sql
+   SELECT 
+       toStartOfHour(created_at) AS hour,
+       countIf(event_type = 'PushEvent') AS pushes,
+       sum(push_size) AS total_commits,
+       countIf(event_type = 'ForkEvent') AS forks,
+       countIf(event_type = 'IssuesEvent' AND action = 'opened') AS issues,
+       countIf(event_type = 'WatchEvent') AS stars
+   FROM github_events 
+   WHERE repo_name = 'owner/repo' AND created_at >= now() - INTERVAL 1 DAY
+   GROUP BY hour ORDER BY hour;
+   ```
+4. **Bottom Section (The Push Preview Feed)**: A scrollable list of granular `PushEvent` and `PullRequestEvent` payloads mapping ClickHouse columns to contributor insights:
+   - **`actor_login`**: Identifies who executed the push or merge.
+   - **`ref`**: Target branch (distinguishing `refs/heads/main` from feature branches).
+   - **`push_size` vs `push_distinct_size`**: Commit density (1 massive commit vs 50 micro-commits).
+   - **`additions`, `deletions`, `changed_files`**: Code churn on merged PRs (`PullRequestEvent` when `merged = 1`).
+   - **`author_association`**: Contributor standing (`OWNER`, `MEMBER`, `CONTRIBUTOR`).
+
+> **GHArchive Payload Constraint**: Raw `PushEvent` JSON drops commit message text arrays to save ClickHouse storage space, retaining numeric counts (`push_size`). When a user requests exact commit message text, the application performs an asynchronous live fetch against the GitHub REST API using `commit_id`.
+
 ---
 
 ## 3. Lineage of Key Issues & PR Implementations
