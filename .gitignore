@@ -9,7 +9,8 @@ dbt_packages/
 logs/
 dbt/.user.yml
 .DS_Store
-graphify-out/
+graphify-out/cache/
+graphify-out/cost.json
 reference-design/
 .vercel
 .next/
