@@ -40,11 +40,15 @@ One subagent per item, at Haiku, each with a **self-contained** brief — the su
 
 ### Issue → draft PR
 
-Brief the subagent to: read the issue, explore the repo for the relevant code, make the **minimal** change, branch as `fix/issue-<n>`, commit, and open a **draft** PR that links the issue (`Closes #<n>`). It must report: branch name, PR number, a one-line summary, and a confidence level. If it cannot make the change confidently, it opens **no** PR and reports why instead — a wrong draft costs more review time than none.
+Brief the subagent to:
+1. **Claim the issue**: Immediately assign the maintainer (`victoremnm`) via `gh issue edit <n> --add-assignee victoremnm` to signal that it is claimed.
+2. **Implement fix**: Read the issue, explore the repo, make minimal changes, branch as `fix/issue-<n>`, commit with model trailer (`Co-authored-by: <model-id> <agent@attention-terminal>`), and open a **draft** PR linking the issue (`Closes #<n>`).
+3. **Tag Model & Label**: Apply the high-level model family GitHub label via `gh pr edit <n> --add-label "<ModelFamily>"` (e.g. `Gemini`, `Codex`, `DeepSeek`, `Claude`, `Qwen`, `GLM`) and specify detailed model info in the PR title/body (e.g. `Model: Gemini 3.6 Flash`).
+4. **Report back**: Report branch name, PR number, model name, one-line summary, and confidence level.
 
 ### Open PR → review suggestions
 
-Brief the subagent to: read the diff, check correctness/security/tests against the repo's conventions, and post findings as PR **review comments phrased as suggestions** — not approvals, not resolutions. It reports the count and severity of findings.
+Brief the subagent to: read the diff, check correctness/security/tests against repo conventions, tag the LLM model family (`Model: Gemini`, `Model: DeepSeek`, `Model: Codex`, etc.), and post findings as PR **review comments phrased as suggestions** — not approvals, not resolutions. It reports the count and severity of findings.
 
 ## Collecting Results
 
