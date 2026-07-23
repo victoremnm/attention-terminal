@@ -106,7 +106,7 @@ export const ingestHuggingFaceModels = schedules.task({
     }
 
     if (rows.length > 0) {
-      await clickhouseInsert.insert({ table: "hf_model_snapshots", values: rows, format: "JSONEachRow" });
+      await clickhouseInsert.insert({ table: "raw.hf_model_snapshots", values: rows, format: "JSONEachRow" });
       await logIngest({ source: "huggingface", chunk_key: chunkKey, rows_ingested: rows.length });
     }
 

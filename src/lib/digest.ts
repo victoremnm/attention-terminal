@@ -227,15 +227,15 @@ export async function debateTakes(subjectId: string) {
   if (!topic) return null;
   const { rows } = await q<TakeRow>(
     `SELECT id, title, score, greatest(descendants, 0) AS comments
-     FROM hackernews
+     FROM raw.hackernews
      WHERE type = 'story'
        AND deleted = 0
        AND dead = 0
-       AND time >= (SELECT max(time) FROM hackernews) - INTERVAL 7 DAY
+       AND time >= (SELECT max(time) FROM raw.hackernews) - INTERVAL 7 DAY
        AND (${tokenWhere(topic)})
      ORDER BY score DESC
      LIMIT 10`,
-    ["hackernews"]
+    ["raw.hackernews"]
   );
   const positive = /(launch|released|introducing|show hn|faster|stable|production|open source|new)/i;
   const negative = /(why|against|problem|incident|fails|broken|deprecated|security|postmortem|cost)/i;

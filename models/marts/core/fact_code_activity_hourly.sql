@@ -9,7 +9,7 @@ select
   event_type as event_family,
   countMerge(events) as event_count,
   uniqMerge(actors) as actor_count
-from {{ source('raw', 'gh_repo_hourly') }}
+from {{ source('default', 'gh_repo_hourly') }}
 group by
   activity_hour,
   activity_date,

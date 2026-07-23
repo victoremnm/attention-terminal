@@ -60,7 +60,7 @@ export const backfillActorDaily = task({
             sumSimpleState(toUInt64(commit_count)) AS commits,
             sumSimpleState(toUInt64(event_type = 'PullRequestEvent' AND action = 'opened')) AS prs_opened,
             sumSimpleState(toUInt64(event_type = 'PullRequestEvent' AND action = 'closed' AND pr_merged = 1)) AS prs_merged
-        FROM github_events
+        FROM raw.github_events
         WHERE actor_login != ''
           AND toDate(created_at) < today()
         GROUP BY day, actor_login

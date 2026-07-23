@@ -260,13 +260,13 @@ async function assembleTickerLanes(): Promise<TickerLanes> {
               groupArray(6)(cnt) AS spark
        FROM (
          SELECT repo_name, toStartOfHour(created_at) AS h, count() AS cnt
-         FROM github_events
+         FROM raw.github_events
          WHERE event_type = 'CreateEvent'
            AND ref_type = 'repository'
-           AND created_at > (SELECT max(created_at) FROM github_events) - INTERVAL 6 HOUR
+           AND created_at > (SELECT max(created_at) FROM raw.github_events) - INTERVAL 6 HOUR
          GROUP BY repo_name, h ORDER BY repo_name, h
        ) GROUP BY repo_name ORDER BY at DESC LIMIT 20`,
-      ["github_events"]
+      ["raw.github_events"]
     ),
     q<{ name: string; forks: string; stars: string; pushes: string; prs: string; issues: string; spark: number[] }>(
       `WITH
@@ -393,11 +393,11 @@ async function assembleTickerLanes(): Promise<TickerLanes> {
     q<{ id: number; name: string; score: number; velocity: number }>(
       `SELECT id, title AS name, score,
               round(score / greatest((now() - time) / 3600, 0.5), 1) AS velocity
-       FROM hackernews FINAL
+       FROM raw.hackernews FINAL
        WHERE type = 'story' AND time > now() - INTERVAL 6 HOUR
          AND score >= 10 AND deleted = 0 AND dead = 0
        ORDER BY velocity DESC LIMIT 20`,
-      ["hackernews"]
+      ["raw.hackernews"]
     ),
     actorLeaderboard("24h").catch(() => undefined),
   ]);
@@ -640,7 +640,7 @@ function repoQuerySql(...parts: Provenance[]) {
 // provenance - this is an internal guard, not user-facing query data.
 async function repoSeenInGithubEvents(repoName: string): Promise<boolean> {
   const rs = await clickhouse.query({
-    query: `SELECT 1 AS present FROM github_events WHERE repo_name = {repoName: String} LIMIT 1`,
+    query: `SELECT 1 AS present FROM raw.github_events WHERE repo_name = {repoName: String} LIMIT 1`,
     format: "JSONEachRow",
     query_params: { repoName },
   });
@@ -650,7 +650,7 @@ async function repoSeenInGithubEvents(repoName: string): Promise<boolean> {
 
 const REPO_DRILLDOWN_TABLES = [
   "gh_repo_metadata",
-  "github_events",
+  "raw.github_events",
   "gh_repo_drilldown_hourly",
   "gh_repo_actor_hourly",
   "gh_repo_activity_feed",
@@ -734,7 +734,7 @@ function requiredRepoDrilldownTables(
     "gh_repo_releases",
     "gh_repo_issues",
     "gh_repo_daily",
-    "github_events",
+    "raw.github_events",
     ...(useAggregates ? ["gh_repo_drilldown_hourly", "gh_repo_actor_hourly"] : []),
     ...(useAggregates && canQueryActorFeed ? ["gh_repo_actor_activity_feed"] : []),
     ...(canQueryAnalysis ? ["gh_repo_analysis"] : []),
@@ -744,11 +744,11 @@ function requiredRepoDrilldownTables(
 function repoHighWaterSql(useAggregates: boolean) {
   return useAggregates
     ? `SELECT toString(max(hour)) AS high_water FROM gh_repo_drilldown_hourly`
-    : `SELECT toString(max(created_at)) AS high_water FROM github_events`;
+    : `SELECT toString(max(created_at)) AS high_water FROM raw.github_events`;
 }
 
 function repoHighWaterTable(useAggregates: boolean) {
-  return useAggregates ? "gh_repo_drilldown_hourly" : "github_events";
+  return useAggregates ? "gh_repo_drilldown_hourly" : "raw.github_events";
 }
 
 function highWaterValue(result: { rows: RepoDrilldownHighWaterSqlRow[] }) {
@@ -893,14 +893,14 @@ export async function repoDrilldown(repoName: string): Promise<RepoDrilldownPayl
                distinct_commit_count,
                pr_merged,
                actor_login
-             FROM github_events
-             WHERE repo_name = {repoName: String}
-               AND created_at > {highWater: DateTime} - INTERVAL 24 HOUR
-               AND event_type IN ('PushEvent', 'ForkEvent', 'WatchEvent', 'IssuesEvent', 'PullRequestEvent')
+            FROM raw.github_events
+            WHERE repo_name = {repoName: String}
+              AND created_at > {highWater: DateTime} - INTERVAL 24 HOUR
+              AND event_type IN ('PushEvent', 'ForkEvent', 'WatchEvent', 'IssuesEvent', 'PullRequestEvent')
            )
            GROUP BY bucket_hour WITH ROLLUP
            ORDER BY is_total, hour`,
-      [useAggregates ? "gh_repo_drilldown_hourly" : "github_events"],
+       [useAggregates ? "gh_repo_drilldown_hourly" : "raw.github_events"],
       { ...queryParams, highWater: anchor },
       request
     )
@@ -981,7 +981,7 @@ export async function repoDrilldown(repoName: string): Promise<RepoDrilldownPayl
              countIf(event_type = 'PullRequestEvent' AND action = 'opened') AS pr_opened_total,
              countIf(event_type = 'PullRequestEvent' AND action = 'closed' AND pr_merged = 1) AS pr_merged_total,
              countIf(event_type = 'IssuesEvent' AND action = 'opened') AS issues_opened_total
-           FROM github_events
+           FROM raw.github_events
            WHERE repo_name = {repoName: String}
              AND created_at > {highWater: DateTime} - INTERVAL 24 HOUR
              AND event_type IN ('PushEvent', 'PullRequestEvent', 'IssuesEvent')
@@ -1024,7 +1024,7 @@ export async function repoDrilldown(repoName: string): Promise<RepoDrilldownPayl
          WHERE commit_total > 0 OR pr_opened_total > 0 OR pr_merged_total > 0 OR issues_opened_total > 0 OR releases_total > 0
          ORDER BY activity_score DESC, actor
          LIMIT 8`,
-        ["github_events", "gh_repo_releases"],
+        ["raw.github_events", "gh_repo_releases"],
         { ...queryParams, highWater: anchor },
         request
       ));
@@ -1083,13 +1083,13 @@ export async function repoDrilldown(repoName: string): Promise<RepoDrilldownPayl
                pr_merged AS merged,
                title,
                labels
-             FROM github_events
+             FROM raw.github_events
              WHERE repo_name = {repoName: String}
                AND created_at > {highWater: DateTime} - INTERVAL 24 HOUR
                AND event_type IN ('PushEvent', 'PullRequestEvent', 'IssuesEvent')
              ORDER BY created_at DESC
              LIMIT 12`,
-            ["github_events"],
+            ["raw.github_events"],
             { ...queryParams, highWater: anchor },
             request
           )
@@ -1583,18 +1583,18 @@ export async function divergence(subject: string) {
     `SELECT day, sumIf(c, src = 'hn') AS talk, sumIf(c, src = 'gh') AS code
      FROM (
        SELECT toDate(time) AS day, count() AS c, 'hn' AS src
-       FROM hackernews FINAL
-       WHERE type = 'story' AND hasToken(lower(title), '${subject}')
-         AND time > now() - INTERVAL 30 DAY AND deleted = 0 AND dead = 0
-       GROUP BY day
-       UNION ALL
-       SELECT toDate(created_at) AS day, count() AS c, 'gh' AS src
-       FROM github_events
-       WHERE repo_name ILIKE '%${subject}%' AND created_at > now() - INTERVAL 30 DAY
-       GROUP BY day
+      FROM raw.hackernews FINAL
+      WHERE type = 'story' AND hasToken(lower(title), '${subject}')
+        AND time > now() - INTERVAL 30 DAY AND deleted = 0 AND dead = 0
+      GROUP BY day
+      UNION ALL
+      SELECT toDate(created_at) AS day, count() AS c, 'gh' AS src
+      FROM raw.github_events
+      WHERE repo_name ILIKE '%${subject}%' AND created_at > now() - INTERVAL 30 DAY
+      GROUP BY day
      )
      GROUP BY day ORDER BY day`,
-    ["hackernews", "github_events"]
+    ["raw.hackernews", "raw.github_events"]
   );
   // zero-fill 30 days
   const byDay = new Map(rows.map((r) => [r.day, r]));
@@ -1612,12 +1612,12 @@ export async function divergence(subject: string) {
 
 export async function pulse(subject: string) {
   const { rows, provenance } = await q<{ day: string; stories: string; points: string }>(
-    `SELECT toDate(time) AS day, count() AS stories, sum(score) AS points
-     FROM hackernews FINAL
-     WHERE type = 'story' AND hasToken(lower(title), '${subject}')
-       AND time > now() - INTERVAL 30 DAY AND deleted = 0 AND dead = 0
-     GROUP BY day ORDER BY day`,
-    ["hackernews"]
+     `SELECT toDate(time) AS day, count() AS stories, sum(score) AS points
+      FROM raw.hackernews FINAL
+      WHERE type = 'story' AND hasToken(lower(title), '${subject}')
+        AND time > now() - INTERVAL 30 DAY AND deleted = 0 AND dead = 0
+      GROUP BY day ORDER BY day`,
+    ["raw.hackernews"]
   );
   const byDay = new Map(rows.map((r) => [r.day, r]));
   const days: string[] = [];
@@ -1634,10 +1634,10 @@ export async function pulse(subject: string) {
 
 export async function freshness() {
   const { rows } = await q<{ hn_lag_s: number; gh_chunk: string }>(
-    `SELECT
-       (SELECT toUInt32(now() - max(time)) FROM hackernews) AS hn_lag_s,
-       (SELECT max(chunk_key) FROM ingest_log WHERE source = 'gharchive') AS gh_chunk`,
-    ["hackernews", "ingest_log"]
+      `SELECT
+        (SELECT toUInt32(now() - max(time)) FROM raw.hackernews) AS hn_lag_s,
+        (SELECT max(chunk_key) FROM ingest_log WHERE source = 'gharchive') AS gh_chunk`,
+    ["raw.hackernews", "ingest_log"]
   );
   return rows[0] ?? { hn_lag_s: -1, gh_chunk: "unknown" };
 }

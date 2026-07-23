@@ -49,7 +49,7 @@ async function pickRepos(): Promise<string[]> {
     // New-today: repos that had a repository-creation event today per GH Archive.
     selectRows<{ repo_name: string }>(
       `SELECT DISTINCT repo_name
-       FROM github_events
+       FROM raw.github_events
        WHERE event_type = 'CreateEvent' AND ref_type = 'repository'
          AND created_at >= today() AND repo_name != ''
        LIMIT ${NEW_TODAY_LIMIT}`
@@ -84,8 +84,8 @@ async function pickRepos(): Promise<string[]> {
       `SELECT repo_name,
               uniqExactIf(actor_login, lower(actor_login) NOT LIKE '%[bot]%') AS human_actors,
               countIf(event_type = 'PushEvent') AS push_count
-       FROM github_events
-       WHERE created_at > (SELECT max(created_at) FROM github_events) - INTERVAL ${ACTIVITY_WINDOW_DAYS} DAY
+        FROM raw.github_events
+        WHERE created_at > (SELECT max(created_at) FROM raw.github_events) - INTERVAL ${ACTIVITY_WINDOW_DAYS} DAY
          AND event_type IN ('PushEvent', 'PullRequestEvent', 'IssuesEvent')
          AND repo_name != ''
        GROUP BY repo_name

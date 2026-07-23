@@ -19,10 +19,16 @@ demo video. All code must be written during July 17-23.
   GH Archive files; `ingest_log` tracks done hours). Verified: HN lag ~49s in dev.
 - **ClickHouse Cloud** (org `lfefoundation`, service "My first service",
   `kmmno2h0ec.us-central1.gcp.clickhouse.cloud:8443` https / `:9440` native):
-  - `hackernews` — 48.9M items, full corpus since 2006, minutes-fresh. ReplacingMergeTree
+  - `default.hackernews` — 48.9M items, full corpus since 2006, minutes-fresh. ReplacingMergeTree
     (`update_time`) ORDER BY id: re-inserting an item is the *correct* way to update it.
-  - `github_events` — ~120M events, 30 days depth, hourly-fresh. Lean schema:
+  - `default.github_events` — ~120M events, 30 days depth, hourly-fresh. Lean schema:
     event_type/repo_name/actor_login/created_at/action/number.
+  - **`raw` database** (migration `20260724000001`): `raw.github_events` / `raw.hackernews` /
+    `raw.hf_model_snapshots` are thin passthrough Views (`SELECT * FROM default.<table>`) for
+    query-side isolation — all read-path SQL should go through `raw.*`. ClickHouse plain Views
+    cannot be `INSERT` targets, so every ingestion task (`ingest-gharchive`, `ingest-hackernews`,
+    `ingest-huggingface`) still writes to the physical `default.*` table directly — never insert
+    into the `raw.*` name, it will fail with "Method write is not supported by storage View".
   - `hn_hourly`, `gh_repo_hourly` — AggregatingMergeTree rollups fed by MVs; read with
     `-Merge` combinators (`countMerge(events)` etc.).
   - `gh_repo_drilldown_hourly`, `gh_repo_actor_hourly`, `gh_repo_activity_feed` —

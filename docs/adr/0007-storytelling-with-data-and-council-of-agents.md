@@ -1,4 +1,4 @@
-# ADR 0006: Storytelling with Data Principles & Council of Agents Architecture
+# ADR 0007: Storytelling with Data Principles & Council of Agents Architecture
 
 - **Status**: Accepted
 - **Date**: 2026-07-23

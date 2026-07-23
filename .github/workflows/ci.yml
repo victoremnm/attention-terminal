@@ -64,11 +64,24 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+      - name: Use Go 1.24.x
+        uses: actions/setup-go@v7
+        with:
+          go-version: "1.24.x"
       - uses: actions/setup-node@v7
         with:
           node-version: "24.x"
           cache: npm
       - run: npm ci
+      - name: Install Goose
+        run: go install github.com/pressly/goose/v3/cmd/goose@v3.25.0
+      - name: Apply ClickHouse migrations
+        run: ./scripts/migrate.sh up
+        env:
+          CLICKHOUSE_HOST: ${{ secrets.CLICKHOUSE_HOST }}
+          CLICKHOUSE_USER: ${{ secrets.CLICKHOUSE_USER }}
+          CLICKHOUSE_PASSWORD: ${{ secrets.CLICKHOUSE_PASSWORD }}
+          CLICKHOUSE_DATABASE: ${{ secrets.CLICKHOUSE_DATABASE }}
       - name: Run query tests
         run: npm test
         env:

@@ -220,7 +220,7 @@ describe("repoDrilldown query consolidation", () => {
     expect(payload.activity).toBeUndefined();
     expect(payload.trends).toBeUndefined();
     expect(payload.pulse).toBeUndefined();
-    expect(payload.query.sql).toContain("FROM github_events");
+    expect(payload.query.sql).toContain("FROM raw.github_events");
     expect(payload.query.sql).not.toContain("FROM gh_repo_drilldown_hourly");
     expect(payload.query.sql).toContain("countIf(state = 'open')");
   });

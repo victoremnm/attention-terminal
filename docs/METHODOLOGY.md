@@ -23,7 +23,8 @@ Traditional AI chat agents deliver a **wall of text**—paragraphs, bullet point
 | **[ADR 0003](adr/0003-subagent-telemetry-and-session-learnings.md)** | **Subagent Telemetry, Session Learnings & Fail-Open Spooling** | Standardized ClickHouse telemetry tracking (`subagent_runs`, `session_learnings`) with local NDJSON spooling fallbacks. | **Accepted** |
 | **[ADR 0004](adr/0004-pseudo-medallion-clickhouse-data-modeling.md)** | **Pseudo-Medallion Architecture & Dataset Triangulation Trade-offs** | Implemented Bronze/Silver/Gold `_hourly`/`_daily`/`_monthly` `AggregatingMergeTree` rollups and Goose DDL migrations instead of Kimball star schemas. | **Accepted** |
 | **[ADR 0005](adr/0005-double-click-repo-drilldown-card.md)** | **"Double-Click" Repo Drill-Down Card & Single-Pass Velocity Queries** | Standardized 4-tier drill-down card layout, single-pass hourly velocity SQL query strategy, and Push Preview Feed payload column mapping. | **Accepted** |
-| **[ADR 0006](adr/0006-storytelling-with-data-and-council-of-agents.md)** | **Storytelling with Data Principles & Council of Agents Architecture** | Codified Cole Nussbaumer Knaflic cognitive chart selection rules, intuition verdict prompting, and multi-model Council of Agents benchmarking. | **Accepted** |
+| **[ADR 0006](adr/0006-database-family-query-isolation.md)** | **`raw` Database Family for Firehose Query Isolation** | Created thin passthrough Views (`raw.github_events`, `raw.hackernews`, `raw.hf_model_snapshots`) for read-path query isolation, without moving the physical tables or rebuilding any materialized views. Writes still target `default.*` directly, since ClickHouse Views cannot be `INSERT` targets. | **Accepted** |
+| **[ADR 0007](adr/0007-storytelling-with-data-and-council-of-agents.md)** | **Storytelling with Data Principles & Council of Agents Architecture** | Codified Cole Nussbaumer Knaflic cognitive chart selection rules, intuition verdict prompting, and multi-model Council of Agents benchmarking. | **Accepted** |
 
 ---
 
@@ -94,4 +95,3 @@ const segmentKeys = Array.from(new Set(items.flatMap((i) => i.segments.map((s) =
   return <rect key={`${seg.key}-${sIdx}`} x={segX} y={y} width={Math.max(0, segW)} height={barH} fill={segColor} opacity="0.88" />;
 })}
 ```
-
