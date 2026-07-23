@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { TickerCard, TickerLanes } from "@/lib/queries";
 import type { RepoDrilldownPayload } from "@/lib/render-payload";
+import { ActorLeaderboardCard } from "./ActorLeaderboard";
 import { RenderedAnswer } from "./RenderedAnswer";
 import { Sparkline } from "./charts";
 import { useIngestPulse } from "./useIngestPulse";
@@ -195,6 +196,23 @@ export function TickerRail({ initial, ingestToken }: { initial: TickerLanes; ing
         }
         lines.push(``);
       }
+      if (lanes.actors) {
+        lines.push(`#### PROLIFIC ACTORS 24H`);
+        lines.push(`| Group | Actor | Score | Events | Repos | Pushes | PRs opened | PRs merged |`);
+        lines.push(`| :--- | :--- | ---: | ---: | ---: | ---: | ---: | ---: |`);
+        for (const [group, rows] of [
+          ["Humans", lanes.actors.humans],
+          ["Bots", lanes.actors.bots],
+        ] as const) {
+          for (const row of rows.slice(0, 5)) {
+            const link = `[**${row.actor_login}**](https://github.com/${row.actor_login})`;
+            lines.push(
+              `| ${group} | ${link} | \`${row.score.toFixed(1)}\` | ${row.events.toLocaleString()} | ${row.repos.toLocaleString()} | ${row.pushes.toLocaleString()} | ${row.prs_opened.toLocaleString()} | ${row.prs_merged.toLocaleString()} |`
+            );
+          }
+        }
+        lines.push(``);
+      }
       await copyToClipboard(lines.join("\n"), "markdown");
       setCopiedTickerMd(true);
       setTimeout(() => setCopiedTickerMd(false), 2000);
@@ -271,6 +289,14 @@ export function TickerRail({ initial, ingestToken }: { initial: TickerLanes; ing
       <Lane title="SHIPPING VELOCITY · 24H" cards={lanes.shippingVelocity} selectedRepo={selectedRepo} loadingRepo={loadingRepo} onOpenRepo={openRepo} />
       <Lane title="STAR BREAKOUTS" cards={lanes.starBreakouts} selectedRepo={selectedRepo} loadingRepo={loadingRepo} onOpenRepo={openRepo} />
       <Lane title="RISING STORIES" cards={lanes.risingStories} selectedRepo={selectedRepo} loadingRepo={loadingRepo} onOpenRepo={openRepo} />
+      {lanes.actors && (
+        <div className="tk-lane">
+          <div className="tk-lane-title mono">PROLIFIC ACTORS · 24H</div>
+          <div className="tk-scroll">
+            <ActorLeaderboardCard humans={lanes.actors.humans} bots={lanes.actors.bots} />
+          </div>
+        </div>
+      )}
       {(loadingRepo || drilldownError || drilldown) && (
         <div className="ticker-drilldown" aria-live="polite">
           {loadingRepo && <div className="agent-tool mono">rendering {loadingRepo} in background...</div>}
