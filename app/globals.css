@@ -1282,20 +1282,30 @@ a { color: inherit; }
   gap: 6px;
   margin: 14px 0 4px;
 }
-.rankings-meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
+.rankings-context {
   margin: 10px 0 4px;
   color: var(--muted);
   font-size: 10px;
   letter-spacing: .08em;
-  text-transform: uppercase;
 }
-.rankings-meta span {
+.rankings-context b {
+  color: var(--ink);
+  font-weight: 700;
+}
+
+.rankings-loading,
+.rankings-error {
   border: 1px solid var(--line-soft);
-  border-radius: 999px;
-  padding: 3px 8px;
+  border-radius: 5px;
+  padding: 10px;
+  font-size: 10px;
+}
+.rankings-loading {
+  color: var(--muted);
+}
+.rankings-error {
+  color: var(--mag);
+  border-color: var(--mag);
 }
 .rankings-tab {
   border: 1px solid var(--line-soft);
