@@ -1,123 +1,79 @@
-# Demo Script: Attention Terminal — "Beyond the Wall of Text"
+# Attention Terminal — Hackathon Demo Video Script & Narration Guide
 
-Preset "wow" queries for the ≤5-min demo video (issue #4, #28).
-Each query showcases a different answer type + both tools (ClickHouse + Trigger.dev).
-
-## Demo flow (5 minutes)
-
-### 1. Daily Skinny Digest (0:00–0:45)
-
-**Ask**: "What's happening today?" (or navigate to `/skinny` or `/deck` — the digest auto-loads)
-
-**What shows**: The Daily Skinny deck — 6–8 clustered subjects in SHIPPING/DEBATED/HYPE bands,
-each as a tactile card with a verdict tile, sparkline, and top comment. The deck runs out
-(no infinite scroll — it's finishable).
-
-**Tools showcased**: ClickHouse (the `daily_skinny_subject_hourly` rollup, sub-second scan),
-Trigger.dev (the scheduled task that generates the digest hourly).
-
-**Talking point**: "Every answer is a visual, not a paragraph. The data is live — these
-clusters were computed from the last hour of HN + GitHub activity."
+> **Target Duration**: 3:00 - 3:30 (Max 5:00)  
+> **Format**: Screen recording of working product + live narration (No slides / zero intro logos).  
+> **Theme**: *Beyond the Wall of Text*  
+> **Core Stack**: ClickHouse (Real-Time OLAP) + Trigger.dev v3 (Orchestration & Background Jobs)
 
 ---
 
-### 2. Repo Drilldown — triggerdotdev/trigger.dev (0:45–2:15)
+## ⏱️ Video Timeline & Narration Breakdown
 
-**Ask**: "Why is triggerdotdev/trigger.dev moving?"
-
-**What shows**: The repo drilldown card with:
-- Repo header (description, language, topics, stars, forks)
-- 24h KPI strip (pushes, commits, actors, stars, forks, PRs, merged, issues)
-- Hourly velocity chart (pushes/commits/stars over 24h)
-- Pulse overview (7-day: PRs merged/opened/open, issues closed/opened/open, commit summary, top committers bar chart)
-- 30-day trend timeline (star/fork lines with ▲ release / ● PR-merge / ◆ issue-open event markers)
-- Recent activity lists (commits with messages, PRs with titles, releases with tags, issues with titles — all 7-day, with GitHub deep-links)
-- Top contributors strip
-- View-SQL flip card (the actual ClickHouse query + rows read + elapsed ms)
-
-**Tools showcased**: ClickHouse (11 parallel queries across aggregate tables, REST-activity
-tables, and `gh_repo_daily`), Trigger.dev (the `refresh-repo-activity` poller that fetches
-commits/PRs/releases/issues via Octokit and persists to ClickHouse).
-
-**Talking point**: "This is GitHub's Pulse page, but computed en-masse for all watched repos —
-not on-demand per page visit. The watchlist poller auto-seeds from the top-50 repos by stars,
-forks, pushes, and commits, then fetches their REST activity hourly."
+```mermaid
+gantt
+    title 3-Minute Demo Video Flow
+    dateFormat  ss
+    axisFormat %S
+    section Screen Recording
+    Live Product Demo & Morphing Canvas      :00, 60s
+    Double-Click Repo Drill-Down             :60, 45s
+    ClickHouse + Trigger.dev Engine          :105, 45s
+    Architecture & Value Wrap-up             :150, 30s
+```
 
 ---
 
-### 3. Real Builders DevScatter (2:15–3:00)
+### Segment 1: Live Product Demo & Morphing Canvas (0:00 – 1:00)
+**Screen**: Open directly on Attention Terminal homepage. Type a query into the Persistent Floating Chatbox (Gemini Drawer): *"What are the top AI repositories accelerating this week?"*
 
-**Ask**: "Show me the real builders"
-
-**What shows**: The DevScatter card — a scatter plot of developers by pushes/commits/PRs
-vs repos, with bot filtering. Each point is a developer; hover shows their top repos.
-
-**Tools showcased**: ClickHouse (the `gh_actor_daily` rollup + `gh_actor_pr_stats` for merged
-PR signal), Trigger.dev (the `refresh-actor-pr-stats` task that fetches merged PR counts via
-GitHub REST).
-
-**Talking point**: "This filters out bots and spam — only real human contributors. The merged
-PR signal comes from GitHub REST, not the firehose, because the firehose is push-dominated."
+**Voiceover Narration**:
+> *"Welcome to Attention Terminal. Every traditional AI chat agent gives you the exact same thing: a wall of text—paragraphs, bullet points, maybe a raw table if you’re lucky. We built Attention Terminal to go **Beyond the Wall of Text**.*
+>
+> *When I ask Attention Terminal about repository momentum, the response itself is the product. Look at the Morphing Canvas. Instead of reading paragraphs, we immediately see Tufte-maximized SVG figures—a dynamic Treemap heatmap of ecosystem volume, a Stacked Bar chart comparing PR merge ratios, and a Donut distribution showing single-slice precision.*
+>
+> *Every visual element adheres to Edward Tufte’s data-ink ratio principles: zero chartjunk gridlines, direct labels, and tabular numerals (`tabular-nums`) to prevent visual jitter."*
 
 ---
 
-### 4. Breakout Ticker (3:00–3:45)
+### Segment 2: Double-Click Repo Drill-Down & Visual Discovery (1:00 – 1:45)
+**Screen**: Click on a repository (e.g., `vllm-project/vllm`). Show the Morphing Card expand into the 4-tier Repo Drill-Down view. Scroll through the Push Preview Feed.
 
-**Ask**: "What's breaking out right now?" (or click the ticker rail)
-
-**What shows**: The live ticker — new repos (CreateEvent), top forked 24h, shipping velocity,
-star breakouts (WatchEvent vs 30-day baseline), rising HN stories. Each ticker tile has a
-sparkline and deep-links to the repo drilldown.
-
-**Tools showcased**: ClickHouse (the `gh_repo_hourly` + `hn_hourly` rollups, z-scored against
-30-day baselines), Trigger.dev (the ticker subscribes to Realtime for live tick-updates).
-
-**Talking point**: "The ticker is live — it subscribes to Trigger.dev Realtime, so new repos
-and star breakouts tick in as the firehose ingests. The z-score is against each repo's own
-30-day baseline, not absolute counts — so a 10-star repo can still 'break out' if it usually
-gets 0."
+**Voiceover Narration**:
+> *"When we double-click into a repository like `vllm`, Attention Terminal doesn't dump 200 lines of grep logs. It renders a 4-tier Drill-Down Card:*
+> 1. *Hero KPIs showing 24-hour deltas (+42 Pushes, +120 Commits).*
+> 2. *A 24-hour synchronized hourly velocity chart.*
+> 3. *And a live Push Preview Feed mapping actor logins, target branch refs, commit density, and code churn.*
+>
+> *Users can introspect datasets in real-time through our persistent Gemini-style floating chatbox without losing their dashboard context."*
 
 ---
 
-### 5. Divergence — talk vs code (3:45–4:30)
+### Segment 3: The Dual Engine — ClickHouse + Trigger.dev (1:45 – 2:30)
+**Screen**: Switch to ClickHouse Console / Terminal showing query execution times (<150ms) and Trigger.dev dashboard showing active background ingestion tasks.
 
-**Ask**: "Is Claude Code hype or real?" (or any trending topic)
-
-**What shows**: The divergence chart — two normalized lines (HN mentions vs GitHub events)
-z-scored against a 30-day baseline, with a verdict tile (DIVERGENT / ACCELERATING / COOLING).
-
-**Tools showcased**: ClickHouse (the `hackernews` + `github_events` cross-source scan with
-`tokenbf_v1` text indexes for keyword matching), Trigger.dev (the `ingest-hackernews` task
-that tails the Firebase API every minute).
-
-**Talking point**: "This is the talk-vs-code divergence — HN mentions normalized against GitHub
-activity. If talk spikes but code doesn't, it's hype. If code spikes but talk doesn't, it's
-real. The text indexes make arbitrary keyword scans fast across 48.9M HN items."
+**Voiceover Narration**:
+> *"Under the hood, Attention Terminal is powered by a high-throughput **ClickHouse + Trigger.dev v3** dual engine:*
+> - *Trigger.dev orchestrates high-frequency background ingestion workers, dbt continuous transformations, and async agent tasks.*
+> - *ClickHouse serves as our real-time columnar analytical database, processing millions of GitHub Archive events.*
+>
+> *To achieve sub-second response times, we execute **single-pass conditional aggregation queries** over `created_at` buckets using `countIf` and `sum`. We structure data using a **Pseudo-Medallion Architecture**—Bronze append-only facts, Silver cleansed events with token bloom filter skipping indexes (`idx_github_events_actor_login`), and Gold `AggregatingMergeTree` rollups that reduce query scan sizes by >95%. All DDL changes are version-controlled via Goose migrations."*
 
 ---
 
-### 6. View-SQL transparency (4:30–5:00)
+### Segment 4: Architecture, Scalability & Closing (2:30 – 3:00)
+**Screen**: Show `docs/architecture/SYSTEM-ARCHITECTURE.md` Mermaid diagram and GitHub repository main page.
 
-**Action**: Flip any card to reveal the SQL behind it.
-
-**What shows**: The exact ClickHouse query that powered the answer, with real `rows_read` and
-`elapsed_ms` from the ClickHouse summary header.
-
-**Talking point**: "Every visual is backed by a real query you can inspect. Transparency as a
-feature — no black boxes, no hallucinated tables. The agent calls a `render` tool with a
-Zod-schema'd JSON payload; the LLM never emits markup, and prose is capped to captions."
+**Voiceover Narration**:
+> *"Attention Terminal includes a fail-open telemetry architecture—if database connections drop, model benchmarking logs fail-open via local NDJSON spooling for automatic backfill.*
+>
+> *Attention Terminal transforms raw developer event noise into actionable visual intelligence—proving that AI chat doesn't have to be text. Thank you."*
 
 ---
 
-## Dogfooding moment
+## 🎯 Production Checklist for Recording
 
-Point out that `victoremnm/attention-terminal` (this repo) appears in the ticker and
-drilldown — the hackathon project is tracking itself in its own live data.
-
-## Demo prerequisites
-
-- Trigger.dev tasks deployed to cloud (ingestion running 24/7)
-- `GITHUB_TOKEN` set in **both** the Trigger.dev dashboard (for the activity poller) and the Vercel/Next.js env (for on-demand drilldown enrichment — see CLAUDE.md convention)
-- Vercel deployment live
-- Data freshness: `SELECT max(created_at) FROM github_events` should be < 1 hour old
-- Activity tables seeded: `SELECT count() FROM gh_repo_commits` should be > 0
+- [ ] **Audio**: Use clear microphone with zero background noise.
+- [ ] **Resolution**: 1080p or 4K screen capture.
+- [ ] **Browser**: Dark mode enabled, clean browser tab (no extensions visible).
+- [ ] **Pacing**: Speak briskly, clearly, and finish within 3:00 - 3:30.
+- [ ] **No Slides**: Do NOT show PowerPoint slides or intro logos — open directly on the live product.

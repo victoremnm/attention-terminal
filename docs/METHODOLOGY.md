@@ -29,6 +29,8 @@ Traditional AI chat agents deliver a **wall of text**—paragraphs, bullet point
 
 ## 3. Core Documentation Index
 
+- **[Hackathon Demo Video Script & Narration Guide](DEMO-SCRIPT.md)**: 3-minute screen recording script and narration guide for the hackathon video submission.
+- **[Hackathon Submission Portal Fields](SUBMISSION-FORM.md)**: Official project title, tagline, 500-word solution summary, and scoring criteria matrix.
 - **[System Architecture & Mermaid Flowcharts](architecture/SYSTEM-ARCHITECTURE.md)**: 5-layer system overview (Inputs $\rightarrow$ Processing $\rightarrow$ Data $\rightarrow$ Backend $\rightarrow$ Frontend).
 - **[Storytelling with Data & UI Philosophies](architecture/STORYTELLING-WITH-DATA-AND-UI-PHILOSOPHIES.md)**: Edward Tufte principles, Geist monospaced precision, and visual preattentive attributes.
 - **[Product Owner Vision & Problem Statement](product/PRODUCT-VISION-AND-METHODOLOGY.md)**: Hackathon brief, Beyond the Wall of Text philosophy, and component breakdown.
