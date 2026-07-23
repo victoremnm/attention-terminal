@@ -50,7 +50,7 @@ export const ingestGhArchive = schedules.task({
       try {
         await clickhouse.command({
           query: `
-            INSERT INTO raw.github_events
+            INSERT INTO default.github_events
               (event_id, event_type, actor_login, repo_name, owner, created_at, action, ref_type,
                commit_count, distinct_commit_count, pr_merged, number, title, labels)
             SELECT toUInt64OrZero(id), type, tupleElement(actor,'login'), tupleElement(repo,'name'),
