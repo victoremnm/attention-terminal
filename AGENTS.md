@@ -265,6 +265,8 @@ parallel without colliding.
 All ClickHouse DDL goes through goose — `migrations/` +
 `./scripts/migrate.sh up|status`. Never ad-hoc DDL. New MVs need a manual
 `INSERT INTO ... SELECT` backfill (MVs only see post-creation inserts).
+Production migration execution is handled automatically by the CD workflow
+(`.github/workflows/cd.yml`) on merge to `main`.
 
 ## Secrets (mandatory)
 
