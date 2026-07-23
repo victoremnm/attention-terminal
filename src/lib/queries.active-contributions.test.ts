@@ -30,6 +30,41 @@ const rankingRow = {
   dependency_update_attribution: "unknown",
 };
 
+const emptyPushRow = {
+  ...rankingRow,
+  repo_name: "acme/empty-pushes",
+  commits: "0",
+  distinct_commits: "0",
+  pushes: "8",
+  substantive_push_buckets: "0",
+  pushers: "2",
+  human_pushers: "2",
+  bot_pushers: "0",
+  prs_opened: "0",
+  prs_merged: "0",
+  activity_score: "0",
+};
+
+const prOnlyRow = {
+  ...rankingRow,
+  repo_name: "acme/pr-only",
+  commits: "0",
+  distinct_commits: "0",
+  pushes: "0",
+  substantive_push_buckets: "0",
+  pushers: "0",
+  human_pushers: "0",
+  bot_pushers: "0",
+  prs_opened: "2",
+  prs_merged: "1",
+  activity_score: "9",
+};
+
+const substantiveRow = {
+  ...rankingRow,
+  repo_name: "acme/substantive",
+};
+
 describe("active contribution ranking", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -70,15 +105,43 @@ describe("active contribution ranking", () => {
     expect(query).toContain("FROM (\n        SELECT repo_name, actor_login, pushes, commits, distinct_commits, prs_opened, prs_merged");
     expect(query).toContain("ORDER BY distinct_commit_total DESC, activity_score DESC, repo_name ASC");
     expect(result.sql).toBe(query.trim());
+    expect(result.data[0]?.branchScope).toBe("unknown");
+    expect(result.notes).toEqual(expect.arrayContaining([
+      expect.stringContaining("main-branch filtering is not claimed"),
+      expect.stringContaining("hour-only filtering cannot use the rollup key prefix"),
+    ]));
   });
 
   it("ranks push mode by substantive buckets, never raw push volume", async () => {
-    await activeContributionRanking("30d", "pushes", 25);
+    const result = await activeContributionRanking("30d", "pushes", 25);
 
     const query = String(mocks.query.mock.calls[0]?.[0]?.query);
     expect(query).toContain("ORDER BY substantive_push_bucket_total DESC, activity_score DESC, repo_name ASC");
+    expect(query).toContain("HAVING substantive_push_bucket_total > 0");
     expect(query).toContain("LIMIT {limit: UInt32}");
     expect(mocks.query.mock.calls[0]?.[0]?.query_params).toEqual({ limit: 25 });
+    expect(result.notes[0]).toContain("raw push volume never makes a repo eligible");
+  });
+
+  it("excludes empty-push and PR-only fixtures from push mode while retaining substantive rows", async () => {
+    const fixtures = [emptyPushRow, prOnlyRow, substantiveRow];
+    mocks.query.mockImplementation(async ({ query }: { query: string }) => ({
+      json: async () => query.includes("HAVING substantive_push_bucket_total > 0")
+        ? fixtures.filter((row) => Number(row.substantive_push_buckets) > 0)
+        : fixtures.filter((row) => Number(row.commits) > 0 || Number(row.prs_opened) > 0 || Number(row.prs_merged) > 0),
+    }));
+
+    const pushResult = await activeContributionRanking("7d", "pushes", 10);
+    expect(pushResult.data.map((row) => row.repoName)).toEqual(["acme/substantive"]);
+    expect(pushResult.data.every((row) => row.substantivePushBuckets > 0)).toBe(true);
+
+    const commitResult = await activeContributionRanking("7d", "commits", 10);
+    expect(commitResult.data.map((row) => row.repoName)).toEqual([
+      "acme/pr-only",
+      "acme/substantive",
+    ]);
+    expect(commitResult.data.map((row) => row.repoName)).not.toContain("acme/empty-pushes");
+    expect(commitResult.data.find((row) => row.repoName === "acme/pr-only")?.prsOpened).toBe(2);
   });
 
   it.each([
