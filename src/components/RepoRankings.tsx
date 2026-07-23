@@ -170,14 +170,17 @@ export function RepoRankings({ windows }: { windows: Record<RepoWindow, RepoWind
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [prefs.mode, prefs.sortField, prefs.sortDirection, activeWindowTab, page, refreshNonce]);
 
+  const hasSubstantiveWork = (r: { pushes: number; prsOpened: number; prsMerged: number }) =>
+    !prefs.requireSubstantiveWork || (r.pushes > 0 && (r.prsOpened > 0 || r.prsMerged > 0));
+
   const attentionRowsFiltered = useMemo(
-    () => attentionRawRows.filter((r) => r.commits >= prefs.minCommits),
-    [attentionRawRows, prefs.minCommits]
+    () => attentionRawRows.filter(hasSubstantiveWork),
+    [attentionRawRows, prefs.requireSubstantiveWork]
   );
 
   const activeRowsFiltered = useMemo(
-    () => activeRawRows.filter((r) => r.distinctCommits >= prefs.minCommits),
-    [activeRawRows, prefs.minCommits]
+    () => activeRawRows.filter(hasSubstantiveWork),
+    [activeRawRows, prefs.requireSubstantiveWork]
   );
 
   const rows = useMemo<RankingRowView[]>(() => {
@@ -364,16 +367,13 @@ export function RepoRankings({ windows }: { windows: Record<RepoWindow, RepoWind
                 onChange={(e) => setPrefs((prev) => ({ ...prev, minStars: Math.max(0, Number(e.target.value) || 0) }))}
               />
             </label>
-            <label className="rankings-controls-field">
-              Min commits (substantive-work floor, applies to every mode)
+            <label className="rankings-controls-field rankings-controls-checkbox">
               <input
-                type="number"
-                min={0}
-                value={prefs.minCommits}
-                onChange={(e) =>
-                  setPrefs((prev) => ({ ...prev, minCommits: Math.max(0, Number(e.target.value) || 0) }))
-                }
+                type="checkbox"
+                checked={prefs.requireSubstantiveWork}
+                onChange={(e) => setPrefs((prev) => ({ ...prev, requireSubstantiveWork: e.target.checked }))}
               />
+              Hide repos with no pushes or PR activity (substantive-work floor, applies to every mode)
             </label>
             <label className="rankings-controls-field rankings-controls-checkbox">
               <input
