@@ -3,7 +3,7 @@
 import { useState } from "react";
 import type { CandlesPayload, DigestPayload, DivergencePayload, MatrixPayload, MorphingCardPayload, RenderPayload, RepoDrilldownPayload, RepoDrilldownActivity, RepoDrilldownPulse, RepoDrilldownTrend, TickerPayload, VerdictTile } from "@/lib/render-payload";
 import { VERDICT_COLOR } from "@/lib/verdict-color";
-import { AreaChart, DualLine, HorizontalBarChart, Sparkline, VerticalBarChart } from "./charts";
+import { AreaChart, CodeFrequencyChart, DualLine, HorizontalBarChart, Sparkline, VerticalBarChart } from "./charts";
 import { MarkdownText } from "./MarkdownText";
 import { SkinnyDeck } from "./SkinnyDeck";
 
@@ -680,6 +680,12 @@ function RepoDrilldownAnswer({ payload }: { payload: RepoDrilldownPayload }) {
         <div className="repo-trends">
           <div className="repo-section-title mono">30-DAY TREND TIMELINE</div>
           <RepoTrendChart trends={payload.trends} />
+        </div>
+      )}
+      {payload.codeFrequency && payload.codeFrequency.length > 0 && (
+        <div className="repo-code-frequency">
+          <div className="repo-section-title mono">CODE FREQUENCY</div>
+          <CodeFrequencyChart data={payload.codeFrequency} />
         </div>
       )}
       {payload.pulse && <RepoPulseOverview pulse={payload.pulse} />}
