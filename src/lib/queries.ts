@@ -92,7 +92,7 @@ export async function tickerLanes(): Promise<TickerLanes> {
       // Window anchored to the feed's own high-water mark, not wall clock -
       // GH Archive is hourly and may lag during catch-up; the freshness strip
       // tells the user exactly how far behind the feed is.
-      `SELECT repo_name AS name, max(created_at) AS at,
+      `SELECT repo_name AS name, max(h) AS at,
               groupArray(6)(cnt) AS spark
        FROM (
          SELECT repo_name, toStartOfHour(created_at) AS h, count() AS cnt
@@ -159,7 +159,7 @@ export async function tickerLanes(): Promise<TickerLanes> {
          toString(p.pushes_24h) AS pushes,
          toString(p.prs_24h) AS prs,
          toString(p.issues_24h) AS issues,
-         any(fs.spark) AS spark
+         fs.spark
        FROM per_repo p
        LEFT JOIN fork_spark fs ON p.repo_name = fs.repo_name
        -- Fork-farm gate: a repo whose ONLY window activity is forks/stars -
