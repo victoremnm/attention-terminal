@@ -1,0 +1,42 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Issue 140 · Active contribution ranking proof</title>
+<style>
+  :root { color-scheme: dark; font: 15px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; }
+  body { max-width: 920px; margin: 40px auto; padding: 0 24px; background: #0b1014; color: #d9f7ff; }
+  h1 { color: #38cdec; font-size: 24px; }
+  h2 { color: #92e6f5; font-size: 16px; margin-top: 32px; }
+  .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+  .card { border: 1px solid #27404a; padding: 14px; background: #101a20; }
+  .value { color: #69f0ae; font-size: 22px; }
+  pre { overflow: auto; padding: 16px; color: #c4f3ff; background: #111d23; border: 1px solid #27404a; }
+  .ok { color: #69f0ae; }
+</style>
+<h1>Active contribution ranking · Issue 140</h1>
+<p class="ok">PASS · bounded actor rollup · anti-noise ranking · live ClickHouse query</p>
+
+<div class="grid">
+  <div class="card"><div>source</div><div class="value">actor rollup</div><div>gh_repo_actor_hourly</div></div>
+  <div class="card"><div>default window</div><div class="value">7d</div><div>max result: 100</div></div>
+  <div class="card"><div>noise filter</div><div class="value">commit signal</div><div>bot counts disclosed</div></div>
+</div>
+
+<h2>Ranking contract</h2>
+<pre>activeContributionRanking("7d", "commits", 5)
+
+filters: commits &gt; 0 OR prs_opened &gt; 0 OR prs_merged &gt; 0
+sort: distinct_commits DESC, activity_score DESC, repo_name ASC
+push mode: substantive_push_buckets, never raw push volume
+branch scope: unknown (not present in source rollup)
+dependency updates: unknown (not present in source rollup)</pre>
+
+<h2>Credentialed runtime proof</h2>
+<pre>{
+  "rows": 1,
+  "elapsedMs": 411,
+  "rowsRead": 2682426,
+  "sourceTable": "gh_repo_actor_hourly"
+}</pre>
+
+<h2>Verification</h2>
+<p><span class="ok">✓</span> 6 targeted tests passed · <span class="ok">✓</span> TypeScript passed · <span class="ok">✓</span> credentialed ClickHouse query passed</p>
