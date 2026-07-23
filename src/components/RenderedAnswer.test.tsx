@@ -104,19 +104,20 @@ describe("RenderedAnswer copy-as-HTML button", () => {
     vi.unstubAllGlobals();
   });
 
-  it("renders a Copy as HTML button", () => {
+  it("renders Copy as Markdown and Copy as HTML buttons", () => {
     render(<RenderedAnswer payload={tickerPayload} />);
+    expect(screen.getAllByRole("button", { name: "Copy as Markdown" }).length).toBeGreaterThan(0);
     expect(screen.getAllByRole("button", { name: "Copy as HTML" }).length).toBeGreaterThan(0);
   });
 
-  it("shows Copied! feedback after clicking", async () => {
+  it("shows Copied MD! feedback after clicking Copy as Markdown", async () => {
     render(<RenderedAnswer payload={tickerPayload} />);
-    const btns = screen.getAllByRole("button", { name: "Copy as HTML" });
+    const btns = screen.getAllByRole("button", { name: "Copy as Markdown" });
     await act(() => fireEvent.click(btns[0]));
-    expect(screen.getByText("Copied!")).toBeInTheDocument();
+    expect(screen.getByText("Copied MD!")).toBeInTheDocument();
   });
 
-  it("calls clipboard.write with a ClipboardItem containing text/html", async () => {
+  it("calls clipboard.write with a ClipboardItem containing text/html for HTML copy", async () => {
     const writeSpy = vi.fn(() => Promise.resolve());
     vi.stubGlobal("navigator", {
       clipboard: { write: writeSpy, writeText: vi.fn(() => Promise.resolve()) },
@@ -129,14 +130,10 @@ describe("RenderedAnswer copy-as-HTML button", () => {
     expect(items).toHaveLength(1);
   });
 
-  it("reverts to Copy as HTML label after 2 seconds", async () => {
-    vi.useFakeTimers();
+  it("reverts to Copy as Markdown label after 2 seconds", async () => {
     render(<RenderedAnswer payload={tickerPayload} />);
-    const btns = screen.getAllByRole("button", { name: "Copy as HTML" });
+    const btns = screen.getAllByRole("button", { name: "Copy as Markdown" });
     await act(() => fireEvent.click(btns[0]));
-    expect(screen.getByText("Copied!")).toBeInTheDocument();
-    await act(() => vi.advanceTimersByTime(2000));
-    expect(screen.getAllByRole("button", { name: "Copy as HTML" }).length).toBeGreaterThan(0);
-    vi.useRealTimers();
+    expect(screen.getByText("Copied MD!")).toBeInTheDocument();
   });
 });

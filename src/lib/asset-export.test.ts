@@ -3,7 +3,50 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { exportAssetAsHTML, copyToClipboard } from "./asset-export";
+import { exportAssetAsHTML, exportAssetAsMarkdown, copyToClipboard } from "./asset-export";
+
+describe("exportAssetAsMarkdown", () => {
+  it("exports digest payload to clean Markdown table", () => {
+    const md = exportAssetAsMarkdown(digestPayload);
+    expect(md).toContain("### THE DAILY SKINNY");
+    expect(md).toContain("htmx is hot");
+    expect(md).toContain("ACCELERATING");
+    expect(md).toContain("| Verdict | Subject | Share | Sources |");
+  });
+
+  it("exports ticker payload to Markdown table", () => {
+    const md = exportAssetAsMarkdown(tickerPayload);
+    expect(md).toContain("### BREAKOUT TICKER · repos");
+    expect(md).toContain("alpha/repo");
+    expect(md).toContain("beta/repo");
+  });
+
+  it("exports divergence payload to Markdown table", () => {
+    const md = exportAssetAsMarkdown(divergencePayload);
+    expect(md).toContain("### htmx vs alpine");
+    expect(md).toContain("**DIVERGENT**");
+    expect(md).toContain("| Day | Talk Volume | Code Activity |");
+  });
+
+  it("exports candles payload to Markdown table", () => {
+    const md = exportAssetAsMarkdown(candlesPayload);
+    expect(md).toContain("### react momentum");
+    expect(md).toContain("**ACCELERATING**");
+  });
+
+  it("exports matrix payload to Markdown table", () => {
+    const md = exportAssetAsMarkdown(matrixPayload);
+    expect(md).toContain("MOMENTUM MATRIX");
+    expect(md).toContain("htmx");
+    expect(md).toContain("alpine");
+  });
+
+  it("exports repo-drilldown payload to Markdown summary", () => {
+    const md = exportAssetAsMarkdown(repoDrilldownPayload);
+    expect(md).toContain("### Repo Drilldown: [acme/widgets]");
+    expect(md).toContain("alice");
+  });
+});
 import type { RenderPayload } from "./render-payload";
 
 const digestPayload: RenderPayload = {
@@ -214,7 +257,7 @@ describe("copyToClipboard", () => {
       clipboard: { write: writeSpy, writeText: vi.fn(() => Promise.resolve()) },
     });
 
-    await copyToClipboard("<p>hello</p>");
+    await copyToClipboard("<p>hello</p>", "html");
     expect(writeSpy).toHaveBeenCalledTimes(1);
     const items = (writeSpy.mock.calls[0] as unknown[])[0] as unknown[];
     expect(items).toHaveLength(1);

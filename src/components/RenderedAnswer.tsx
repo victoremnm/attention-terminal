@@ -6,7 +6,52 @@ import { VERDICT_COLOR } from "@/lib/verdict-color";
 import { AreaChart, DualLine, HorizontalBarChart, Sparkline, VerticalBarChart } from "./charts";
 import { MarkdownText } from "./MarkdownText";
 import { SkinnyDeck } from "./SkinnyDeck";
-import { copyToClipboard, exportAssetAsHTML } from "@/lib/asset-export";
+import { copyToClipboard, exportAssetAsHTML, exportAssetAsMarkdown } from "@/lib/asset-export";
+
+function CopyBtn({ payload }: { payload: RenderPayload }) {
+  const [copiedFormat, setCopiedFormat] = useState<"markdown" | "html" | null>(null);
+
+  async function handleCopy(format: "markdown" | "html") {
+    try {
+      const content = format === "markdown" ? exportAssetAsMarkdown(payload) : exportAssetAsHTML(payload);
+      await copyToClipboard(content, format);
+      setCopiedFormat(format);
+      setTimeout(() => setCopiedFormat(null), 2000);
+    } catch {
+      setCopiedFormat(null);
+    }
+  }
+
+  return (
+    <div className="asset-copy-bar">
+      <button
+        type="button"
+        className={`asset-copy-btn${copiedFormat === "markdown" ? " copied" : ""}`}
+        onClick={() => handleCopy("markdown")}
+        aria-label="Copy as Markdown"
+      >
+        {copiedFormat === "markdown" ? "Copied MD!" : "Copy Markdown"}
+      </button>
+      <button
+        type="button"
+        className={`asset-copy-btn${copiedFormat === "html" ? " copied" : ""}`}
+        onClick={() => handleCopy("html")}
+        aria-label="Copy as HTML"
+      >
+        {copiedFormat === "html" ? "Copied HTML!" : "Copy HTML"}
+      </button>
+    </div>
+  );
+}
+
+function CopyableAnswer({ payload, children }: { payload: RenderPayload; children: React.ReactNode }) {
+  return (
+    <div className="agent-answer-wrapper">
+      <CopyBtn payload={payload} />
+      {children}
+    </div>
+  );
+}
 
 function FreshnessBadge({ freshness }: { freshness?: string }) {
   if (!freshness) return null;
@@ -722,36 +767,6 @@ function MorphingCardAnswer({ payload }: { payload: MorphingCardPayload }) {
           <pre className="mono">{payload.query.sql}</pre>
         </details>
       )}
-    </div>
-  );
-}
-
-function CopyBtn({ payload }: { payload: RenderPayload }) {
-  const [copied, setCopied] = useState(false);
-
-  async function handleCopy() {
-    try {
-      const html = exportAssetAsHTML(payload);
-      await copyToClipboard(html);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch {
-      setCopied(false);
-    }
-  }
-
-  return (
-    <button type="button" className={`asset-copy-btn${copied ? " copied" : ""}`} onClick={handleCopy} aria-label="Copy as HTML">
-      {copied ? "Copied!" : "Copy as HTML"}
-    </button>
-  );
-}
-
-function CopyableAnswer({ payload, children }: { payload: RenderPayload; children: React.ReactNode }) {
-  return (
-    <div className="agent-answer-wrapper">
-      <CopyBtn payload={payload} />
-      {children}
     </div>
   );
 }

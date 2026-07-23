@@ -289,6 +289,148 @@ function velocityChartSvg(payload: RepoDrilldownPayload): string {
   </div>`;
 }
 
+export function exportAssetAsMarkdown(payload: RenderPayload): string {
+  switch (payload.type) {
+    case "digest": return digestMarkdown(payload);
+    case "ticker": return tickerMarkdown(payload);
+    case "divergence": return divergenceMarkdown(payload);
+    case "candles": return candlesMarkdown(payload);
+    case "matrix": return matrixMarkdown(payload);
+    case "skinny-deck": return skinnyDeckMarkdown(payload);
+    case "repo-drilldown": return repoDrilldownMarkdown(payload);
+    case "morphing-card": return morphingCardMarkdown(payload);
+  }
+}
+
+function digestMarkdown(payload: DigestPayload): string {
+  const lines: string[] = [
+    `### THE DAILY SKINNY`,
+    `*Floor: ${payload.noiseFloor.toFixed(2)} | ${payload.clusters.length} Clusters*`,
+    ``,
+    `| Verdict | Subject | Share | Sources |`,
+    `| :--- | :--- | :--- | :--- |`,
+  ];
+  for (const c of payload.clusters) {
+    const sources = `[HN (${c.sources.hnThreads} thr)](${c.links.hn}) · [GH (${c.sources.ghStars24h}⭐ / ${c.sources.repos} repo)](${c.links.github})`;
+    lines.push(`| **${c.verdict}** | [**${c.subject}**](${c.links.hn})<br/>*${c.skinny}* | ${Math.round(c.talkShare * 100)}% | ${sources} |`);
+  }
+  return lines.join("\n");
+}
+
+function tickerMarkdown(payload: TickerPayload): string {
+  const lines: string[] = [
+    `### BREAKOUT TICKER · ${payload.filter}`,
+    ``,
+    `| Kicker | Name | Metric | Delta |`,
+    `| :--- | :--- | :--- | :--- |`,
+  ];
+  for (const item of payload.items) {
+    const link = item.href ? `[**${item.name}**](${item.href})` : `**${item.name}**`;
+    lines.push(`| ${item.kicker} | ${link} | \`${item.metric}\` | ${item.delta ?? "-"} |`);
+  }
+  return lines.join("\n");
+}
+
+function divergenceMarkdown(payload: DivergencePayload): string {
+  const lines: string[] = [
+    `### ${payload.subject}`,
+    `**Verdict**: **${payload.verdict.state}** (${payload.verdict.metric} ${payload.verdict.metricLabel})`,
+    ``,
+    payload.caption,
+    ``,
+    `| Day | Talk Volume | Code Activity |`,
+    `| :--- | :--- | :--- |`,
+  ];
+  for (let i = 0; i < payload.days.length; i++) {
+    lines.push(`| ${payload.days[i]} | ${payload.talk[i]} | ${payload.code[i]} |`);
+  }
+  return lines.join("\n");
+}
+
+function candlesMarkdown(payload: CandlesPayload): string {
+  const lines: string[] = [
+    `### ${payload.subject}`,
+    `**Verdict**: **${payload.verdict.state}** (${payload.verdict.metric} ${payload.verdict.metricLabel})`,
+    ``,
+    payload.caption,
+    ``,
+    `| Day | Value |`,
+    `| :--- | :--- |`,
+  ];
+  for (let i = 0; i < payload.days.length; i++) {
+    lines.push(`| ${payload.days[i]} | ${payload.values[i]} |`);
+  }
+  return lines.join("\n");
+}
+
+function matrixMarkdown(payload: MatrixPayload): string {
+  const lines: string[] = [
+    `### MOMENTUM MATRIX · ${payload.topics.length} topics`,
+    ``,
+    `| Topic | Velocity | Volume | Verdict |`,
+    `| :--- | :--- | :--- | :--- |`,
+  ];
+  for (const t of payload.topics) {
+    lines.push(`| **${t.name}** | ${t.velocity.toFixed(1)} | ${t.volume} | ${t.verdict ?? "-"} |`);
+  }
+  return lines.join("\n");
+}
+
+function skinnyDeckMarkdown(payload: SkinnyDeckPayload): string {
+  const lines: string[] = [`### DAILY SKINNY DECK · ${payload.dateStr}`, ``];
+  for (const c of payload.cards) {
+    lines.push(`#### ${c.subject}`);
+    lines.push(`**Verdict**: **${c.verdict}** (${c.metric} ${c.metricLabel})`);
+    lines.push(c.caption);
+    lines.push(`*Sources*: ${c.sources}`);
+    lines.push(``);
+  }
+  return lines.join("\n");
+}
+
+function repoDrilldownMarkdown(payload: RepoDrilldownPayload): string {
+  const lines: string[] = [
+    `### Repo Drilldown: [${payload.repoName}](https://github.com/${payload.repoName})`,
+    `*${payload.metadata.description}*`,
+    ``,
+    `**Language**: ${payload.metadata.language} | ⭐ **Stars**: ${payload.metadata.githubStars.toLocaleString()} | 🍴 **Forks**: ${payload.metadata.githubForks.toLocaleString()} | 🐛 **Issues**: ${payload.metadata.openIssues.toLocaleString()}`,
+    ``,
+  ];
+  if (payload.topActors24h && payload.topActors24h.length > 0) {
+    lines.push(`#### Top Contributors (24h)`);
+    lines.push(`| Actor | Pushes | Commits | PRs Opened | PRs Merged |`);
+    lines.push(`| :--- | :--- | :--- | :--- | :--- |`);
+    for (const a of payload.topActors24h) {
+      lines.push(`| **${a.actor}** | ${a.pushes} | ${a.commits} | ${a.prsOpened} | ${a.prsMerged} |`);
+    }
+    lines.push(``);
+  }
+  return lines.join("\n");
+}
+
+function morphingCardMarkdown(payload: MorphingCardPayload): string {
+  const lines: string[] = [`### ${payload.visualizationType.toUpperCase()}`];
+  if (payload.summary) {
+    lines.push(payload.summary);
+    lines.push(``);
+  }
+  const isRecord = (val: unknown): val is Record<string, unknown> => typeof val === "object" && val !== null;
+  const config = payload.chartConfig as Record<string, unknown>;
+  const dataValues = isRecord(config?.data) && Array.isArray(config.data.values)
+    ? config.data.values.filter(isRecord)
+    : [];
+
+  if (dataValues.length > 0) {
+    const keys = Object.keys(dataValues[0]);
+    lines.push(`| ${keys.join(" | ")} |`);
+    lines.push(`| ${keys.map(() => ":---").join(" | ")} |`);
+    for (const row of dataValues) {
+      lines.push(`| ${keys.map((k) => String(row[k] ?? "")).join(" | ")} |`);
+    }
+  }
+  return lines.join("\n");
+}
+
 export function exportAssetAsHTML(payload: RenderPayload): string {
   switch (payload.type) {
     case "digest": return digestHtml(payload);
@@ -302,21 +444,21 @@ export function exportAssetAsHTML(payload: RenderPayload): string {
   }
 }
 
-export async function copyToClipboard(html: string): Promise<void> {
-  const plainText = html.replace(/<[^>]*>/g, "").trim() || "Attention Terminal rendered asset";
+export async function copyToClipboard(content: string, format: "markdown" | "html" = "markdown"): Promise<void> {
+  const plainText = format === "markdown" ? content : content.replace(/<[^>]*>/g, "").trim() || "Attention Terminal rendered asset";
   try {
-    if (navigator.clipboard.write && typeof ClipboardItem !== "undefined") {
+    if (format === "html" && navigator.clipboard.write && typeof ClipboardItem !== "undefined") {
       const item = new ClipboardItem({
-        "text/html": new Blob([html], { type: "text/html" }),
+        "text/html": new Blob([content], { type: "text/html" }),
         "text/plain": new Blob([plainText], { type: "text/plain" }),
       });
       await navigator.clipboard.write([item]);
       return;
     }
-    await navigator.clipboard.writeText(html);
+    await navigator.clipboard.writeText(content);
   } catch {
     try {
-      await navigator.clipboard.writeText(html);
+      await navigator.clipboard.writeText(content);
     } catch {
       throw new Error("Clipboard API unavailable");
     }

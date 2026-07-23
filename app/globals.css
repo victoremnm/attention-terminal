@@ -2713,36 +2713,42 @@ a { color: inherit; }
 .agent-answer-wrapper {
   position: relative;
 }
-.asset-copy-btn {
+.asset-copy-bar {
   position: absolute;
   top: 6px;
   right: 6px;
-  z-index: 1;
-  background: transparent;
+  z-index: 2;
+  display: flex;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity .15s;
+}
+.agent-answer-wrapper:hover .asset-copy-bar,
+.asset-copy-bar:focus-within {
+  opacity: 1;
+}
+.asset-copy-btn {
+  background: rgba(20, 23, 26, 0.85);
   border: 1px solid var(--line-soft);
   border-radius: 4px;
   color: var(--muted);
-  font-size: 8px;
+  font-size: 9px;
   letter-spacing: .06em;
   padding: 3px 6px;
   cursor: pointer;
-  opacity: 0;
-  transition: opacity .15s, color .15s, border-color .15s;
+  transition: color .15s, border-color .15s, background .15s;
   font-family: var(--mono);
   line-height: 1;
-}
-.agent-answer-wrapper:hover .asset-copy-btn,
-.asset-copy-btn:focus-visible {
-  opacity: 1;
 }
 .asset-copy-btn:hover {
   color: var(--cyan);
   border-color: var(--cyan);
+  background: rgba(31, 36, 41, 0.95);
 }
 .asset-copy-btn.copied {
-  opacity: 1;
   color: var(--emerald);
   border-color: var(--emerald);
+  background: rgba(31, 36, 41, 0.95);
 }
 
 /* --- Chat onboarding tooltip --- */
