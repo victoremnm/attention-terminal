@@ -249,12 +249,6 @@ export function RepoRankings({ windows }: { windows: Record<RepoWindow, RepoWind
         ))}
       </div>
 
-      <div className="rankings-meta mono" aria-live="polite">
-        <span>{NUMBER.format(summary.visible)} shown</span>
-        <span>{NUMBER.format(summary.total)} in window</span>
-        {query.trim() ? <span>filtered by &ldquo;{query.trim()}&rdquo;</span> : <span>showing top attention leaders</span>}
-      </div>
-
       <div className="rank-head mono">
         <span className="rank-num">#</span>
         <span className="rank-repo">REPO</span>
