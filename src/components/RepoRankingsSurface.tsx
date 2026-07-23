@@ -1,15 +1,15 @@
 import { ChatCtaBanner } from "@/components/ChatCtaBanner";
 import { RepoRankings } from "@/components/RepoRankings";
 import { SurfaceNav } from "@/components/SurfaceNav";
-import { repoActivityWindow, type RepoWindow, type RepoWindowRow } from "@/lib/queries";
+import { repoActivityWindow, type RankingMode, type RepoWindow, type RepoWindowRow } from "@/lib/queries";
 
 const RANKING_LIMIT = 50;
 
-export async function RepoRankingsSurface() {
+export async function RepoRankingsSurface({ mode = "events" }: { mode?: RankingMode }) {
   const [d1, d7, d30] = await Promise.all([
-    repoActivityWindow("1d", RANKING_LIMIT),
-    repoActivityWindow("7d", RANKING_LIMIT),
-    repoActivityWindow("30d", RANKING_LIMIT),
+    repoActivityWindow("1d", RANKING_LIMIT, mode),
+    repoActivityWindow("7d", RANKING_LIMIT, mode),
+    repoActivityWindow("30d", RANKING_LIMIT, mode),
   ]);
 
   const windows: Record<RepoWindow, RepoWindowRow[]> = {

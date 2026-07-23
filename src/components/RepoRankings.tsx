@@ -1,7 +1,8 @@
 "use client";
 
 import { useMemo, useRef, useState, useEffect } from "react";
-import type { RepoWindow, RepoWindowRow } from "@/lib/queries";
+import { useRouter, usePathname } from "next/navigation";
+import type { RepoWindow, RepoWindowRow, RankingMode } from "@/lib/queries";
 import type { RepoDrilldownPayload } from "@/lib/render-payload";
 import { RenderedAnswer } from "./RenderedAnswer";
 import { Sparkline } from "./charts";
@@ -15,19 +16,38 @@ const TABS: Array<{ key: RepoWindow; label: string }> = [
 
 const NUMBER = new Intl.NumberFormat("en-US");
 
+const RANKING_MODES: Array<{ key: RankingMode; label: string }> = [
+  { key: "events", label: "Events" },
+  { key: "pushes", label: "Pushes" },
+  { key: "commits", label: "Commits" },
+];
+
+const RANK_COLUMNS: Record<RankingMode, string> = {
+  events: "EVENTS",
+  pushes: "PUSHES",
+  commits: "COMMITS",
+};
+
+const RANK_VALUES: Record<RankingMode, (row: RepoWindowRow) => string> = {
+  events: (r) => NUMBER.format(r.events),
+  pushes: (r) => NUMBER.format(r.pushes),
+  commits: (r) => NUMBER.format(r.commits),
+};
+
 function RankRow({
   row,
   rank,
   state,
   onOpen,
+  mode = "events",
 }: {
   row: RepoWindowRow;
   rank: number;
   state: "idle" | "selected" | "loading";
   onOpen: (repo: string) => void;
+  mode?: RankingMode;
 }) {
   const subline = [row.language, row.description].filter(Boolean).join(" · ");
-  const sparkLabel = `${row.events} events over the selected window`;
   return (
     <button
       type="button"
@@ -35,7 +55,7 @@ function RankRow({
       data-state={state}
       onClick={() => onOpen(row.repo_name)}
       aria-pressed={state === "selected"}
-      aria-label={`${row.repo_name}. ${sparkLabel}. ${row.pushes} pushes, ${row.commits} commits, ${row.actors} actors.`}
+      aria-label={`${row.repo_name}. ${NUMBER.format(row.events)} events, ${NUMBER.format(row.pushes)} pushes, ${NUMBER.format(row.commits)} commits, ${NUMBER.format(row.actors)} actors.`}
     >
       <span className="rank-num">{rank}</span>
       <span className="rank-repo">
@@ -50,12 +70,14 @@ function RankRow({
         <span><b>{NUMBER.format(row.commits)}</b> commits</span>
         <span><b>{NUMBER.format(row.actors)}</b> actors</span>
       </span>
-      <span className="rank-events">{NUMBER.format(row.events)}</span>
+      <span className="rank-events">{RANK_VALUES[mode](row)}</span>
     </button>
   );
 }
 
-export function RepoRankings({ windows }: { windows: Record<RepoWindow, RepoWindowRow[]> }) {
+export function RepoRankings({ windows, mode = "events" }: { windows: Record<RepoWindow, RepoWindowRow[]>; mode?: RankingMode }) {
+  const router = useRouter();
+  const pathname = usePathname();
   const [active, setActive] = useState<RepoWindow>("1d");
   const [query, setQuery] = useState("");
 
@@ -195,10 +217,19 @@ export function RepoRankings({ windows }: { windows: Record<RepoWindow, RepoWind
         ))}
       </div>
 
-      <div className="rankings-meta mono" aria-live="polite">
-        <span>{NUMBER.format(summary.visible)} shown</span>
-        <span>{NUMBER.format(summary.total)} in window</span>
-        {query.trim() ? <span>filtered by &ldquo;{query.trim()}&rdquo;</span> : <span>showing top attention leaders</span>}
+      <div className="rankings-tabs mono" role="tablist" aria-label="Ranking dimension">
+        {RANKING_MODES.map((m) => (
+          <button
+            key={m.key}
+            type="button"
+            role="tab"
+            aria-selected={mode === m.key}
+            className="rankings-tab"
+            onClick={() => router.push(`${pathname}?mode=${m.key}`)}
+          >
+            {m.label}
+          </button>
+        ))}
       </div>
 
       <div className="rank-head mono">
@@ -206,7 +237,7 @@ export function RepoRankings({ windows }: { windows: Record<RepoWindow, RepoWind
         <span className="rank-repo">REPO</span>
         <span className="rank-spark">ACTIVITY</span>
         <span className="rank-stats">DETAILS</span>
-        <span className="rank-events">EVENTS</span>
+        <span className="rank-events">{RANK_COLUMNS[mode]}</span>
       </div>
 
       {rows.length === 0 ? (
@@ -225,6 +256,7 @@ export function RepoRankings({ windows }: { windows: Record<RepoWindow, RepoWind
                   : "idle"
             }
             onOpen={openRepo}
+            mode={mode}
           />
         ))
       )}
