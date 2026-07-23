@@ -17,3 +17,5 @@ reference-design/
 .codex/
 .antigravity/
 .agy/
+tsconfig.tsbuildinfo
+*.tsbuildinfo
