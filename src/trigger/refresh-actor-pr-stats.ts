@@ -10,7 +10,7 @@
 // for core REST), so this job fetches sequentially with an explicit delay
 // rather than refresh-repo-metadata's FETCH_CONCURRENCY batching.
 import { logger, metadata, schedules, tags } from "@trigger.dev/sdk";
-import { clickhouseInsert, selectRows } from "../lib/clickhouse";
+import { insertRows, selectRows } from "../lib/clickhouse";
 
 const GITHUB_API = "https://api.github.com";
 
@@ -243,7 +243,7 @@ export const refreshActorPrStats = schedules.task({
     if (rows.length > 0) {
       // Bulk insert via the batching insert client (async_insert settings) -
       // plain HTTP query bulk loads die at the load balancer (CLAUDE.md gotcha #2).
-      await clickhouseInsert.insert({ table: "gh_actor_pr_stats", values: rows, format: "JSONEachRow" });
+      await insertRows({ table: "gh_actor_pr_stats", values: rows, format: "JSONEachRow" });
     }
 
     logger.log("Refreshed GitHub actor PR stats", {

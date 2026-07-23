@@ -9,23 +9,99 @@ const base = {
 
 type Client = ReturnType<typeof createClient>;
 
-function lazyClient(factory: () => Client): Client {
+export interface ClickHouseClientHolder<TClient> {
+  get: () => TClient;
+  proxy: TClient;
+  reset: () => Promise<void>;
+}
+
+function lazyClient(factory: () => Client): ClickHouseClientHolder<Client> {
   let client: Client | undefined;
-  return new Proxy({} as Client, {
+  const get = () => {
+    if (!client) client = factory();
+    return client;
+  };
+  const reset = async () => {
+    const staleClient = client;
+    client = undefined;
+    await staleClient?.close().catch(() => undefined);
+  };
+  const proxy = new Proxy({} as Client, {
     get(_, prop) {
-      if (!client) client = factory();
-      const value = (client as unknown as Record<string | symbol, unknown>)[prop];
-      return typeof value === "function" ? (value as (...args: unknown[]) => unknown).bind(client) : value;
+      const currentClient = get();
+      const value = (currentClient as unknown as Record<string | symbol, unknown>)[prop];
+      return typeof value === "function" ? (value as (...args: unknown[]) => unknown).bind(currentClient) : value;
     },
   });
+  return { get, proxy, reset };
+}
+
+const QUERY_RETRY_DELAYS_MS = [250, 1_000] as const;
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+export function isTransientClickHouseNetworkError(error: unknown) {
+  const candidate = error as { code?: unknown; message?: unknown; cause?: unknown } | null;
+  const code = typeof candidate?.code === "string" ? candidate.code : "";
+  const message = typeof candidate?.message === "string" ? candidate.message : String(error ?? "");
+  const cause = candidate?.cause instanceof Error ? candidate.cause.message : String(candidate?.cause ?? "");
+  const details = `${code} ${message} ${cause}`.toUpperCase();
+
+  return [
+    "ECONNRESET",
+    "ECONNREFUSED",
+    "ETIMEDOUT",
+    "EPIPE",
+    "ENETUNREACH",
+    "EAI_AGAIN",
+    "CLIENT NETWORK SOCKET DISCONNECTED",
+    "SOCKET HANG UP",
+  ].some((marker) => details.includes(marker));
+}
+
+export async function withClickHouseRetry<TClient, TResult>(
+  holder: ClickHouseClientHolder<TClient>,
+  operation: (client: TClient) => Promise<TResult>,
+  operationName: string,
+  retryDelaysMs: readonly number[] = QUERY_RETRY_DELAYS_MS
+): Promise<TResult> {
+  let lastError: unknown;
+  const attempts = retryDelaysMs.length + 1;
+
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    try {
+      return await operation(holder.get());
+    } catch (error) {
+      lastError = error;
+      if (!isTransientClickHouseNetworkError(error) || attempt === attempts) throw error;
+
+      console.warn("[clickhouse] transient network error; reconnecting", {
+        operation: operationName,
+        attempt,
+        message: error instanceof Error ? error.message : String(error),
+      });
+      await holder.reset();
+      await sleep(retryDelaysMs[attempt - 1]);
+    }
+  }
+
+  throw lastError;
 }
 
 // Query/DDL client. Generous timeout because some statements make the server
 // pull and parse remote files (GH Archive hourly loads run 30-120s).
-export const clickhouse = lazyClient(() =>
+const queryClient = lazyClient(() =>
   createClient({
     ...base,
     request_timeout: 180_000,
+    max_open_connections: 2,
+    keep_alive: {
+      enabled: true,
+      idle_socket_ttl: 2_000,
+      eagerly_destroy_stale_sockets: true,
+    },
     clickhouse_settings: {
       // Keep the connection alive through load balancers during long
       // server-side pulls (e.g. GH Archive url() inserts).
@@ -34,18 +110,29 @@ export const clickhouse = lazyClient(() =>
     },
   })
 );
+export const clickhouse = queryClient.proxy;
 
 // Insert client: server-side batching with flush acknowledgement. Retries are
-// safe because hackernews is a ReplacingMergeTree and ingest_log is append-only.
-export const clickhouseInsert = lazyClient(() =>
+// deliberately opt-in through insertRows below because a lost connection can
+// happen after ClickHouse accepts an INSERT, which would duplicate append-only
+// rows if every insert were retried automatically.
+const insertClient = lazyClient(() =>
   createClient({
     ...base,
+    request_timeout: 180_000,
+    max_open_connections: 2,
+    keep_alive: {
+      enabled: true,
+      idle_socket_ttl: 2_000,
+      eagerly_destroy_stale_sockets: true,
+    },
     clickhouse_settings: {
       async_insert: 1,
       wait_for_async_insert: 1,
     },
   })
 );
+export const clickhouseInsert = insertClient.proxy;
 
 function splitTableName(table: string) {
   const trimmed = table.trim();
@@ -124,8 +211,22 @@ export async function ensureTablesExist(tables: string[]) {
 }
 
 export async function selectRows<T>(query: string): Promise<T[]> {
-  const result = await clickhouse.query({ query, format: "JSONEachRow" });
-  return result.json<T>();
+  return withClickHouseRetry(
+    queryClient,
+    async (client) => {
+      const result = await client.query({ query, format: "JSONEachRow" });
+      return result.json<T>();
+    },
+    "query"
+  );
+}
+
+/**
+ * Retry an INSERT only when the caller has idempotent semantics for it. A
+ * ReplacingMergeTree keyed by actor_login is safe for refresh-actor-pr-stats.
+ */
+export async function insertRows(params: Parameters<Client["insert"]>[0]) {
+  return withClickHouseRetry(insertClient, (client) => client.insert(params), "insert");
 }
 
 export async function logIngest(entry: {
