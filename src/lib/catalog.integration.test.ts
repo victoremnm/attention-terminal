@@ -29,6 +29,16 @@ describe.skipIf(!hasCH)("catalog metadata query (integration)", () => {
     }
   }, 30_000);
 
+  it("listTables reports returned metadata rows without claiming scanned rows", async () => {
+    const { listTables } = await import("./agent-tools");
+    const result = await (listTables as any).execute({});
+
+    expect(result.isFallback).not.toBe(true);
+    expect(result.tables.length).toBeLessThanOrEqual(50);
+    expect(result.provenance.rowsReturned).toBe(result.tables.length);
+    expect(result.provenance).not.toHaveProperty("rowsRead");
+  }, 30_000);
+
   it("catalogPromptSection returns a non-empty string", async () => {
     const { catalogPromptSection } = await import("./catalog");
     const text = await catalogPromptSection();

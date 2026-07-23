@@ -20,29 +20,33 @@ import { runDataRetrievalAgent } from "./agents/data-retrieval-agent";
 import { runVisualizationMappingAgent } from "./agents/visualization-mapping-agent";
 
 let clickhouse: ClickHouseClient | undefined;
+let tableListClickhouse: ClickHouseClient | undefined;
 
-function getClickHouse(): ClickHouseClient {
-  if (clickhouse) return clickhouse;
+const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
+export const TABLE_LIST_TIMEOUT_MS = 5_000;
 
-  if (process.env.CLICKHOUSE_URL) {
-    clickhouse = createClient({
-      url: process.env.CLICKHOUSE_URL,
-      username: process.env.CLICKHOUSE_USER ?? process.env.DB_USER ?? "default",
-      password: process.env.CLICKHOUSE_PASSWORD ?? process.env.DB_PASSWORD ?? "",
-      database: process.env.CLICKHOUSE_DATABASE ?? "default",
-      request_timeout: 30_000,
-    });
-    return clickhouse;
-  }
-
-  clickhouse = createClient({
+function createClickHouse(requestTimeoutMs: number): ClickHouseClient {
+  return createClient({
     url: process.env.CLICKHOUSE_URL ?? "http://localhost:8123",
     username: process.env.CLICKHOUSE_USER ?? process.env.DB_USER ?? "default",
     password: process.env.CLICKHOUSE_PASSWORD ?? process.env.DB_PASSWORD ?? "",
     database: process.env.CLICKHOUSE_DATABASE ?? "default",
-    request_timeout: 30_000,
+    request_timeout: requestTimeoutMs,
   });
+}
+
+function getClickHouse(): ClickHouseClient {
+  if (clickhouse) return clickhouse;
+
+  clickhouse = createClickHouse(DEFAULT_REQUEST_TIMEOUT_MS);
   return clickhouse;
+}
+
+function getTableListClickHouse(): ClickHouseClient {
+  if (tableListClickhouse) return tableListClickhouse;
+
+  tableListClickhouse = createClickHouse(TABLE_LIST_TIMEOUT_MS);
+  return tableListClickhouse;
 }
 
 const READ_ONLY_STATEMENTS = /^\s*(select|with|show|describe|desc|explain|exists)\b/i;
@@ -127,10 +131,11 @@ export const listTables = tool({
   execute: async () => {
     const t0 = Date.now();
     try {
-      const result = await getClickHouse().query({
+      const result = await getTableListClickHouse().query({
         query: LIST_TABLES_SQL,
         format: "JSONEachRow",
         query_params: { limit: TABLE_LIST_LIMIT },
+        abort_signal: AbortSignal.timeout(TABLE_LIST_TIMEOUT_MS),
         clickhouse_settings: {
           readonly: "2",
           max_execution_time: 5,
@@ -150,7 +155,7 @@ export const listTables = tool({
         provenance: {
           sql: LIST_TABLES_SQL,
           elapsedMs,
-          rowsRead: tables.length,
+          rowsReturned: tables.length,
           tables: ["system.tables"],
         },
       };
@@ -164,7 +169,7 @@ export const listTables = tool({
         provenance: {
           sql: LIST_TABLES_SQL,
           elapsedMs,
-          rowsRead: 0,
+          rowsReturned: 0,
           tables: ["system.tables"],
         },
       };

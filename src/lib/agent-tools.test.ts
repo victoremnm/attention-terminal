@@ -1,14 +1,19 @@
 import { describe, expect, it, vi } from "vitest";
 
 const mockQuery = vi.hoisted(() => vi.fn());
+const mockCreateClient = vi.hoisted(() => vi.fn(() => ({ query: mockQuery })));
 
 vi.mock("@clickhouse/client", () => ({
-  createClient: () => ({
-    query: mockQuery,
-  }),
+  createClient: mockCreateClient,
 }));
 
-import { FALLBACK_TABLES, LIST_TABLES_SQL, listTables, resetCatalogState } from "./agent-tools";
+import {
+  FALLBACK_TABLES,
+  LIST_TABLES_SQL,
+  listTables,
+  resetCatalogState,
+  TABLE_LIST_TIMEOUT_MS,
+} from "./agent-tools";
 
 describe("listTables tool", () => {
   it("returns bounded system.tables metadata with provenance timing", async () => {
@@ -32,13 +37,17 @@ describe("listTables tool", () => {
     });
     expect(res.provenance).toMatchObject({
       sql: LIST_TABLES_SQL,
-      rowsRead: 2,
+      rowsReturned: 2,
       tables: ["system.tables"],
     });
     expect(typeof res.provenance.elapsedMs).toBe("number");
+    expect(mockCreateClient).toHaveBeenCalledWith(
+      expect.objectContaining({ request_timeout: TABLE_LIST_TIMEOUT_MS })
+    );
     expect(mockQuery).toHaveBeenCalledWith(
       expect.objectContaining({
         query: LIST_TABLES_SQL,
+        abort_signal: expect.any(AbortSignal),
         clickhouse_settings: {
           readonly: "2",
           max_execution_time: 5,
@@ -58,7 +67,7 @@ describe("listTables tool", () => {
     expect(res.note).toContain("ClickHouse system.tables query failed or timed out");
     expect(res.provenance).toMatchObject({
       sql: LIST_TABLES_SQL,
-      rowsRead: 0,
+      rowsReturned: 0,
       tables: ["system.tables"],
     });
     expect(typeof res.provenance.elapsedMs).toBe("number");
