@@ -1,5 +1,7 @@
 "use client";
 
+import { useEffect, useMemo, useState } from "react";
+import type { RealtimeRunSkipColumns } from "@trigger.dev/core/v3";
 import { useRealtimeRunsWithTag } from "@trigger.dev/react-hooks";
 import type { ingestHackernews } from "@/trigger/ingest-hackernews";
 import type { ingestGhArchive } from "@/trigger/ingest-gharchive";
@@ -13,15 +15,53 @@ export interface IngestMeta {
   filesLoaded?: number;
 }
 
+const INGEST_SKIP_COLUMNS: RealtimeRunSkipColumns = [
+  "payload",
+  "output",
+  "startedAt",
+  "delayUntil",
+  "queuedAt",
+  "expiredAt",
+  "number",
+  "isTest",
+  "usageDurationMs",
+  "costInCents",
+  "baseCostInCents",
+  "ttl",
+  "payloadType",
+  "outputType",
+  "runTags",
+  "error",
+];
+
 // Subscribes to all ingestion runs (tag "ingest") over Trigger.dev Realtime.
 // Returns the moment fresh data last landed and what landed, so components
 // can tick without polling.
 export function useIngestPulse(accessToken?: string) {
-  const { runs, error } = useRealtimeRunsWithTag<IngestTask>("ingest", {
-    accessToken: accessToken ?? "",
-    enabled: Boolean(accessToken),
-    baseURL: process.env.NEXT_PUBLIC_TRIGGER_API_URL,
-  });
+  const [realtimeEnabled, setRealtimeEnabled] = useState(Boolean(accessToken));
+
+  useEffect(() => {
+    setRealtimeEnabled(Boolean(accessToken));
+  }, [accessToken]);
+
+  const realtimeOptions = useMemo(() => {
+    return {
+      accessToken: accessToken ?? "",
+      enabled: Boolean(accessToken) && realtimeEnabled,
+      skipColumns: INGEST_SKIP_COLUMNS,
+      ...(process.env.NEXT_PUBLIC_TRIGGER_API_URL
+        ? { baseURL: process.env.NEXT_PUBLIC_TRIGGER_API_URL }
+        : {}),
+    };
+  }, [accessToken, realtimeEnabled]);
+
+  const { runs, error } = useRealtimeRunsWithTag<IngestTask>("ingest", realtimeOptions);
+
+  useEffect(() => {
+    // Keep realtime subscribed so consumers without a polling fallback can recover
+    // after transient network errors without going stale.
+    if (error) setRealtimeEnabled(true);
+  }, [error]);
 
   let lastIngestAt: Date | null = null;
   let lastIngest: IngestMeta | null = null;

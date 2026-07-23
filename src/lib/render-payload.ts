@@ -137,31 +137,20 @@ export const MatrixSchema = z.object({
   })),
 });
 
-// Progressive-enhancement shape (issue #143): `summary` + `data` are cheap to
-// render immediately (text + HTML table); `visualization` is the only part
-// that lazy-loads, and only for the chart types RenderedAnswer actually
-// implements (see SUPPORTED_MORPHING_CHARTS) — every other taxonomy entry
-// degrades to the data table instead of a placeholder.
-export const MorphingCardVisualizationSchema = z.object({
-  visualizationType: VisualizationTypeSchema,
-  chartConfig: z.record(z.string(), z.unknown()),
+// view-SQL: the exact query behind the card + real read stats. Not a reconstruction.
+export const CardQuerySchema = z.object({
+  sql: z.string(),
+  rowsRead: z.number().int().nonnegative(),
+  elapsedMs: z.number().nonnegative(),
 });
-
-const MorphingCardCellSchema = z.union([z.string(), z.number(), z.boolean(), z.null()]);
-export const MorphingCardDataRowSchema = z.record(z.string(), MorphingCardCellSchema);
 
 export const MorphingCardSchema = z.object({
   type: z.literal("morphing-card"),
+  visualizationType: VisualizationTypeSchema,
   generatedAt: z.string(),
-  summary: z.string().max(500).optional(),
-  data: z.array(MorphingCardDataRowSchema).max(200).optional(),
-  visualization: MorphingCardVisualizationSchema.optional(),
-  freshness: z.string().max(160).optional(),
-  // Legacy top-level shape (pre-#143). Kept optional so older payload
-  // producers still validate; RenderedAnswer treats these as an implicit
-  // `visualization` when the new field is absent.
-  visualizationType: VisualizationTypeSchema.optional(),
-  chartConfig: z.record(z.string(), z.unknown()).optional(),
+  chartConfig: z.record(z.string(), z.unknown()),
+  summary: z.string().optional(),
+  query: CardQuerySchema.optional(),
 });
 
 // --- Daily Skinny deck (tactile finishable card deck; see docs/architecture/AGENT-FLEET-PLAN.md §4.2) ---
@@ -201,13 +190,6 @@ export const SkinnyVisualSchema = z.discriminatedUnion("kind", [
   DivergenceVisualSchema,
   CandlesVisualSchema,
 ]);
-
-// view-SQL: the exact query behind the card + real read stats. Not a reconstruction.
-export const CardQuerySchema = z.object({
-  sql: z.string(),
-  rowsRead: z.number().int().nonnegative(),
-  elapsedMs: z.number().nonnegative(),
-});
 
 export const SkinnyCommentSchema = z.object({
   author: z.string().max(120),
@@ -412,7 +394,5 @@ export type RepoDrilldownTrend = NonNullable<RepoDrilldownPayload["trends"]>[num
 export type RepoDrilldownTrendEvent = RepoDrilldownTrend["events"][number];
 export type RepoDrilldownPulse = NonNullable<RepoDrilldownPayload["pulse"]>;
 export type MorphingCardPayload = z.infer<typeof MorphingCardSchema>;
-export type MorphingCardVisualization = z.infer<typeof MorphingCardVisualizationSchema>;
-export type MorphingCardDataRow = z.infer<typeof MorphingCardDataRowSchema>;
 export type VisualizationType = z.infer<typeof VisualizationTypeSchema>;
 export type RenderPayload = z.infer<typeof RenderPayloadSchema>;

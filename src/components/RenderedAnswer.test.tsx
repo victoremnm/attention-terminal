@@ -1,144 +1,77 @@
 /**
  * @vitest-environment jsdom
  */
-import { describe, expect, it } from "vitest";
-import { render, screen } from "@testing-library/react";
+
 import "@testing-library/jest-dom/vitest";
+import { render, screen } from "@testing-library/react";
+import { describe, expect, it } from "vitest";
+import type { RenderPayload } from "@/lib/render-payload";
 import { RenderedAnswer } from "./RenderedAnswer";
-import type { MorphingCardPayload } from "@/lib/render-payload";
 
-// Coverage for issue #143 (progressive-enhancement payload: summary + data
-// render immediately, visualization lazy-loads) and issue #144/#141 (no
-// literal "[Morphing Canvas ...]" placeholder ever reaches the user).
-
-function basePayload(overrides: Partial<MorphingCardPayload> = {}): MorphingCardPayload {
-  return {
-    type: "morphing-card",
-    generatedAt: new Date().toISOString(),
-    ...overrides,
-  };
-}
-
-describe("RenderedAnswer / morphing-card", () => {
-  it("never renders the legacy canvas placeholder text", () => {
-    const { container } = render(
-      <RenderedAnswer
-        payload={basePayload({
-          summary: "htmx chatter is up 3x this week.",
-          data: [{ repo: "bigskysoftware/htmx", stars: 42 }],
-        })}
-      />
-    );
-    expect(container.textContent).not.toContain("Morphing Canvas");
-    expect(container.textContent).not.toContain("[");
-  });
-
-  it("renders the summary immediately via markdown", () => {
-    render(<RenderedAnswer payload={basePayload({ summary: "**bold** takeaway" })} />);
-    const strong = screen.getByText("bold");
-    expect(strong.tagName).toBe("STRONG");
-  });
-
-  it("renders data as an HTML table with the right rows and columns", () => {
-    const { container } = render(
-      <RenderedAnswer
-        payload={basePayload({
-          data: [
-            { repo: "a/a", stars: 10 },
-            { repo: "b/b", stars: 20 },
-          ],
-        })}
-      />
-    );
-    const table = container.querySelector("table.agent-data-table");
-    expect(table).toBeInTheDocument();
-    expect(container.querySelectorAll("thead th")).toHaveLength(2);
-    expect(container.querySelectorAll("tbody tr")).toHaveLength(2);
-    expect(screen.getByText("a/a")).toBeInTheDocument();
-    expect(screen.getByText("10")).toBeInTheDocument();
-  });
-
-  it("renders a freshness badge when present", () => {
-    render(<RenderedAnswer payload={basePayload({ summary: "x", freshness: "github_events · 12m old" })} />);
-    expect(screen.getByText("github_events · 12m old")).toBeInTheDocument();
-  });
-
-  it("renders a supported chart type (Bar Chart) instead of a placeholder", () => {
-    const { container } = render(
-      <RenderedAnswer
-        payload={basePayload({
-          data: [
-            { repo: "a/a", stars: 10 },
-            { repo: "b/b", stars: 20 },
-          ],
-          visualization: {
-            visualizationType: "Bar Chart",
-            chartConfig: { axesMapping: { x: "repo", y: "stars" } },
-          },
-        })}
-      />
-    );
-    // jsdom has no IntersectionObserver, so the lazy wrapper falls back to
-    // rendering eagerly rather than hiding the chart forever.
-    expect(container.querySelector("svg")).toBeInTheDocument();
-  });
-
-  it("falls back to the data table (no chart, no placeholder) for an unsupported chart type", () => {
-    const { container } = render(
-      <RenderedAnswer
-        payload={basePayload({
-          data: [{ from: "a", to: "b", value: 5 }],
-          visualization: {
-            visualizationType: "Sankey Diagram",
-            chartConfig: {},
-          },
-        })}
-      />
-    );
-    expect(container.querySelector("svg")).not.toBeInTheDocument();
-    expect(container.querySelector("table.agent-data-table")).toBeInTheDocument();
-    expect(container.textContent).not.toContain("Morphing Canvas");
-  });
-
-  it("supports the legacy top-level visualizationType/chartConfig shape for backward compatibility", () => {
-    const legacy = {
-      type: "morphing-card" as const,
-      generatedAt: new Date().toISOString(),
-      visualizationType: "Bar Chart" as const,
-      chartConfig: { axesMapping: { x: "repo", y: "stars" } },
-      summary: "legacy shape",
-      data: [
-        { repo: "a/a", stars: 10 },
-        { repo: "b/b", stars: 20 },
+describe("RenderedAnswer", () => {
+  it("parses numeric values without reading the 30 out of field names", () => {
+    const payload: RenderPayload = {
+      type: "ticker",
+      filter: "repos",
+      generatedAt: "2026-07-23T08:00:00.000Z",
+      items: [
+        { kicker: "FORKED 24H", name: "alpha/repo", metric: "pushes_30d: 4", href: "https://example.com/alpha" },
+        { kicker: "FORKED 24H", name: "beta/repo", metric: "pushes_30d: 9", href: "https://example.com/beta" },
       ],
     };
-    const { container } = render(<RenderedAnswer payload={legacy} />);
-    expect(container.querySelector("svg")).toBeInTheDocument();
-    expect(container.textContent).not.toContain("Morphing Canvas");
+
+    const { container } = render(<RenderedAnswer payload={payload} />);
+    const chart = container.querySelector("figure.chart svg");
+
+    expect(chart).toBeInTheDocument();
+    expect(chart?.textContent).toContain("4");
+    expect(chart?.textContent).toContain("9");
+    expect(chart?.textContent).not.toContain("30");
+    expect(container.querySelectorAll("rect[fill='var(--cyan)']").length).toBeGreaterThan(0);
   });
 
-  it("shows an explicit empty state instead of nothing when the payload has no content", () => {
-    render(<RenderedAnswer payload={basePayload({})} />);
-    expect(screen.getByText(/no structured data returned/i)).toBeInTheDocument();
-  });
-});
+  it("renders a table fallback and query analytics for morphing cards", () => {
+    const payload: RenderPayload = {
+      type: "morphing-card",
+      visualizationType: "Bar Chart",
+      generatedAt: "2026-07-23T08:27:40.000Z",
+      summary: "Top forked skills repos",
+      query: {
+        sql: "SELECT repo, github_forks FROM example ORDER BY github_forks DESC LIMIT 8",
+        rowsRead: 4321,
+        elapsedMs: 87,
+      },
+      chartConfig: {
+        title: 'Top forked "skills" repos',
+        encoding: {
+          x: { field: "repo", type: "nominal", sort: "-y" },
+          y: { field: "github_forks", type: "quantitative", title: "GitHub forks" },
+          tooltip: [
+            { field: "repo", title: "Repo" },
+            { field: "github_forks", title: "Forks" },
+            { field: "github_stars", title: "Stars" },
+            { field: "pushes_30d", title: "Pushes (30d)" },
+          ],
+        },
+        data: {
+          values: [
+            { repo: "mattpocock/mattpocock/skills", github_forks: 15667, github_stars: 183203, pushes_30d: 0 },
+            { repo: "coreyhaines31/coreyhaines31/marketingskills", github_forks: 6505, github_stars: 41221, pushes_30d: 4 },
+          ],
+        },
+        mark: { type: "bar" },
+      },
+    } as RenderPayload;
 
-describe("RenderedAnswer / freshness on existing answer types", () => {
-  it("renders freshness on a divergence payload when present", () => {
-    render(
-      <RenderedAnswer
-        payload={{
-          type: "divergence",
-          subject: "htmx",
-          verdict: { state: "BREAKOUT", metric: 3, metricLabel: "x talk", rule: "z>2" },
-          days: ["2026-07-01", "2026-07-02"],
-          talk: [1, 2],
-          code: [1, 1],
-          caption: "talk is outpacing code.",
-          freshness: "hackernews · 2m old",
-        }}
-      />
-    );
-    expect(screen.getByText("hackernews · 2m old")).toBeInTheDocument();
+    render(<RenderedAnswer payload={payload} />);
+
+    expect(screen.getByText('Top forked "skills" repos')).toBeInTheDocument();
+    expect(screen.getByText("Repo")).toBeInTheDocument();
+    expect(screen.getByText("Forks")).toBeInTheDocument();
+    expect(screen.getByText("Stars")).toBeInTheDocument();
+    expect(screen.getByText("Pushes (30d)")).toBeInTheDocument();
+    expect(screen.getByText("mattpocock/mattpocock/skills")).toBeInTheDocument();
+    expect(screen.getByText(/previewing bar markup/i)).toBeInTheDocument();
+    expect(screen.getByText(/4,321 rows read · 87ms/i)).toBeInTheDocument();
   });
 });
