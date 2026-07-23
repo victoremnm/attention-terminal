@@ -315,14 +315,21 @@ export function VerticalBarChart({
   items,
   title,
   unit = "",
+  scale = "linear",
 }: {
   items: BarItem[];
   title?: string;
   unit?: string;
+  // "log" scales bar HEIGHT only (via log1p) for high-variance datasets where a
+  // few outliers would otherwise flatten every other bar to ~0px. The value
+  // label above each bar always shows the real, untransformed number.
+  scale?: "linear" | "log";
 }) {
   if (!items || items.length === 0) return null;
 
   const maxVal = Math.max(...items.map((i) => i.value), 1);
+  const magnitude = (v: number) => (scale === "log" ? Math.log1p(Math.max(0, v)) : v);
+  const maxMagnitude = Math.max(magnitude(maxVal), 1);
   const W = 640;
   const H = 200;
   const padL = 36;
@@ -348,7 +355,7 @@ export function VerticalBarChart({
         {items.map((item, idx) => {
           const xCenter = padL + idx * step + step / 2;
           const xLeft = xCenter - barW / 2;
-          const h = (item.value / maxVal) * ih;
+          const h = (magnitude(item.value) / maxMagnitude) * ih;
           const y = H - padB - h;
           const barColor = item.color || "var(--cyan)";
 

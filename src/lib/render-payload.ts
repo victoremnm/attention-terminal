@@ -153,6 +153,21 @@ export const MorphingCardSchema = z.object({
   query: CardQuerySchema.optional(),
 });
 
+export const TableColumnSchema = z.object({
+  key: z.string(),
+  label: z.string(),
+  type: z.enum(["number", "string", "date", "link"]).default("string"),
+});
+
+export const TablePayloadSchema = z.object({
+  type: z.literal("table"),
+  columns: z.array(TableColumnSchema).min(1).max(20),
+  rows: z.array(z.record(z.string(), z.unknown())),
+  totals: z.record(z.string(), z.number()).optional(),
+  summary: z.string().optional(),
+  query: CardQuerySchema.optional(),
+});
+
 // --- Daily Skinny deck (tactile finishable card deck; see docs/architecture/AGENT-FLEET-PLAN.md §4.2) ---
 
 export const DevPointSchema = z.object({
@@ -372,6 +387,7 @@ export const RenderPayloadSchema = z.discriminatedUnion("type", [
   SkinnyDeckSchema,
   RepoDrilldownSchema,
   MorphingCardSchema,
+  TablePayloadSchema,
 ]);
 
 export type Verdict = z.infer<typeof VerdictSchema>;
@@ -394,5 +410,7 @@ export type RepoDrilldownTrend = NonNullable<RepoDrilldownPayload["trends"]>[num
 export type RepoDrilldownTrendEvent = RepoDrilldownTrend["events"][number];
 export type RepoDrilldownPulse = NonNullable<RepoDrilldownPayload["pulse"]>;
 export type MorphingCardPayload = z.infer<typeof MorphingCardSchema>;
+export type TableColumn = z.infer<typeof TableColumnSchema>;
+export type TablePayload = z.infer<typeof TablePayloadSchema>;
 export type VisualizationType = z.infer<typeof VisualizationTypeSchema>;
 export type RenderPayload = z.infer<typeof RenderPayloadSchema>;

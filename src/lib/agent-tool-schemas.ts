@@ -1,6 +1,6 @@
 import { tool } from "ai";
 import { z } from "zod";
-import { RenderPayloadSchema } from "./render-payload";
+import { RenderPayloadSchema, VisualizationTypeSchema, CardQuerySchema, TableColumnSchema } from "./render-payload";
 
 // Schema-only tool definitions, shared between the agent task (which attaches
 // execute functions in agent-tools.ts) and the /api/chat head-start route.
@@ -70,7 +70,7 @@ export const renderAnswerDef = {
 
 export const runDataRetrievalDef = {
   description:
-    "Data Retrieval Agent: Translates semantic intent into ClickHouse SQL, executes the query, persists the raw result set to temporary storage, and returns schema metadata, summary statistics (variance, cardinality, data types), and a retrieval key.",
+    "Data Retrieval Agent: Translates semantic intent into ClickHouse SQL, executes the query, persists the full raw result set to temporary storage, and returns schema metadata, summary statistics (variance, cardinality, data types), a retrieval key, and a bounded `sampleRows` array (<=50 rows) — pass sampleRows straight into buildMorphingCard's `rows` argument (or directly into a morphing-card payload's `chartConfig.data.values`, unmodified) so the answer renders as a table immediately instead of a placeholder.",
   inputSchema: z.object({
     intent: z.string().min(1).max(12_000),
   }),
@@ -78,12 +78,41 @@ export const runDataRetrievalDef = {
 
 export const runVisualizationMappingDef = {
   description:
-    "Visualization Mapping Agent: Maps data metadata and semantic intent against the data storytelling taxonomy to return a UI configuration payload (chart type, axes mapping, stylistic overrides).",
+    "Visualization Mapping Agent: Maps data metadata and semantic intent against the data storytelling taxonomy to return a UI configuration payload (chart type, axes mapping, stylistic overrides). The client only renders chart types Line Graph, Area Chart, and Bar Chart from this taxonomy — for any other chartType, still call buildMorphingCard with your rows (or populate the morphing-card payload's `chartConfig.data.values` directly) so the answer shows a table instead of nothing.",
   inputSchema: z.object({
     intent: z.string(),
     metadata: z.record(z.string(), z.unknown()),
   }),
 } as const;
+
+export const buildMorphingCardDef = {
+  description:
+    "Deterministically builds a valid morphing-card renderAnswer payload from row objects you already have (from runReadOnlyQuery's `rows` or runDataRetrieval's `sampleRows`). Always prefer this over hand-constructing chartConfig yourself -- it guarantees the exact shape the client needs, so the table (and chart, for supported visualizationTypes) always renders. Pass the returned object straight into renderAnswer's `payload` argument, unmodified.",
+  inputSchema: z.object({
+    rows: z.array(z.record(z.string(), z.unknown())).min(1).max(50).describe("Row objects exactly as returned by runReadOnlyQuery/runDataRetrieval -- do not rename, restructure, or drop keys."),
+    columns: z
+      .array(z.object({ field: z.string(), title: z.string() }))
+      .max(12)
+      .optional()
+      .describe("Optional column display order/labels. Defaults to every key in the first row, in that row's own key order, humanized (snake_case -> Title Case)."),
+    visualizationType: VisualizationTypeSchema.default("Data Table"),
+    summary: z.string().max(500).optional(),
+    query: CardQuerySchema.optional(),
+  }),
+} as const;
+
+export const buildTablePayloadDef = {
+  description:
+    "Deterministically builds a typed table renderAnswer payload from columns and rows you already have. Use this when you want to display tabular data with explicit column types, alignment, and optional totals. Pass the returned object straight into renderAnswer's `payload` argument, unmodified.",
+  inputSchema: z.object({
+    columns: z.array(TableColumnSchema).min(1).max(20).describe("Column definitions with key, label, type (number/string/date/link)."),
+    rows: z.array(z.record(z.string(), z.unknown())).min(0).max(200).describe("Row objects — values keyed by the column keys defined above."),
+    totals: z.record(z.string(), z.number()).optional().describe("Optional totals row for numeric columns. Keys match column keys."),
+    summary: z.string().max(500).optional(),
+    query: CardQuerySchema.optional(),
+  }),
+} as const;
+
 export const attentionToolSchemas = {
   listTables: tool(listTablesDef),
   describeTable: tool(describeTableDef),
@@ -94,4 +123,6 @@ export const attentionToolSchemas = {
   renderAnswer: tool(renderAnswerDef),
   runDataRetrieval: tool(runDataRetrievalDef),
   runVisualizationMapping: tool(runVisualizationMappingDef),
+  buildMorphingCard: tool(buildMorphingCardDef),
+  buildTablePayload: tool(buildTablePayloadDef),
 };

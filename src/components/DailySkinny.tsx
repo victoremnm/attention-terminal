@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { DigestCluster, DigestPayload, EvidenceLink } from "@/lib/render-payload";
 import { Sparkline } from "./charts";
 import { useIngestPulse } from "./useIngestPulse";
+import { copyToClipboard, exportAssetAsMarkdown } from "@/lib/asset-export";
 
 const BAND_LABELS: Record<DigestCluster["band"], string> = {
   shipping: "SHIPPING",
@@ -145,12 +146,36 @@ export function DailySkinny({ initial, ingestToken }: { initial: DigestPayload; 
     [digest.clusters]
   );
 
+  const [copiedMd, setCopiedMd] = useState(false);
+
+  async function handleCopyMd() {
+    try {
+      const md = exportAssetAsMarkdown(digest);
+      await copyToClipboard(md, "markdown");
+      setCopiedMd(true);
+      setTimeout(() => setCopiedMd(false), 2000);
+    } catch {
+      setCopiedMd(false);
+    }
+  }
+
   return (
     <main className="skinny-shell">
       <header className="skinny-masthead">
         <div>
           <p className="skinny-kicker mono">ATTENTION_TERMINAL</p>
-          <h1>THE DAILY SKINNY</h1>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <h1>THE DAILY SKINNY</h1>
+            <button
+              type="button"
+              className={`asset-copy-btn${copiedMd ? " copied" : ""}`}
+              onClick={handleCopyMd}
+              style={{ opacity: 1, position: "static" }}
+              aria-label="Copy Daily Skinny as Markdown"
+            >
+              {copiedMd ? "Copied MD!" : "Copy Markdown"}
+            </button>
+          </div>
           <p className="skinny-meta mono">
             {new Intl.DateTimeFormat("en-US", { dateStyle: "full", timeZone: "UTC" }).format(new Date(digest.generatedAt))}
             <span>{digest.clusters.length} things worth your attention</span>

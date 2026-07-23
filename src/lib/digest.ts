@@ -1,23 +1,56 @@
 import { q } from "./queries";
 import { DigestSchema, type DigestCluster, type DigestPayload, type EvidenceLink, type Verdict } from "./render-payload";
 
-const TOPICS = [
-  { key: "postgres", subject: "Postgres 18", tokens: ["postgres", "postgresql", "pg"], repos: ["postgres", "postgresql"] },
-  { key: "sqlite", subject: "SQLite", tokens: ["sqlite"], repos: ["sqlite"] },
-  { key: "clickhouse", subject: "ClickHouse", tokens: ["clickhouse"], repos: ["clickhouse"] },
-  { key: "bun", subject: "Bun", tokens: ["bun", "oven"], repos: ["oven-sh/bun", "bun"] },
-  { key: "deno", subject: "Deno", tokens: ["deno"], repos: ["denoland/deno", "deno"] },
-  { key: "rust", subject: "Rust", tokens: ["rust"], repos: ["rust-lang", "rust"] },
-  { key: "react", subject: "React", tokens: ["react"], repos: ["facebook/react", "react"] },
-  { key: "nextjs", subject: "Next.js", tokens: ["nextjs", "next"], repos: ["vercel/next.js", "next.js"] },
-  { key: "tailwind", subject: "Tailwind CSS", tokens: ["tailwind"], repos: ["tailwindlabs/tailwindcss", "tailwind"] },
-  { key: "llama", subject: "Llama", tokens: ["llama"], repos: ["llama"] },
-  { key: "qwen", subject: "Qwen", tokens: ["qwen"], repos: ["qwen"] },
-  { key: "graphify", subject: "Graphify", tokens: ["graphify"], repos: ["graphify-labs/graphify", "graphify"] },
-  { key: "attention-terminal", subject: "Attention Terminal", tokens: ["attention", "terminal"], repos: ["victoremnm/attention-terminal", "clickhouse-trigger-hackathon"] },
-] as const;
+interface Topic {
+  key: string;
+  subject: string;
+  tokens: string[];
+  repos: string[];
+}
 
-type Topic = (typeof TOPICS)[number];
+interface TaxonomyRow {
+  key: string;
+  display_name: string;
+  hn_tokens: string[];
+  gh_repo_patterns: string[];
+  rank: number;
+}
+
+// Cache for taxonomy, fetched once per process
+let cachedTopics: Topic[] | null = null;
+
+async function getTaxonomy(): Promise<Topic[]> {
+  // Return cached version if available
+  if (cachedTopics !== null) {
+    return cachedTopics;
+  }
+
+  try {
+    const { rows } = await q<TaxonomyRow>(
+      "SELECT key, display_name, hn_tokens, gh_repo_patterns, rank FROM daily_skinny_taxonomy ORDER BY rank",
+      ["daily_skinny_taxonomy"]
+    );
+
+    cachedTopics = rows.map((row) => ({
+      key: row.key,
+      subject: row.display_name,
+      tokens: row.hn_tokens,
+      repos: row.gh_repo_patterns.map((pattern) => pattern.replace(/%/g, "")),
+    }));
+
+    return cachedTopics;
+  } catch (error) {
+    // Fallback to empty array if the table doesn't exist yet (or the query
+    // otherwise fails). Deliberately do NOT cache this failure: caching []
+    // here would permanently short-circuit every future call for the
+    // lifetime of the process (e.g. a request racing the
+    // daily_skinny_taxonomy migration would poison the cache forever, even
+    // after the migration completes moments later). Leave cachedTopics null
+    // so the next call retries the query fresh.
+    console.warn("Failed to fetch daily_skinny_taxonomy:", error);
+    return [];
+  }
+}
 
 interface ActivityRow {
   subject: string;
@@ -119,6 +152,7 @@ function activitySql() {
 
 export async function dailyDigest(noiseFloor = 0): Promise<DigestPayload> {
   const safeFloor = clamp01(noiseFloor);
+  const topics = await getTaxonomy();
   const { rows } = await q<ActivityRow>(activitySql(), ["daily_skinny_subject_hourly"]);
   const bySubject = new Map<string, ActivityRow[]>();
   for (const row of rows) {
@@ -128,8 +162,13 @@ export async function dailyDigest(noiseFloor = 0): Promise<DigestPayload> {
   }
 
   const clusters = [...bySubject.entries()]
-    .map(([subject, subjectRows]) => {
-      const topic = TOPICS.find((candidate) => candidate.subject === subject);
+    .map(([subject, subjectRows]) => ({ subject, subjectRows, topic: topics.find((candidate) => candidate.subject === subject) }))
+    // daily_skinny_subject_hourly hardcodes its own subject matching independently of
+    // daily_skinny_taxonomy, so it can still emit subjects (e.g. this project's own
+    // self-referential "Attention Terminal") that the taxonomy deliberately excludes.
+    // Only surface clusters the taxonomy recognizes.
+    .filter(({ topic }) => topic !== undefined)
+    .map(({ subject, subjectRows, topic }) => {
       const recent = subjectRows.filter((row) => row.age === 0);
       const baseline = subjectRows.filter((row) => row.age > 0);
       const talk24h = sum(recent.map((row) => Number(row.talk_threads)));
@@ -178,12 +217,13 @@ export async function dailyDigest(noiseFloor = 0): Promise<DigestPayload> {
   });
 }
 
-export function topicForId(id: string) {
-  return TOPICS.find((topic) => slug(topic.subject) === id || topic.key === id);
+async function topicForId(id: string) {
+  const topics = await getTaxonomy();
+  return topics.find((topic) => slug(topic.subject) === id || topic.key === id);
 }
 
 export async function debateTakes(subjectId: string) {
-  const topic = topicForId(subjectId);
+  const topic = await topicForId(subjectId);
   if (!topic) return null;
   const { rows } = await q<TakeRow>(
     `SELECT id, title, score, greatest(descendants, 0) AS comments

@@ -1,10 +1,62 @@
 "use client";
 
-import { useState } from "react";
-import type { CandlesPayload, DigestPayload, DivergencePayload, MatrixPayload, MorphingCardPayload, RenderPayload, RepoDrilldownPayload, RepoDrilldownActivity, RepoDrilldownPulse, RepoDrilldownTrend, TickerPayload, VerdictTile } from "@/lib/render-payload";
+import { useState, type ReactNode } from "react";
+import type { CandlesPayload, DigestPayload, DivergencePayload, MatrixPayload, MorphingCardPayload, RenderPayload, RepoDrilldownPayload, RepoDrilldownActivity, RepoDrilldownPulse, RepoDrilldownTrend, TableColumn, TablePayload, TickerPayload, VerdictTile } from "@/lib/render-payload";
 import { VERDICT_COLOR } from "@/lib/verdict-color";
 import { AreaChart, DualLine, HorizontalBarChart, Sparkline, VerticalBarChart } from "./charts";
+import { MarkdownText } from "./MarkdownText";
 import { SkinnyDeck } from "./SkinnyDeck";
+import { copyToClipboard, exportAssetAsHTML, exportAssetAsMarkdown } from "@/lib/asset-export";
+
+function CopyBtn({ payload }: { payload: RenderPayload }) {
+  const [copiedFormat, setCopiedFormat] = useState<"markdown" | "html" | null>(null);
+
+  async function handleCopy(format: "markdown" | "html") {
+    try {
+      const content = format === "markdown" ? exportAssetAsMarkdown(payload) : exportAssetAsHTML(payload);
+      await copyToClipboard(content, format);
+      setCopiedFormat(format);
+      setTimeout(() => setCopiedFormat(null), 2000);
+    } catch {
+      setCopiedFormat(null);
+    }
+  }
+
+  return (
+    <div className="asset-copy-bar">
+      <button
+        type="button"
+        className={`asset-copy-btn${copiedFormat === "markdown" ? " copied" : ""}`}
+        onClick={() => handleCopy("markdown")}
+        aria-label="Copy as Markdown"
+      >
+        {copiedFormat === "markdown" ? "Copied MD!" : "Copy Markdown"}
+      </button>
+      <button
+        type="button"
+        className={`asset-copy-btn${copiedFormat === "html" ? " copied" : ""}`}
+        onClick={() => handleCopy("html")}
+        aria-label="Copy as HTML"
+      >
+        {copiedFormat === "html" ? "Copied HTML!" : "Copy HTML"}
+      </button>
+    </div>
+  );
+}
+
+function CopyableAnswer({ payload, showCopy = true, children }: { payload: RenderPayload; showCopy?: boolean; children: React.ReactNode }) {
+  return (
+    <div className="agent-answer-wrapper">
+      {showCopy && <CopyBtn payload={payload} />}
+      {children}
+    </div>
+  );
+}
+
+function FreshnessBadge({ freshness }: { freshness?: string }) {
+  if (!freshness) return null;
+  return <span className="agent-freshness mono">{freshness}</span>;
+}
 
 function VerdictBadge({ verdict }: { verdict: VerdictTile }) {
   return (
@@ -110,6 +162,15 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
+// Query rows often serialize numeric aggregates as strings (e.g. ClickHouse's
+// UInt64 counts), so a plain `typeof === "number"` check misses valid metric
+// candidates like { stories: "2202" }.
+function isFiniteNumeric(value: unknown): boolean {
+  if (typeof value === "number") return Number.isFinite(value);
+  if (typeof value === "string" && value.trim().length > 0) return Number.isFinite(Number(value));
+  return false;
+}
+
 function humanizeKey(key: string) {
   return key
     .replace(/_/g, " ")
@@ -187,6 +248,7 @@ function DivergenceAnswer({ payload }: { payload: DivergencePayload }) {
       <VerdictBadge verdict={payload.verdict} />
       <DualLine days={payload.days} a={payload.talk} b={payload.code} aLabel="talk · HN" bLabel="code · GH" />
       <p className="agent-caption">{payload.caption}</p>
+      <FreshnessBadge freshness={payload.freshness} />
     </div>
   );
 }
@@ -197,6 +259,7 @@ function CandlesAnswer({ payload }: { payload: CandlesPayload }) {
       <div className="agent-answer-head mono">{payload.subject}</div>
       <VerdictBadge verdict={payload.verdict} />
       <AreaChart days={payload.days} values={payload.values} label={payload.caption} />
+      <FreshnessBadge freshness={payload.freshness} />
     </div>
   );
 }
@@ -684,6 +747,68 @@ function RepoDrilldownAnswer({ payload }: { payload: RepoDrilldownPayload }) {
   );
 }
 
+// Adapter: turns a morphing-card's raw row objects + Vega-Lite-ish chartConfig
+// into one of the existing SVG chart components (see ./charts). Returns null
+// whenever the visualizationType/mark isn't chart-capable (yet) or the data
+// is too sparse to plot — callers fall back to the MorphingCardTable in
+// that case, they never crash. Supported set is intentionally minimal:
+// Bar Chart, Line Graph, Area Chart. Everything else (Pie Chart, Treemap,
+// Stacked Bar Chart, Scatterplot, ...) has no matching component and must
+// keep rendering the table.
+function buildMorphingChart(
+  markType: string,
+  visualizationType: MorphingCardPayload["visualizationType"],
+  dataValues: MorphingCardRow[],
+  config: Record<string, unknown>,
+): ReactNode | null {
+  if (dataValues.length < 2) return null;
+
+  const firstRow = dataValues[0];
+  const encoding = isRecord(config.encoding) ? config.encoding : undefined;
+  const xEncoding = isRecord(encoding?.x) ? encoding.x : undefined;
+  const yEncoding = isRecord(encoding?.y) ? encoding.y : undefined;
+
+  const xField = typeof xEncoding?.field === "string" ? xEncoding.field : Object.keys(firstRow)[0];
+  if (!xField) return null;
+
+  const yField = typeof yEncoding?.field === "string"
+    ? yEncoding.field
+    : Object.keys(firstRow).find((key) => key !== xField && isFiniteNumeric(firstRow[key]));
+  if (!yField) return null;
+
+  const yTitle = typeof yEncoding?.title === "string" && yEncoding.title.trim().length > 0 ? yEncoding.title : yField;
+  const isTemporal = xEncoding?.type === "temporal";
+  const MAX_BARS = 15;
+
+  let rows = dataValues.map((row) => ({ label: String(row[xField] ?? ""), value: Number(row[yField]) || 0 }));
+  // Non-temporal (categorical) series with more rows than a bar chart can show
+  // legibly get sorted to their most significant values and pruned -- a
+  // 28-bar comparison of unrelated repo names is unreadable regardless of
+  // scale. Temporal (date) series keep chronological order and every point.
+  if (!isTemporal && rows.length > MAX_BARS) {
+    rows = [...rows].sort((a, b) => b.value - a.value).slice(0, MAX_BARS);
+  }
+  const labels = rows.map((r) => r.label);
+  const values = rows.map((r) => r.value);
+
+  // Gate on the taxonomy visualizationType, not the raw Vega-Lite mark: Stacked
+  // Bar Chart configs also use mark "bar" (Vega-Lite expresses stacking via
+  // encoding, not a distinct mark type), so matching on markType alone would
+  // misrender an unsupported taxonomy type as a simplified single-series chart.
+  const isBar = visualizationType === "Bar Chart";
+  const isLineOrArea = visualizationType === "Line Graph" || visualizationType === "Area Chart";
+
+  if (isBar) {
+    return (
+      <HorizontalBarChart items={labels.map((label, i) => ({ label, value: values[i] }))} title={yTitle} />
+    );
+  }
+  if (isLineOrArea) {
+    return <AreaChart days={labels} values={values} label={yTitle} />;
+  }
+  return null;
+}
+
 function MorphingCardAnswer({ payload }: { payload: MorphingCardPayload }) {
   const config = payload.chartConfig as Record<string, unknown>;
   const title = typeof config.title === "string" && config.title.trim().length > 0 ? config.title : undefined;
@@ -691,6 +816,29 @@ function MorphingCardAnswer({ payload }: { payload: MorphingCardPayload }) {
   const dataValues = isRecord(config.data) && Array.isArray(config.data.values)
     ? config.data.values.filter(isRecord)
     : [];
+  const chart = buildMorphingChart(markType, payload.visualizationType, dataValues, config);
+
+  if (payload.visualizationType === "Data Table") {
+    return (
+      <div className="agent-answer table-answer">
+        <div className="agent-answer-head mono">
+          DATA TABLE
+          <span>{title ?? `${dataValues.length} rows`}</span>
+        </div>
+        {payload.summary && <div className="agent-caption"><MarkdownText text={payload.summary} /></div>}
+        <MorphingCardTable rows={dataValues} chartConfig={payload.chartConfig} />
+        {dataValues.length > 8 && <p className="mono muted" style={{ fontSize: 11, marginTop: 4, textAlign: "right" }}>showing 8 of {dataValues.length.toLocaleString()} rows</p>}
+        {payload.query && (
+          <details className="agent-query">
+            <summary className="mono">
+              query analytics · {payload.query.rowsRead.toLocaleString()} rows read · {payload.query.elapsedMs}ms
+            </summary>
+            <pre className="mono">{payload.query.sql}</pre>
+          </details>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="agent-answer morphing-card">
@@ -699,12 +847,24 @@ function MorphingCardAnswer({ payload }: { payload: MorphingCardPayload }) {
         <span>{title ?? `${dataValues.length} rows`}</span>
       </div>
       <div className="agent-caption">
-        {payload.summary && <p>{payload.summary}</p>}
-        <p className="mono">
-          previewing {markType} markup · {dataValues.length.toLocaleString()} rows shown while the visualization is prepared
-        </p>
+        {payload.summary && <MarkdownText text={payload.summary} />}
+        {!chart && (
+          <p className="mono">
+            previewing {markType} markup · {dataValues.length.toLocaleString()} rows shown while the visualization is prepared
+          </p>
+        )}
       </div>
-      <MorphingCardTable rows={dataValues} chartConfig={payload.chartConfig} />
+      {chart ? (
+        <>
+          {chart}
+          <details className="agent-query">
+            <summary className="mono">data table · {dataValues.length.toLocaleString()} rows</summary>
+            <MorphingCardTable rows={dataValues} chartConfig={payload.chartConfig} />
+          </details>
+        </>
+      ) : (
+        <MorphingCardTable rows={dataValues} chartConfig={payload.chartConfig} />
+      )}
       {payload.query && (
         <details className="agent-query">
           <summary className="mono">
@@ -717,13 +877,104 @@ function MorphingCardAnswer({ payload }: { payload: MorphingCardPayload }) {
   );
 }
 
-export function RenderedAnswer({ payload }: { payload: RenderPayload }) {
-  if (payload.type === "digest") return <DigestAnswer payload={payload} />;
-  if (payload.type === "ticker") return <TickerAnswer payload={payload} />;
-  if (payload.type === "divergence") return <DivergenceAnswer payload={payload} />;
-  if (payload.type === "candles") return <CandlesAnswer payload={payload} />;
-  if (payload.type === "skinny-deck") return <SkinnyDeck payload={payload} />;
-  if (payload.type === "repo-drilldown") return <RepoDrilldownAnswer payload={payload} />;
-  if (payload.type === "morphing-card") return <MorphingCardAnswer payload={payload} />;
-  return <MatrixAnswer payload={payload} />;
+function TableAnswer({ payload }: { payload: TablePayload }) {
+  const colAlign = (col: TableColumn): React.CSSProperties["textAlign"] => {
+    if (col.type === "number") return "right";
+    if (col.type === "date") return "center";
+    return "left";
+  };
+
+  if (payload.rows.length === 0) {
+    return (
+      <div className="agent-answer table-answer">
+        <div className="agent-answer-head mono">DATA TABLE</div>
+        {payload.summary && <div className="agent-caption"><MarkdownText text={payload.summary} /></div>}
+        <div className="repo-empty mono">no rows returned</div>
+      </div>
+    );
+  }
+
+  const showLimit = payload.rows.length > 20;
+  const displayRows = payload.rows.slice(0, 20);
+
+  return (
+    <div className="agent-answer table-answer">
+      <div className="agent-answer-head mono">
+        DATA TABLE
+        <span>{payload.columns.length} columns · {payload.rows.length.toLocaleString()} rows</span>
+      </div>
+      {payload.summary && <div className="agent-caption"><MarkdownText text={payload.summary} /></div>}
+      <div className="table-responsive">
+        <table className="telemetry-table">
+          <thead>
+            <tr>
+              {payload.columns.map((col) => (
+                <th key={col.key} style={{ textAlign: colAlign(col) }}>{col.label}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {displayRows.map((row, rowIndex) => (
+              <tr key={rowIndex}>
+                {payload.columns.map((col) => {
+                  const raw = row[col.key];
+                  if (col.type === "link" && typeof raw === "string" && raw.startsWith("http")) {
+                    return (
+                      <td key={col.key} style={{ textAlign: colAlign(col) }}>
+                        <a href={raw} target="_blank" rel="noreferrer">{raw}</a>
+                      </td>
+                    );
+                  }
+                  return (
+                    <td key={col.key} style={{ textAlign: colAlign(col) }}>
+                      {formatTableCell(raw)}
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+          {payload.totals && (
+            <tfoot>
+              <tr>
+                {payload.columns.map((col) => (
+                  <td key={col.key} style={{ textAlign: colAlign(col), fontWeight: 600, borderTop: "2px solid var(--line)" }}>
+                    {col.type === "number" && typeof payload.totals![col.key] === "number"
+                      ? payload.totals![col.key].toLocaleString()
+                      : col.key === payload.columns[0]?.key
+                      ? "Total"
+                      : ""}
+                  </td>
+                ))}
+              </tr>
+            </tfoot>
+          )}
+        </table>
+      </div>
+      {showLimit && <p className="mono muted" style={{ fontSize: 11, marginTop: 4, textAlign: "right" }}>showing 20 of {payload.rows.length.toLocaleString()} rows</p>}
+      {payload.query && (
+        <details className="agent-query">
+          <summary className="mono">
+            query analytics · {payload.query.rowsRead.toLocaleString()} rows read · {payload.query.elapsedMs}ms
+          </summary>
+          <pre className="mono">{payload.query.sql}</pre>
+        </details>
+      )}
+    </div>
+  );
+}
+
+export function RenderedAnswer({ payload, showCopy = true }: { payload: RenderPayload; showCopy?: boolean }) {
+  let answer: React.ReactNode;
+  if (payload.type === "digest") answer = <DigestAnswer payload={payload} />;
+  else if (payload.type === "ticker") answer = <TickerAnswer payload={payload} />;
+  else if (payload.type === "divergence") answer = <DivergenceAnswer payload={payload} />;
+  else if (payload.type === "candles") answer = <CandlesAnswer payload={payload} />;
+  else if (payload.type === "skinny-deck") answer = <SkinnyDeck payload={payload} />;
+  else if (payload.type === "repo-drilldown") answer = <RepoDrilldownAnswer payload={payload} />;
+  else if (payload.type === "morphing-card") answer = <MorphingCardAnswer payload={payload} />;
+  else if (payload.type === "table") answer = <TableAnswer payload={payload} />;
+  else answer = <MatrixAnswer payload={payload} />;
+
+  return <CopyableAnswer payload={payload} showCopy={showCopy}>{answer}</CopyableAnswer>;
 }
