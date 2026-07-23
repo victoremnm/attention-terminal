@@ -27,6 +27,7 @@ export const clickhouse = lazyClient(() =>
     ...base,
     request_timeout: 180_000,
     clickhouse_settings: {
+      union_default_mode: "ALL",
       // Keep the connection alive through load balancers during long
       // server-side pulls (e.g. GH Archive url() inserts).
       send_progress_in_http_headers: 1,
