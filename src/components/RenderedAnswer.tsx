@@ -6,6 +6,52 @@ import { VERDICT_COLOR } from "@/lib/verdict-color";
 import { AreaChart, DualLine, HorizontalBarChart, Sparkline, VerticalBarChart } from "./charts";
 import { MarkdownText } from "./MarkdownText";
 import { SkinnyDeck } from "./SkinnyDeck";
+import { copyToClipboard, exportAssetAsHTML, exportAssetAsMarkdown } from "@/lib/asset-export";
+
+function CopyBtn({ payload }: { payload: RenderPayload }) {
+  const [copiedFormat, setCopiedFormat] = useState<"markdown" | "html" | null>(null);
+
+  async function handleCopy(format: "markdown" | "html") {
+    try {
+      const content = format === "markdown" ? exportAssetAsMarkdown(payload) : exportAssetAsHTML(payload);
+      await copyToClipboard(content, format);
+      setCopiedFormat(format);
+      setTimeout(() => setCopiedFormat(null), 2000);
+    } catch {
+      setCopiedFormat(null);
+    }
+  }
+
+  return (
+    <div className="asset-copy-bar">
+      <button
+        type="button"
+        className={`asset-copy-btn${copiedFormat === "markdown" ? " copied" : ""}`}
+        onClick={() => handleCopy("markdown")}
+        aria-label="Copy as Markdown"
+      >
+        {copiedFormat === "markdown" ? "Copied MD!" : "Copy Markdown"}
+      </button>
+      <button
+        type="button"
+        className={`asset-copy-btn${copiedFormat === "html" ? " copied" : ""}`}
+        onClick={() => handleCopy("html")}
+        aria-label="Copy as HTML"
+      >
+        {copiedFormat === "html" ? "Copied HTML!" : "Copy HTML"}
+      </button>
+    </div>
+  );
+}
+
+function CopyableAnswer({ payload, showCopy = true, children }: { payload: RenderPayload; showCopy?: boolean; children: React.ReactNode }) {
+  return (
+    <div className="agent-answer-wrapper">
+      {showCopy && <CopyBtn payload={payload} />}
+      {children}
+    </div>
+  );
+}
 
 function FreshnessBadge({ freshness }: { freshness?: string }) {
   if (!freshness) return null;
@@ -725,13 +771,16 @@ function MorphingCardAnswer({ payload }: { payload: MorphingCardPayload }) {
   );
 }
 
-export function RenderedAnswer({ payload }: { payload: RenderPayload }) {
-  if (payload.type === "digest") return <DigestAnswer payload={payload} />;
-  if (payload.type === "ticker") return <TickerAnswer payload={payload} />;
-  if (payload.type === "divergence") return <DivergenceAnswer payload={payload} />;
-  if (payload.type === "candles") return <CandlesAnswer payload={payload} />;
-  if (payload.type === "skinny-deck") return <SkinnyDeck payload={payload} />;
-  if (payload.type === "repo-drilldown") return <RepoDrilldownAnswer payload={payload} />;
-  if (payload.type === "morphing-card") return <MorphingCardAnswer payload={payload} />;
-  return <MatrixAnswer payload={payload} />;
+export function RenderedAnswer({ payload, showCopy = true }: { payload: RenderPayload; showCopy?: boolean }) {
+  let answer: React.ReactNode;
+  if (payload.type === "digest") answer = <DigestAnswer payload={payload} />;
+  else if (payload.type === "ticker") answer = <TickerAnswer payload={payload} />;
+  else if (payload.type === "divergence") answer = <DivergenceAnswer payload={payload} />;
+  else if (payload.type === "candles") answer = <CandlesAnswer payload={payload} />;
+  else if (payload.type === "skinny-deck") answer = <SkinnyDeck payload={payload} />;
+  else if (payload.type === "repo-drilldown") answer = <RepoDrilldownAnswer payload={payload} />;
+  else if (payload.type === "morphing-card") answer = <MorphingCardAnswer payload={payload} />;
+  else answer = <MatrixAnswer payload={payload} />;
+
+  return <CopyableAnswer payload={payload} showCopy={showCopy}>{answer}</CopyableAnswer>;
 }
