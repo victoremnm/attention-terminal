@@ -16,8 +16,9 @@ const SUGGESTIONS = [
   "is htmx hype or real?",
   "what data do I have?",
   "show me the daily skinny",
-  "what's trending in the last 24h?",
-  "compare htmx vs alpine",
+  "give me the most popular \"claw\" repos",
+  "what agent skills are trending?",
+  "what type of visualizations can you make?",
 ];
 
 const STALL_TIMEOUT_MS = 20_000;

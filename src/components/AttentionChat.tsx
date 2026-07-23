@@ -13,7 +13,9 @@ import { RenderedAnswer } from "./RenderedAnswer";
 const SUGGESTIONS = [
   "what's new?",
   "is htmx hype or real?",
-  "what data do I have?",
+  "give me the most popular \"claw\" repos",
+  "what agent skills are trending?",
+  "what type of visualizations can you make?",
 ];
 
 const STALL_TIMEOUT_MS = 20_000;

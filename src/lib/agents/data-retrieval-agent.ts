@@ -12,6 +12,7 @@ import {
   TABLE_LIST_LIMIT,
   registerCatalogTables,
   requireCatalogedTables,
+  requireFinalOnReplacingTables,
 } from "../sql-catalog-guard";
 
 let clickhouse: ReturnType<typeof createClient> | undefined;
@@ -76,17 +77,17 @@ async function loadCatalog(): Promise<{ tables: CatalogTable[]; referenceText: s
     });
     const tables = await result.json<CatalogTable>();
     registerCatalogTables(tables);
-    return {
-      tables,
-      referenceText: tables.map((t) => `- ${t.database}.${t.name}`).join("\n"),
-    };
+    return { tables, referenceText: formatCatalogReference(tables) };
   } catch {
     registerCatalogTables(FALLBACK_TABLES);
-    return {
-      tables: FALLBACK_TABLES,
-      referenceText: FALLBACK_TABLES.map((t) => `- ${t.database}.${t.name}`).join("\n"),
-    };
+    return { tables: FALLBACK_TABLES, referenceText: formatCatalogReference(FALLBACK_TABLES) };
   }
+}
+
+function formatCatalogReference(tables: CatalogTable[]): string {
+  return tables
+    .map((t) => `- ${t.database}.${t.name}${/Replacing/i.test(t.engine) ? " (ReplacingMergeTree -- requires FINAL)" : ""}`)
+    .join("\n");
 }
 
 const querySchema = z.object({
@@ -112,6 +113,8 @@ export async function runDataRetrievalAgent(intent: string): Promise<
 
 Only reference tables from this catalog — never invent a table or column name:
 ${referenceText}
+
+Any table marked "(ReplacingMergeTree -- requires FINAL)" can hold duplicate/stale-version rows until a background merge runs -- always add FINAL immediately after that table's name (e.g. FROM hackernews FINAL) or the result will contain the same logical row more than once.
 
 If you are unsure whether a column exists on a table, prefer a simpler query over guessing a column name.`,
     },
@@ -145,6 +148,12 @@ If you are unsure whether a column exists on a table, prefer a simpler query ove
     const missingTables = requireCatalogedTables(query);
     if (missingTables.length > 0) {
       lastError = `Unknown table reference(s): ${missingTables.join(", ")}. These tables do not exist.`;
+      continue;
+    }
+
+    const missingFinal = requireFinalOnReplacingTables(query);
+    if (missingFinal.length > 0) {
+      lastError = `Table(s) missing FINAL: ${missingFinal.join(", ")}. These are ReplacingMergeTree tables and can contain duplicate/stale-version rows without it -- add FINAL immediately after the table name (e.g. FROM ${missingFinal[0]} FINAL).`;
       continue;
     }
 

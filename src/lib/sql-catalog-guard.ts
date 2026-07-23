@@ -4,7 +4,14 @@
 // generate-then-execute paths) validate against one source of truth instead
 // of drifting apart -- see docs/architecture/CHAT-AGENT-QUERY-FLOW.md.
 
-export type CatalogTableRef = { database: string; name: string };
+export type CatalogTableRef = { database: string; name: string; engine?: string };
+
+// Matches ReplacingMergeTree and its Shared/Replicated variants (ClickHouse
+// Cloud reports engines like "SharedReplacingMergeTree") -- anything with
+// "Replacing" in the engine name needs FINAL to collapse duplicate/stale
+// versions, or a query can return the same logical row multiple times with
+// different snapshots of its mutable columns.
+const REPLACING_ENGINE_PATTERN = /Replacing/i;
 
 export const FALLBACK_TABLES = [
   { database: "raw", name: "github_events", engine: "MergeTree", total_rows: "estimated", size: "N/A" },
@@ -29,17 +36,28 @@ export const LIST_TABLES_SQL = `
 
 const knownTables = new Set<string>();
 const knownSchemas = new Map<string, string[]>();
+const knownEngines = new Map<string, string>();
 
 export function resetCatalogState() {
   knownTables.clear();
   knownSchemas.clear();
+  knownEngines.clear();
 }
 
 export function registerCatalogTables(tables: CatalogTableRef[]) {
   for (const table of tables) {
     knownTables.add(`${table.database}.${table.name}`);
     knownTables.add(table.name);
+    if (table.engine) {
+      knownEngines.set(`${table.database}.${table.name}`, table.engine);
+      knownEngines.set(table.name, table.engine);
+    }
   }
+}
+
+export function isReplacingMergeTree(name: string): boolean {
+  const engine = knownEngines.get(name);
+  return Boolean(engine && REPLACING_ENGINE_PATTERN.test(engine));
 }
 
 export function registerTableSchema(key: string, columns: string[]) {
@@ -85,4 +103,27 @@ export function requireCatalogedTables(query: string): string[] {
 /** Table references in `query` whose column schema hasn't been fetched via describeTable yet. */
 export function requireDescribedTables(query: string): string[] {
   return extractTableCandidates(query).filter((table) => !knownSchemas.has(table));
+}
+
+/**
+ * ReplacingMergeTree (and Shared/Replicated variant) tables referenced in
+ * `query` without a FINAL modifier immediately after the table name. Empty
+ * means every ReplacingMergeTree reference is correctly deduplicated.
+ * Requires the catalog to be loaded (registerCatalogTables) with engine
+ * info -- tables of unknown engine are assumed safe rather than flagged, so
+ * this only fires on a confirmed ReplacingMergeTree.
+ */
+export function requireFinalOnReplacingTables(query: string): string[] {
+  const missing = new Set<string>();
+  for (const match of query.matchAll(
+    /\b(?:from|join)\s+([`"]?)([A-Za-z_][\w$]*)\1(?:\.([`"]?)([A-Za-z_][\w$]*)\3)?(\s+FINAL\b)?/gi
+  )) {
+    const table = match[4] ? `${match[2]}.${match[4]}` : match[2];
+    const normalized = normalizeTableName(table);
+    const hasFinal = Boolean(match[5]);
+    if (!hasFinal && isReplacingMergeTree(normalized)) {
+      missing.add(normalized);
+    }
+  }
+  return [...missing];
 }
