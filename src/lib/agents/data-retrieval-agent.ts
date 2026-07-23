@@ -57,6 +57,7 @@ export async function runDataRetrievalAgent(intent: string) {
     clickhouse_settings: {
       readonly: "2",
       max_execution_time: 30,
+      union_default_mode: "ALL",
     },
   });
 
