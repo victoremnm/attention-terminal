@@ -69,8 +69,76 @@ Every PR must follow `.github/PULL_REQUEST_TEMPLATE.md`. The key sections:
    verification, say "nothing — agent-verified end to end".
 5. **Graceful degradation** — how the system behaves when new optional
    surfaces are absent or empty.
-6. **Notes for review** — merge conflicts resolved, pre-existing bugs
+6. **Agent attribution** — identify the agent that authored the PR
+   (model ID or human name) and the count of subagent runs logged.
+7. **Notes for review** — merge conflicts resolved, pre-existing bugs
    fixed, env vars added, anything surprising.
+
+## Review evidence (mandatory)
+
+Every implementation PR must be reviewable from the PR page without asking a
+human to reconstruct the work from raw commits. The PR body must include a
+short `Review at a glance` section with:
+
+1. **Preview** — for user-visible work, a current Vercel preview URL plus an
+   attached screenshot or committed HTML/image artifact. Store committed
+   evidence under `docs/pr-evidence/<pr-number>/` and embed or link it from
+   the PR body. A local-only screenshot is not an attachment and must be
+   labeled as local-only.
+2. **Before/after proof** — one or two concrete observations showing what
+   changed and how the reviewer can reproduce it.
+3. **Verification status** — exact commands and CI/deployment results, with
+   unverified items explicitly called out.
+4. **Human checklist** — no more than the specific interactions that still
+   require a human; do not make the reviewer infer these from the diff.
+
+For non-visual SQL, schema, documentation, or dependency PRs, provide a
+rendered query result, generated documentation preview, dependency/build
+proof, or another directly inspectable artifact instead of inventing a UI
+screenshot. Agents must update the PR body after capturing evidence and must
+not claim an artifact is attached unless the link works from the PR page.
+
+## Agent identity and review status (mandatory)
+
+Every implementation or review agent must identify itself in the PR body or
+review comment with:
+
+- `Agent ID`: orchestrator/subagent ID
+- `Model`: model identifier used for the run
+- `Agent type`: explorer, reviewer, coder, or other role
+- `Session`: telemetry session ID
+- `Scope`: files, issue, or PR reviewed
+
+An independent reviewer may add the `lgtm` label only when the PR has current
+evidence, green CI, and no unresolved actionable review comments. The
+implementation agent must never apply `lgtm` to its own PR. If any blocking
+correctness, security, performance, evidence, or verification issue remains,
+the reviewer must add the `blocked` label and explain the blocker in a PR
+comment. These labels are review signals, not merge approval; the human merge
+gate still applies.
+
+### Commit message convention (mandatory)
+
+Every commit authored by an agent must include a `Co-authored-by:` trailer
+identifying the agent. This is for traceability — when reviewing a PR, the
+reviewer needs to know who/what wrote each commit.
+
+Format:
+```
+<type>: <description>
+
+Co-authored-by: <model-id> <agent@attention-terminal>
+```
+
+Example:
+```
+feat: add Octokit activity client
+
+Co-authored-by: glm-5.2:cloud <agent@attention-terminal>
+```
+
+If a human authored a commit, no trailer is needed. If multiple agents
+worked on the PR, each agent's commits carry their own trailer.
 
 Agents must not self-merge. A human reviews and merges after the human
 verification checklist is satisfied.
@@ -142,6 +210,69 @@ inline. ClickHouse creds in item `4innzk6cud7bz5v562i7tpgpki`, Trigger.dev
 in `2pgjlwxybaqvtrxjvlor5dkrsm`, OpenAI in `mfxzvdmx24qw74iue377jcflte`.
 `GITHUB_TOKEN` must be set in both the Next.js env and each Trigger.dev
 environment.
+
+## Pre-push telemetry (mandatory)
+
+Before every `git push`, the agent must report the current session's
+subagent activity to the PR as a comment. This makes every push traceable
+to the agent runs that produced it — run IDs, tokens used, model, latency.
+
+**How to report**: call the helper script before pushing:
+
+```bash
+./scripts/pre-push-telemetry.sh <PR_NUM> [session-id]
+```
+
+The script:
+1. Queries `subagent_runs` in ClickHouse for the current session
+2. Aggregates token counts, run counts, success rate
+3. Posts a telemetry table as a PR comment with the commit SHA
+
+If no subagent runs are found for the session, the script exits silently
+(non-blocking). Always exits 0 — telemetry must never block a push.
+
+**Convention**: set `ATTENTION_SESSION_ID` in the environment so all runs
+in a session share the same session ID. The pre-push script uses this to
+group runs. If unset, defaults to `opencode-session-YYYYMMDD`.
+
+## CI polling (mandatory)
+
+After pushing, the agent must poll the PR's CI checks until all are
+complete before the PR can be merged. Poll every 30 seconds, maximum 10
+iterations (5 minutes). If checks are still pending after 10 iterations,
+report the status and stop — let the user request more checks.
+
+```bash
+for i in $(seq 1 10); do
+  sleep 30
+  PENDING=$(gh pr view <PR_NUM> --repo <REPO> --json statusCheckRollup \
+    --jq '[.statusCheckRollup[]? | select(.name != null) | select(.conclusion == null or .conclusion == "")] | length')
+  echo "Poll $i: $PENDING pending checks"
+  if [ "$PENDING" = "0" ]; then
+    echo "All CI checks complete"
+    gh pr view <PR_NUM> --repo <REPO> --json statusCheckRollup \
+      --jq '[.statusCheckRollup[]? | select(.name != null) | "\(.name): \(.conclusion)"] | .[]'
+    break
+  fi
+done
+```
+
+Only after CI is green AND all review comments are addressed should the
+agent ask the human to approve + merge.
+
+## Review comments (mandatory)
+
+All automated review comments (CodeRabbit, Copilot, Codex, Claude Code
+Action) must be resolved before a PR can be merged:
+
+1. **Fix** — apply the fix if relevant and improving
+2. **Reply** — post an inline reply to the comment thread with the commit
+   SHA: `Fixed in <sha>\n\n<explanation>`
+3. **Defer** — if valid but out of scope, create a new issue and reply:
+   `Deferred to #N — <reason>`
+4. **Close** — if irrelevant, reply: `Not applicable — <reason>`
+
+Never leave a review comment unreplied.
 
 ## Skills mount (recommended)
 

@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PR #150 — Chat Markdown preview</title>
+  <style>
+    :root { color-scheme: dark; --s:#14171a; --panel:#191d21; --panel-2:#1f2429; --ink:#cdd6dd; --line:rgba(255,255,255,.16); --muted:rgba(255,255,255,.42); --cyan:#38cdec; --mono:ui-monospace,SFMono-Regular,Menlo,monospace; }
+    * { box-sizing:border-box; } body { margin:0; padding:32px; background:var(--s); color:var(--ink); font:14px system-ui,sans-serif; }
+    main { max-width:800px; margin:auto; } .label { color:var(--muted); font:11px var(--mono); letter-spacing:.12em; text-transform:uppercase; }
+    article { margin-top:18px; padding:18px; border:1px solid var(--line); border-radius:8px; background:var(--panel); }
+    h1 { margin:0 0 12px; font:600 20px system-ui,sans-serif; } h2 { color:var(--cyan); font-size:15px; }
+    p { color:rgba(255,255,255,.78); line-height:1.55; } code, pre { font-family:var(--mono); } code { padding:2px 4px; border:1px solid var(--line); border-radius:3px; background:var(--panel-2); }
+    pre { overflow:auto; padding:12px; border:1px solid var(--line); border-radius:5px; background:var(--s); font-size:12px; }
+    table { width:100%; border-collapse:collapse; font-size:12px; } th,td { padding:7px 9px; border:1px solid var(--line); text-align:left; } th { background:var(--panel-2); }
+    .note { color:var(--muted); font:11px var(--mono); }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="label">PR #150 · chat text rendering</div>
+    <article aria-label="Rendered assistant Markdown preview">
+      <h1>Open-source LLM activity</h1>
+      <p>Markdown now renders as structured content instead of literal syntax. It supports <strong>emphasis</strong>, links, code, and tables.</p>
+      <h2>Recent share</h2>
+      <table><thead><tr><th>Organization</th><th>Share</th></tr></thead><tbody><tr><td>Other</td><td>100%</td></tr><tr><td>Named providers</td><td>0%</td></tr></tbody></table>
+      <h2>Query proof</h2>
+      <pre><code>SELECT org_bucket, count() AS event_count
+FROM github_events
+GROUP BY org_bucket
+ORDER BY event_count DESC;</code></pre>
+      <p class="note">Chart rendering remains a separate concern: the current app still needs #144 to replace Morphing Canvas placeholders with actual chart components.</p>
+    </article>
+  </main>
+</body>
+</html>

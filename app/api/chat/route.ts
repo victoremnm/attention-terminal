@@ -4,6 +4,7 @@ import { analystSystemPrompt } from "@/lib/agent-prompt";
 import { attentionTelemetry } from "@/lib/ai-telemetry";
 import { attentionToolSchemas } from "@/lib/agent-tool-schemas";
 import { resolveAgentModel } from "@/lib/agent-model";
+import { attentionTriggerApiClient } from "@/lib/trigger-api-client";
 
 // Head-start route for the attention-agent chat. The first message of a new
 // chat lands here: step 1 of the turn streams from this warm process while
@@ -15,6 +16,7 @@ import { resolveAgentModel } from "@/lib/agent-model";
 // resolver only imports @ai-sdk/openai + ai, so it's bundle-safe.
 export const POST = chat.headStart({
   agentId: "attention-agent",
+  apiClient: attentionTriggerApiClient,
   run: async ({ chat: helper }) => {
     const headStartOptions = helper.toStreamTextOptions({
       tools: attentionToolSchemas,

@@ -7,6 +7,7 @@ import { useEffect, useRef, useState } from "react";
 import { mintChatAccessToken, startChatSession } from "@/lib/chat-actions";
 import { RenderPayloadSchema } from "@/lib/render-payload";
 import type { attentionAgent } from "@/trigger/attention-agent";
+import { MarkdownText } from "./MarkdownText";
 import { RenderedAnswer } from "./RenderedAnswer";
 
 const SUGGESTIONS = [
@@ -149,7 +150,7 @@ function Message({ message }: { message: UIMessage }) {
 
 function MessagePart({ part }: { part: UIMessage["parts"][number] }) {
   if (part.type === "text") {
-    return <p>{part.text}</p>;
+    return <MarkdownText text={part.text} />;
   }
 
   if (part.type === "tool-renderAnswer") {

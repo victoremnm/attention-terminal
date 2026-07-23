@@ -1,0 +1,50 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>PR 152 — repo drilldown query evidence</title>
+<style>
+  :root { color-scheme: dark; font: 15px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; }
+  body { max-width: 980px; margin: 40px auto; padding: 0 24px; background: #0d1117; color: #e6edf3; }
+  section { margin: 24px 0; padding: 20px; border: 1px solid #30363d; border-radius: 8px; }
+  h1, h2 { font-family: system-ui, sans-serif; }
+  pre { overflow: auto; padding: 14px; background: #161b22; border-radius: 6px; color: #a5d6ff; }
+  .ok { color: #3fb950; }
+  .bad { color: #ff7b72; }
+</style>
+<h1>Repo drilldown query review</h1>
+<p>Runtime and merge evidence for PR 152.</p>
+
+<section>
+  <h2>Reported failure</h2>
+  <p class="bad"><code>GET /api/repo-drilldown</code> returned ClickHouse <code>NO_COMMON_TYPE</code>.</p>
+  <pre>There is no supertype for types String, DateTime
+while executing greater(toString(__table1.hour), _CAST(..., 'DateTime'))</pre>
+  <p>The aggregate query projected <code>toString(hour) AS hour</code> while the same identifier remained visible to the filter and grouping expressions.</p>
+</section>
+
+<section>
+  <h2>Fix</h2>
+  <p>The aggregate branch now aliases the source column to <code>bucket_hour</code> inside a bounded subquery. Filtering and rollup grouping stay DateTime-safe; only the final output field is formatted as <code>hour</code>.</p>
+  <pre>hour AS bucket_hour
+...
+GROUP BY bucket_hour WITH ROLLUP</pre>
+  <p>The merge with <code>main</code> also preserves the newer per-actor activity-feed migration, the older activity-feed fallback, and a shared high-water anchor.</p>
+</section>
+
+<section>
+  <h2>Verification</h2>
+  <p class="ok">PASS — live ClickHouse integration: 11/11 tests.</p>
+  <p class="ok">PASS — mocked drilldown consolidation tests: 2/2.</p>
+  <p class="ok">PASS — TypeScript compile and whitespace checks.</p>
+  <pre>npx vitest run src/lib/queries.integration.test.ts --reporter=dot
+Test Files  1 passed (1)
+Tests       11 passed (11)
+
+npx vitest run src/lib/queries.repo-drilldown.test.ts --reporter=dot
+Test Files  1 passed (1)
+Tests       2 passed (2)</pre>
+</section>
+
+<section>
+  <h2>Graceful degradation</h2>
+  <p>When optional aggregate or activity-feed tables are absent, the query layer falls back to the known <code>github_events</code> path. The required-table readiness check fails clearly if a selected path cannot run.</p>
+</section>
