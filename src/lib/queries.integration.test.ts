@@ -7,6 +7,7 @@ import {
   pulse,
   freshness,
   devScatter,
+  activeContributionRanking,
   type RepoWindow,
 } from "./queries";
 
@@ -26,6 +27,23 @@ describe.skipIf(!hasCH)("query layer (integration)", () => {
       expect(Array.isArray(r.spark)).toBe(true);
       for (const v of r.spark) expect(typeof v).toBe("number");
     }
+  }, 120_000);
+
+  it("activeContributionRanking(pushes) executes and enforces push eligibility", async () => {
+    const result = await activeContributionRanking("7d", "pushes", 10);
+
+    expect(result.window).toBe("7d");
+    expect(result.sort).toBe("pushes");
+    expect(result.limit).toBe(10);
+    expect(Array.isArray(result.data)).toBe(true);
+    expect(result.sql).toContain("FROM gh_repo_actor_hourly");
+    expect(result.sql).toContain("HAVING substantive_push_bucket_total > 0");
+    expect(result.data.every((row) => row.substantivePushBuckets > 0)).toBe(true);
+    expect(result.data.every((row) => row.branchScope === "unknown")).toBe(true);
+    expect(result.notes).toEqual(expect.arrayContaining([
+      expect.stringContaining("main-branch filtering is not claimed"),
+      expect.stringContaining("hour-only filtering cannot use the rollup key prefix"),
+    ]));
   }, 120_000);
 
   it("tickerLanes executes all lanes", async () => {

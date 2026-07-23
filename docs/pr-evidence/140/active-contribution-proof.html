@@ -42,10 +42,13 @@ benchmark caveat: runtime/read rows vary with ingestion and merge state</pre>
 <pre>{
   "mode": "pushes",
   "rows": 0,
-  "elapsedMs": 186,
+  "elapsedMs": 188,
   "rowsRead": 2682426,
-  "sourceTable": "gh_repo_actor_hourly"
+  "sourceTable": "gh_repo_actor_hourly",
+  "substantiveRows": 0,
+  "sqlHasEligibility": true
 }</pre>
 
 <h2>Verification</h2>
-<p><span class="ok">✓</span> behavior fixtures cover empty pushes, PR-only rows, and substantive rows · <span class="ok">✓</span> branch scope remains explicitly unknown · <span class="ok">✓</span> credentialed ClickHouse query passed</p>
+<p><span class="ok">✓</span> 7 targeted tests passed · <span class="ok">✓</span> 12 credentialed ClickHouse integration tests passed · <span class="ok">✓</span> TypeScript passed · <span class="ok">✓</span> live push-mode query passed with 0 eligible rows and the substantive-bucket gate</p>
+<p>Exact live call: <code>activeContributionRanking("7d", "pushes", 10)</code>. Runtime varies with ingestion and merge state; this run read 2,682,426 rows in 188 ms.</p>
