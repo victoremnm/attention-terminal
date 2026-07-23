@@ -1,10 +1,20 @@
 # Attention Terminal — Engineering Methodology & Architecture Index
 
-> **Master Engineering Index, Architectural Decision Records (ADRs), and System Intentions**
+> **Master Engineering Index, Architectural Decision Records (ADRs), Product Intentions & Beyond the Wall of Text Theme**
 
 ---
 
-## 1. Architectural Decision Records (ADRs)
+## 1. Hackathon Brief & Product Intentions
+
+### 1.1 Theme: Beyond the Wall of Text
+Traditional AI chat agents deliver a **wall of text**—paragraphs, bullet points, or raw log dumps. Attention Terminal rejects text dumps in favor of rendered visual components:
+- **ClickHouse + Trigger.dev Dual Engine**: ClickHouse handles real-time OLAP queries while Trigger.dev v3 orchestrates background jobs and continuous transformations (25% hackathon score focus).
+- **Persistent Floating Chatbox (Gemini Drawer)**: Persistent [`FloatingChat.tsx`](file:///Users/victorem/Code/Repositories/victoremnm/clickhouse-trigger-hackathon/src/components/FloatingChat.tsx) drawer UI allows users to introspect datasets, ask natural language questions, and discover insights without losing dashboard context.
+- **Morphing Figures**: Custom SVG primitives (`PieChart`, `StackedBarChart`, `WaterfallChart`, `TreemapChart`, `DevScatterChart`, `HorizontalBarChart`) rendered dynamically via `RenderedAnswer.tsx`.
+
+---
+
+## 2. Architectural Decision Records (ADRs)
 
 | ADR | Title | Key Architectural Choice | Status |
 | :--- | :--- | :--- | :--- |
@@ -14,16 +24,16 @@
 
 ---
 
-## 2. Core Documentation Index
+## 3. Core Documentation Index
 
 - **[System Architecture & Mermaid Flowcharts](architecture/SYSTEM-ARCHITECTURE.md)**: 5-layer system overview (Inputs $\rightarrow$ Processing $\rightarrow$ Data $\rightarrow$ Backend $\rightarrow$ Frontend).
 - **[Storytelling with Data & UI Philosophies](architecture/STORYTELLING-WITH-DATA-AND-UI-PHILOSOPHIES.md)**: Edward Tufte principles, Geist monospaced precision, and visual preattentive attributes.
-- **[Product Owner Vision & Lineage](product/PRODUCT-VISION-AND-METHODOLOGY.md)**: Product intentions, milestone timeline, and issue-to-PR traceability.
+- **[Product Owner Vision & Problem Statement](product/PRODUCT-VISION-AND-METHODOLOGY.md)**: Hackathon brief, Beyond the Wall of Text philosophy, and component breakdown.
 - **[Rendered SVG Primitives Evidence](pr-evidence/208/primitives-rendered-evidence.html)**: Static HTML rendered snapshot evidence for PR #208.
 
 ---
 
-## 3. GitHub PR & Issue Lineage
+## 4. GitHub PR & Issue Lineage
 
 ```mermaid
 graph LR
@@ -32,7 +42,7 @@ graph LR
     PR194["PR #194\nFeed Views & DDL Versioning"] --> PR207["PR #207\nAutomated CD Migration Workflow"]
     PR208 --> PR209["PR #209\nTelemetry Schema JSDoc"]
     PR209 --> PR210["PR #210\nSystem Architecture & Mermaid"]
-    PR210 --> PR211["PR #211\nProduct Vision & Methodology"]
+    PR210 --> PR213["PR #213\nMaster Engineering & Architecture PR"]
 ```
 
 ### Detailed PR Reference Matrix
@@ -43,13 +53,13 @@ graph LR
 - **[PR #207](https://github.com/victoremnm/attention-terminal/pull/207)** (*Merged*): Automated CD migration execution on merge to `main` via `.github/workflows/cd.yml`.
 - **[PR #209](https://github.com/victoremnm/attention-terminal/pull/209)** (*Open*): Subagent telemetry JSDoc schema documentation.
 - **[PR #210](https://github.com/victoremnm/attention-terminal/pull/210)** (*Open*): System Architecture blueprint with Mermaid diagrams.
-- **[PR #211](https://github.com/victoremnm/attention-terminal/pull/211)** (*Open*): Product Owner Specification & Engineering Lineage.
+- **[PR #213](https://github.com/victoremnm/attention-terminal/pull/213)** (*Open*): Master Engineering, Architecture & Methodology PR.
 
 ---
 
-## 4. Rendered Code Snippet Highlights
+## 5. Rendered Code Snippet Highlights
 
-### 4.1 Pie Chart "Other" Slice Capping & Single Ring Fallback
+### 5.1 Pie Chart "Other" Slice Capping & Single Ring Fallback
 ```tsx
 // src/components/charts.tsx
 const displayItems = items.length > 7
@@ -68,7 +78,7 @@ const displayItems = items.length > 7
 )}
 ```
 
-### 4.2 Stacked Bar Global Key Color Indexing
+### 5.2 Stacked Bar Global Key Color Indexing
 ```tsx
 // src/components/charts.tsx
 const segmentKeys = Array.from(new Set(items.flatMap((i) => i.segments.map((s) => s.key))));
@@ -79,3 +89,4 @@ const segmentKeys = Array.from(new Set(items.flatMap((i) => i.segments.map((s) =
   return <rect key={`${seg.key}-${sIdx}`} x={segX} y={y} width={Math.max(0, segW)} height={barH} fill={segColor} opacity="0.88" />;
 })}
 ```
+
