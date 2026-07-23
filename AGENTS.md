@@ -135,22 +135,6 @@ the reviewer must add the `blocked` label and explain the blocker in a PR
 comment. These labels are review signals, not merge approval; the human merge
 gate still applies.
 
-## Handling Blocked PRs (mandatory)
-
-The `blocked` GitHub label signals that a PR has unresolved issues preventing merge. All agents (Claude, Gemini, DeepSeek, Codex, Qwen, GLM, etc.) must actively detect and resolve `blocked` PRs:
-
-1. **Causes of `blocked` state**:
-   - Merge conflicts with `main`.
-   - Unresolved review comments (automated reviews or maintainer `victoremnm` comments).
-   - Failing CI checks or build/test regressions.
-   - General review feedback left on the PR.
-
-2. **Required Resolution Workflow**:
-   - **Merge Conflicts**: Fetch `origin/main` and merge cleanly into the PR branch, resolving all conflict markers.
-   - **Review Comments**: Apply code fixes, reply inline with commit SHA (`Fixed in <sha>\n\n<explanation>`), and resolve threads via GraphQL.
-   - **Failing CI**: Read full error logs, fix the root cause (never patch or suppress tests), and verify `npm run build && npx vitest run`.
-   - **Unblock & Telemetry**: Remove the `blocked` label via `gh pr edit <PR_NUM> --remove-label "blocked"` once all blockers are resolved and CI is 100% green. Log subagent telemetry.
-
 ### Commit message convention (mandatory)
 
 Every commit authored by an agent must include a `Co-authored-by:` trailer
@@ -307,6 +291,44 @@ Action) must be resolved before a PR can be merged:
 4. **Close** — if irrelevant, reply: `Not applicable — <reason>`
 
 Never leave a review comment unreplied.
+
+## Handling Blocked PRs (mandatory)
+
+The `blocked` GitHub label signals a PR has issues preventing merge, but agents must NOT wait for the label — they must proactively detect issues on ALL open PRs.
+
+**Detection**: Every session start and after every push, scan all open PRs for blocking conditions:
+
+```bash
+gh pr list --repo victoremnm/attention-terminal --state open --json number,title,mergeStateStatus,mergeable,labels \
+  --jq '.[] | select(.mergeStateStatus != "CLEAN" or .mergeable == "CONFLICTING") | "PR #\(.number): \(.mergeStateStatus) \(.mergeable) \([.labels[].name] | join(","))"'
+```
+
+**Blocking conditions** (check ALL, not just those with a `blocked` label):
+- `mergeable == "CONFLICTING"` — merge conflict with main
+- `mergeStateStatus == "DIRTY"` or `"UNSTABLE"` — CI failures or pending
+- `mergeStateStatus == "BLOCKED"` — review required or branch behind base
+- Open review threads (`.reviewThreads[].isResolved == false`) — includes automated reviews (Codex, CodeRabbit, Copilot, Claude)
+- `CHANGES_REQUESTED` reviews on the PR
+- A `blocked` label applied manually by a human
+
+**Resolution workflow**:
+1. **Merge conflicts**: Fetch `origin/main`, merge into worktree branch, resolve `<<<<<` markers, commit, push.
+2. **Review comments**: Fix code, reply with `Fixed in <sha>`, resolve review threads via GraphQL using the THREAD's node ID (not the comment's node ID):
+   ```bash
+   # Find unresolved threads
+   gh api graphql -f query='
+   query { repository(owner:"victoremnm",name:"attention-terminal") {
+     pullRequest(number:<PR>) { reviewThreads(first:10) {
+       nodes { id isResolved comments(first:5) { nodes { id body(limit:80) } } }
+     } }
+   } }'
+   # Resolve each unresolved thread
+   gh api graphql -f query='
+   mutation { resolveReviewThread(input:{threadId:"<THREAD_ID>"}) { thread { isResolved } } }'
+   ```
+3. **Failing CI**: Read logs from `statusCheckRollup[].detailsUrl`, fix root cause, verify locally, push.
+4. **Branch behind base**: Merge `origin/main` into the worktree branch.
+5. **Unblock**: Remove `blocked` label (`gh pr edit <PR_NUM> --remove-label blocked`) and log subagent telemetry only when ALL blockers are resolved AND CI is green.
 
 ## Skills mount (recommended)
 
