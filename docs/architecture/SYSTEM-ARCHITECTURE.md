@@ -75,10 +75,11 @@ sequenceDiagram
 
     TD->>GH: Poll high-frequency event stream (1min interval)
     GH-->>TD: Return payload (JSON/NDJSON events)
-    TD->>TD: Lowercase actor logins & filter bot accounts
-    TD->>CH: Async batch INSERT INTO github_events
-    CH->>MV: Trigger MV backfill (gh_repo_activity_feed_mv)
-    MV-->>CH: Update hourly & 30-day aggregate projections
+    TD->>CH: Async batch INSERT INTO github_events (raw event grain)
+    Note over TD,CH: Bot filtering (lower(actor) NOT LIKE '%[bot]%') is applied at query/projection time
+    CH->>MV: Materialize post-creation inserts into MV (gh_repo_activity_feed_mv)
+    Note over CH,MV: Historical backfills over existing data require explicit INSERT INTO ... SELECT
+    MV-->>CH: Update gh_repo_drilldown_hourly & period rollups
 ```
 
 ### Pseudo-Medallion Data Architecture (Bronze $\rightarrow$ Silver $\rightarrow$ Gold)
@@ -93,8 +94,8 @@ flowchart TD
 ```
 
 1. **Bronze (Raw Append-Only)**: Ingests GitHub Archive and Hacker News raw event payloads at high throughput into `github_events` and `hn_stories`.
-2. **Silver (Cleansed & Indexed Facts)**: Cleansed event facts utilizing `idx_github_events_actor_login` token bloom filter skipping indexes to filter bot traffic (`[bot]`, `copilot`, `dependabot`) without full-table scans.
-3. **Gold (AggregatingMergeTree Rollups)**: Continuous rollups pre-computed into `_hourly`, `_daily`, and `_weekly` `AggregatingMergeTree` tables and Materialized Views (`gh_repo_activity_feed_mv`, `gh_repo_period_rollups`), reducing query scan sizes by >95%.
+2. **Silver (Cleansed & Indexed Facts)**: Cleansed event facts utilizing `idx_github_events_actor_login` token bloom filter skipping indexes to filter bot traffic (`[bot]`, `copilot`, `dependabot`) without full-table scans. Bot exclusions execute during query/projection evaluation.
+3. **Gold (AggregatingMergeTree Rollups)**: Continuous rollups pre-computed into `_hourly`, `_daily`, and `_weekly` `AggregatingMergeTree` tables and Materialized Views (`gh_repo_activity_feed_mv`, `gh_repo_period_rollups`), reducing query scan sizes by >95%. Historical backfills for newly declared MVs require explicit `INSERT INTO ... SELECT` backfill tasks per AGENTS.md conventions.
 4. **Goose Schema Migrations**: All ClickHouse DDL transformations are version-controlled via **Goose DDL migrations** (`migrations/*.sql` + `./scripts/migrate.sh`) and automatically deployed via CD on merge to `main`.
 
 ### Data Layer Schema Map
@@ -109,6 +110,17 @@ erDiagram
         String payload
     }
     gh_repo_activity_feed {
+        DateTime created_at PK
+        String repo_name
+        String actor_login
+        String event_type
+        UInt32 commits
+        UInt32 distinct_commits
+        UInt8 pr_merged
+        String title
+        Array_String labels
+    }
+    gh_repo_drilldown_hourly {
         DateTime window_start PK
         String repo_name
         UInt64 push_count
@@ -136,7 +148,8 @@ erDiagram
         Array_String tags
     }
 
-    github_events ||--o{ gh_repo_activity_feed : "materializes into"
+    github_events ||--o{ gh_repo_activity_feed : "materializes event-level feed"
+    gh_repo_activity_feed ||--o{ gh_repo_drilldown_hourly : "aggregates into hourly KPI"
     subagent_runs ||--o{ session_learnings : "correlates session telemetry"
 ```
 

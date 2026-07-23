@@ -15,6 +15,6 @@ queries filtering bot accounts previously used `actor_login ILIKE '%[bot]%'`. In
 ## Decision Outcome
 Accepted. All queries in `src/lib/queries.ts` and Trigger.dev background jobs were refactored to `lower(actor_login) LIKE '%[bot]%'` and `lower(actor_login) NOT LIKE '%[bot]%'`.
 
-### Performance Gains
-- **Scan Reduction**: Reduced scanned granules by >85% for bot-filtered queries.
-- **Latency**: Query execution times dropped from ~1.2s to <150ms on large dataset queries.
+### Performance & Audit Findings
+- **AST Index Match Alignment**: `lower(actor_login) LIKE` aligns with the AST expression `lower(actor_login)` in `INDEX idx_github_events_actor_login`, ensuring the query planner evaluates the skip index rather than immediately bypassing it as `ILIKE` does.
+- **EXPLAIN Audit Note**: Per `docs/architecture/EXPLAIN-QUERY-AUDIT.md`, token bloom filters on high-cardinality string columns (`tokenbf_v1`) require targeted equality/token searches to prune granules. On broad substring scans across raw event tables, granules may still scan fully (`17420/17420 granules`), making `AggregatingMergeTree` rollups the primary driver for >90% scan reductions.
