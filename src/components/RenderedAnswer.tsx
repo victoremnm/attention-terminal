@@ -3,7 +3,7 @@
 import { useState, type ReactNode } from "react";
 import type { CandlesPayload, DigestPayload, DivergencePayload, MatrixPayload, MorphingCardPayload, RenderPayload, RepoDrilldownPayload, RepoDrilldownActivity, RepoDrilldownPulse, RepoDrilldownTrend, TableColumn, TablePayload, TickerPayload, VerdictTile } from "@/lib/render-payload";
 import { VERDICT_COLOR } from "@/lib/verdict-color";
-import { AreaChart, DualLine, HorizontalBarChart, Sparkline, VerticalBarChart } from "./charts";
+import { AreaChart, DualLine, HorizontalBarChart, PieChart, Sparkline, StackedBarChart, TreemapChart, VerticalBarChart, WaterfallChart } from "./charts";
 import { MarkdownText } from "./MarkdownText";
 import { SkinnyDeck } from "./SkinnyDeck";
 import { copyToClipboard, exportAssetAsHTML, exportAssetAsMarkdown } from "@/lib/asset-export";
@@ -795,8 +795,13 @@ function buildMorphingChart(
   // Bar Chart configs also use mark "bar" (Vega-Lite expresses stacking via
   // encoding, not a distinct mark type), so matching on markType alone would
   // misrender an unsupported taxonomy type as a simplified single-series chart.
-  const isBar = visualizationType === "Bar Chart";
-  const isLineOrArea = visualizationType === "Line Graph" || visualizationType === "Area Chart";
+  const vis = visualizationType as string;
+  const isBar = vis === "Bar Chart";
+  const isLineOrArea = vis === "Line Graph" || vis === "Area Chart";
+  const isPie = vis === "Pie Chart" || vis === "Donut Chart" || markType === "arc";
+  const isStackedBar = vis === "Stacked Bar Chart";
+  const isWaterfall = vis === "Waterfall Chart";
+  const isTreemap = vis === "Treemap" || vis === "Heatmap" || markType === "rect";
 
   if (isBar) {
     return (
@@ -805,6 +810,57 @@ function buildMorphingChart(
   }
   if (isLineOrArea) {
     return <AreaChart days={labels} values={values} label={yTitle} />;
+  }
+  if (isPie) {
+    return (
+      <PieChart items={labels.map((label, i) => ({ label, value: values[i] }))} title={yTitle} />
+    );
+  }
+  if (isStackedBar) {
+    const colorEncoding = isRecord(encoding?.color) ? encoding.color : undefined;
+    const colorField = typeof colorEncoding?.field === "string" ? colorEncoding.field : undefined;
+
+    if (colorField) {
+      const categoryMap = new Map<string, { key: string; label: string; value: number }[]>();
+      dataValues.forEach((row) => {
+        const cat = String(row[xField] ?? "");
+        const colorVal = String(row[colorField] ?? "");
+        const val = Number(row[yField]) || 0;
+        if (!categoryMap.has(cat)) categoryMap.set(cat, []);
+        categoryMap.get(cat)!.push({ key: colorVal, label: colorVal, value: val });
+      });
+
+      const stackedItems = Array.from(categoryMap.entries()).map(([category, segments]) => ({
+        category,
+        segments,
+      }));
+
+      return <StackedBarChart items={stackedItems} title={yTitle} />;
+    }
+
+    return (
+      <HorizontalBarChart items={labels.map((label, i) => ({ label, value: values[i] }))} title={yTitle} />
+    );
+  }
+  if (isWaterfall) {
+    const colorEncoding = isRecord(encoding?.color) ? encoding.color : undefined;
+    const typeField = typeof colorEncoding?.field === "string" ? colorEncoding.field : undefined;
+
+    const steps = dataValues.map((row) => {
+      const label = String(row[xField] ?? "");
+      const delta = Number(row[yField]) || 0;
+      const typeStr = typeField ? String(row[typeField] ?? "").toLowerCase() : undefined;
+      const type: "baseline" | "change" | "total" | undefined =
+        typeStr === "baseline" ? "baseline" : typeStr === "total" ? "total" : "change";
+      return { label, delta, type };
+    });
+
+    return <WaterfallChart steps={steps} title={yTitle} />;
+  }
+  if (isTreemap) {
+    return (
+      <TreemapChart items={labels.map((label, i) => ({ label, value: values[i] }))} title={yTitle} />
+    );
   }
   return null;
 }
