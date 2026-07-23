@@ -43,5 +43,7 @@ describe("ActorLeaderboardSurface", () => {
     expect(screen.getByText("37.5")).toBeInTheDocument();
     expect(screen.getByText("40.0")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "alice" })).toHaveAttribute("href", "https://github.com/alice");
+    expect(screen.getByText(/human score is weighted/i)).toBeInTheDocument();
+    expect(screen.getByText(/bot score equals raw events/i)).toBeInTheDocument();
   });
 });

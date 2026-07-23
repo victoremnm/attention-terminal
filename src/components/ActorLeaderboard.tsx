@@ -7,22 +7,29 @@ function formatCount(value: number) {
 function ActorLeaderboardTable({
   title,
   rows,
+  scoreHint,
 }: {
   title: string;
   rows: ActorLeaderboardRow[];
+  scoreHint: string;
 }) {
   return (
     <section className="actor-leaderboard-table">
       <div className="mb-3 flex items-baseline justify-between gap-4">
         <h2 className="text-xs font-semibold uppercase tracking-[0.24em] text-zinc-400">{title}</h2>
-        <span className="mono text-[11px] text-zinc-500">{rows.length ? `showing ${rows.length}` : "no rows"}</span>
+        <span className="mono text-[11px] text-zinc-500" title={scoreHint}>
+          {rows.length ? `showing ${rows.length}` : "no rows"}
+        </span>
       </div>
+      <p className="mb-3 mono text-[11px] text-zinc-500">{scoreHint}</p>
       <div className="table-responsive">
         <table className="telemetry-table">
           <thead>
             <tr>
               <th>Actor</th>
-              <th className="text-right">Score</th>
+              <th className="text-right" title={scoreHint}>
+                Score
+              </th>
               <th className="text-right">Events</th>
               <th className="text-right">Repos</th>
               <th className="text-right">Pushes</th>
@@ -40,13 +47,16 @@ function ActorLeaderboardTable({
                       href={`https://github.com/${encodeURIComponent(row.actor_login)}`}
                       target="_blank"
                       rel="noreferrer"
+                      title={`Open ${row.actor_login} on GitHub`}
                       className="truncate text-sm font-medium text-zinc-100 hover:text-cyan-300 hover:underline"
                     >
                       {row.actor_login}
                     </a>
                   </div>
                 </td>
-                <td className="mono text-right text-amber-300">{row.score.toFixed(1)}</td>
+                <td className="mono text-right text-amber-300" title={scoreHint}>
+                  {row.score.toFixed(1)}
+                </td>
                 <td className="mono text-right">{formatCount(row.events)}</td>
                 <td className="mono text-right">{formatCount(row.repos)}</td>
                 <td className="mono text-right">{formatCount(row.pushes)}</td>
@@ -78,9 +88,19 @@ export function ActorLeaderboardCard({
         <p className="mono text-[11px] text-zinc-500">humans + bots split for signal quality</p>
       </div>
 
-      <ActorLeaderboardTable title="Prolific humans" rows={humans} />
+      <ActorLeaderboardTable
+        title="Prolific humans"
+        rows={humans}
+        scoreHint="Human score is weighted from events, repos, pushes, and PRs."
+      />
 
-      {bots.length > 0 && <ActorLeaderboardTable title="Automation / bots" rows={bots} />}
+      {bots.length > 0 && (
+        <ActorLeaderboardTable
+          title="Automation / bots"
+          rows={bots}
+          scoreHint="Bot score equals raw events, so score and events are the same here."
+        />
+      )}
     </div>
   );
 }
