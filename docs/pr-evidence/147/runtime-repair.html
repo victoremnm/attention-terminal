@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PR 147 · Runtime repair evidence</title>
+  <style>
+    :root { color-scheme: dark; --bg: #14171a; --panel: #191d21; --line: rgba(255,255,255,.16); --muted: rgba(255,255,255,.58); --cyan: #38cdec; --green: #57d18c; }
+    body { margin: 0; padding: 32px; background: var(--bg); color: #cdd6dd; font: 14px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; }
+    main { max-width: 900px; margin: 0 auto; }
+    h1 { color: var(--cyan); font-size: 24px; }
+    h2 { margin-top: 28px; font-size: 15px; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; }
+    .card { padding: 16px; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; }
+    .label { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .08em; }
+    .value { margin-top: 6px; color: var(--green); font-size: 20px; }
+    code { color: var(--cyan); }
+    li { margin: 7px 0; }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="label">Attention Terminal · PR #147 · commit 8bfb203</div>
+    <h1>Runtime repair evidence</h1>
+    <p>The CTA remains a server-rendered component, and the trending payload no longer launches raw-firehose aggregations for every visitor.</p>
+
+    <h2>Before → after</h2>
+    <div class="grid">
+      <div class="card"><div class="label">ClickHouse memory</div><div class="value">14.4 GiB → ~0.28 GiB</div></div>
+      <div class="card"><div class="label">Heavy lane source</div><div class="value">raw events → aggregates</div></div>
+      <div class="card"><div class="label">Server component error</div><div class="value">handlers → CSS hover</div></div>
+      <div class="card"><div class="label">Verification</div><div class="value">11/11 + build</div></div>
+    </div>
+
+    <h2>Evidence</h2>
+    <ul>
+      <li>Before: four concurrent queries read approximately 140–144M rows and failed with ClickHouse error 241 in <code>AggregatingTransform</code>.</li>
+      <li>After: actor-aware shipping reads <code>gh_repo_activity_feed</code>; fork/star lanes read <code>gh_repo_hourly</code>.</li>
+      <li>After query-log sample: zero memory errors, approximately 0.26–0.28 GiB peak per replacement query, sub-second duration.</li>
+      <li>Hover behavior is implemented by <code>.chat-cta-link:hover</code>, so no event handlers cross the Server Component boundary.</li>
+    </ul>
+  </main>
+</body>
+</html>
