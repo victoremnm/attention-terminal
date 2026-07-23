@@ -108,16 +108,18 @@ export const FALLBACK_TABLES = [
   { database: "default", name: "gh_repo_hourly", engine: "SummingMergeTree", total_rows: "estimated", size: "N/A" },
   { database: "default", name: "gh_actor_daily", engine: "SummingMergeTree", total_rows: "estimated", size: "N/A" },
   { database: "default", name: "gh_repo_activity_feed", engine: "MergeTree", total_rows: "estimated", size: "N/A" },
-   { database: "default", name: "gh_repo_analysis", engine: "ReplacingMergeTree", total_rows: "estimated", size: "N/A" },
+  { database: "default", name: "gh_repo_analysis", engine: "ReplacingMergeTree", total_rows: "estimated", size: "N/A" },
   { database: "default", name: "subagent_runs", engine: "MergeTree", total_rows: "estimated", size: "N/A" },
 ];
+
+const TABLE_LIST_LIMIT = 50;
 
 export const LIST_TABLES_SQL = `
   SELECT database, name, engine, total_rows, formatReadableSize(total_bytes) AS size
   FROM system.tables
   WHERE database NOT IN ('system', 'information_schema', 'INFORMATION_SCHEMA')
   ORDER BY database, name
-  LIMIT 50
+  LIMIT {limit: UInt32}
 `.trim();
 
 export const listTables = tool({
@@ -128,6 +130,7 @@ export const listTables = tool({
       const result = await getClickHouse().query({
         query: LIST_TABLES_SQL,
         format: "JSONEachRow",
+        query_params: { limit: TABLE_LIST_LIMIT },
         clickhouse_settings: {
           readonly: "2",
           max_execution_time: 5,
