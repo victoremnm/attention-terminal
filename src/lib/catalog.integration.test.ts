@@ -19,7 +19,7 @@ describe.skipIf(!hasCH)("catalog metadata query (integration)", () => {
         max_execution_time: 10,
       },
     });
-    const rows = await result.json<Array<{ database: string; name: string; engine: string; total_rows: string }>>();
+    const rows = await result.json() as Array<{ database: string; name: string; engine: string; total_rows: string }>;
     expect(Array.isArray(rows)).toBe(true);
     expect(rows.length).toBeLessThanOrEqual(50);
     for (const row of rows) {
@@ -27,6 +27,16 @@ describe.skipIf(!hasCH)("catalog metadata query (integration)", () => {
       expect(typeof row.name).toBe("string");
       expect(typeof row.engine).toBe("string");
     }
+  }, 30_000);
+
+  it("listTables reports returned metadata rows without claiming scanned rows", async () => {
+    const { listTables } = await import("./agent-tools");
+    const result = await (listTables as any).execute({});
+
+    expect(result.isFallback).not.toBe(true);
+    expect(result.tables.length).toBeLessThanOrEqual(50);
+    expect(result.provenance.rowsReturned).toBe(result.tables.length);
+    expect(result.provenance).not.toHaveProperty("rowsRead");
   }, 30_000);
 
   it("catalogPromptSection returns a non-empty string", async () => {
