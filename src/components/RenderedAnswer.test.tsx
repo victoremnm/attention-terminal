@@ -71,7 +71,7 @@ describe("RenderedAnswer", () => {
 
     expect(screen.getByText('Top forked "skills" repos')).toBeInTheDocument();
     // Real chart renders instead of the placeholder.
-    expect(container.querySelector("figure.chart.bar-chart-vertical svg")).toBeInTheDocument();
+    expect(container.querySelector("figure.chart.bar-chart-horizontal svg")).toBeInTheDocument();
     expect(container.querySelectorAll("figure.chart svg rect").length).toBeGreaterThan(0);
     expect(screen.queryByText(/previewing .* markup/i)).not.toBeInTheDocument();
     // Table headers/data are still present, just collapsed inside <details>.
@@ -169,7 +169,7 @@ describe("RenderedAnswer", () => {
 
     const { container } = render(<RenderedAnswer payload={payload} />);
 
-    expect(container.querySelector("figure.chart.bar-chart-vertical svg")).toBeInTheDocument();
+    expect(container.querySelector("figure.chart.bar-chart-horizontal svg")).toBeInTheDocument();
     expect(container.querySelectorAll("figure.chart svg rect").length).toBeGreaterThan(0);
   });
 
@@ -269,14 +269,14 @@ describe("RenderedAnswer", () => {
 
       const { container } = render(<RenderedAnswer payload={payload} />);
 
-      expect(container.querySelector("figure.chart.bar-chart-vertical svg")).toBeInTheDocument();
+      expect(container.querySelector("figure.chart.bar-chart-horizontal svg")).toBeInTheDocument();
       expect(container.querySelectorAll("figure.chart svg rect").length).toBeGreaterThan(0);
       expect(screen.queryByText(/previewing .* markup/i)).not.toBeInTheDocument();
     });
 
-    it("caps and log-scales a high-cardinality, high-variance nominal Bar Chart instead of flattening every bar", () => {
+    it("caps high-cardinality nominal Bar Chart items instead of crowding bars", () => {
       // Reproduces the reported "bar chart looks bad" regression: 28 unrelated
-      // repos with one dominant outlier flattened every other bar to ~0px tall.
+      // repos trimmed to top 15.
       const values = Array.from({ length: 28 }, (_, i) => ({
         repo: `owner${i}/repo-${i}`,
         stars: i === 0 ? 50_000 : 1 + (i % 5),
@@ -297,14 +297,13 @@ describe("RenderedAnswer", () => {
 
       const { container } = render(<RenderedAnswer payload={payload} />);
 
-      const bars = container.querySelectorAll("figure.chart.bar-chart-vertical svg > g");
+      const bars = container.querySelectorAll("figure.chart.bar-chart-horizontal svg g.bar-row");
       expect(bars.length).toBeLessThanOrEqual(15);
-      // Every rendered bar should have a visible, non-degenerate height -- the
-      // whole point of log scale is that the smallest bars aren't ~0px.
       for (const bar of Array.from(bars)) {
-        const rect = bar.querySelector("rect");
-        const height = Number(rect?.getAttribute("height"));
-        expect(height).toBeGreaterThan(2);
+        const rects = bar.querySelectorAll("rect");
+        expect(rects.length).toBeGreaterThan(0);
+        const width = Number(rects[rects.length - 1]?.getAttribute("width"));
+        expect(width).toBeGreaterThan(2);
       }
     });
   });

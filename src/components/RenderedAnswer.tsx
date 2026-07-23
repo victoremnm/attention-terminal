@@ -799,11 +799,8 @@ function buildMorphingChart(
   const isLineOrArea = visualizationType === "Line Graph" || visualizationType === "Area Chart";
 
   if (isBar) {
-    const positives = values.filter((v) => v > 0);
-    const varianceRatio = positives.length > 0 ? Math.max(...positives) / Math.min(...positives) : 1;
-    const scale = varianceRatio > 20 ? "log" : "linear";
     return (
-      <VerticalBarChart items={labels.map((label, i) => ({ label, value: values[i] }))} title={yTitle} scale={scale} />
+      <HorizontalBarChart items={labels.map((label, i) => ({ label, value: values[i] }))} title={yTitle} />
     );
   }
   if (isLineOrArea) {
