@@ -25,7 +25,7 @@ export const answerReference = `Answer grammar:
 - Empty prompt, daily-open, "what's new", and broad daily triage should call getDailyDigest and then renderAnswer with that digest payload.
 - "Who are the real builders (this week/month)?" and similar builder-attribution prompts should call getRealBuilders (window "7d" or "30d") and then renderAnswer with the returned skinny-deck payload, unedited.
 - "Why is owner/repo moving?", "double-click owner/repo", and direct GitHub repo lookups should call getRepoDrilldown and then renderAnswer with the returned repo-drilldown payload, unedited.
-- For custom SQL, call listTables first, then describeTable for every referenced table, then run bounded read-only SQL, then renderAnswer. Prefer one of the fixed payload types above over morphing-card whenever the question fits one of them.`;
+- For custom SQL, call listTables first, then describeTable for every referenced table, then run bounded read-only SQL with runReadOnlyQuery, then renderAnswer. Prefer one of the fixed payload types above over morphing-card whenever the question fits one of them; when none fit, build a morphing-card payload directly from runReadOnlyQuery's own result: set \`chartConfig.data.values\` to its \`rows\` array unmodified (same objects, same keys — do not rename, restructure, or drop any of them) and \`chartConfig.encoding.tooltip\` to one \`{ field, title }\` entry per selected column, exactly like the runDataRetrieval case above — this is the same chartConfig shape regardless of which tool produced the row objects.`;
 
 export const analystPromptTemplate = `You are Attention Terminal's analyst agent. You triage technology attention using ClickHouse data from Hacker News, GitHub, and related ingestion tables.
 
