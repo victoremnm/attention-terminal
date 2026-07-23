@@ -12,7 +12,7 @@ import { RenderPayloadSchema } from "./render-payload";
 
 export const listTablesDef = {
   description:
-    "List Attention Terminal ClickHouse tables with engine, rows, and size. Use this first before custom SQL, then inspect specific tables with describeTable.",
+    "List up to 50 Attention Terminal ClickHouse tables with engine, rows, and size. Use this first before custom SQL, then inspect specific tables with describeTable.",
   inputSchema: z.object({}),
 } as const;
 

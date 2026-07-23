@@ -3,7 +3,7 @@ import { RepoRankings } from "@/components/RepoRankings";
 import { SurfaceNav } from "@/components/SurfaceNav";
 import { repoActivityWindow, type RepoWindow, type RepoWindowRow } from "@/lib/queries";
 
-const RANKING_LIMIT = 50;
+const RANKING_LIMIT = 100;
 
 export async function RepoRankingsSurface() {
   const [d1, d7, d30] = await Promise.all([
@@ -24,11 +24,10 @@ export async function RepoRankingsSurface() {
       <SurfaceNav active="trending" />
       <main className="trending-shell">
         <header className="trending-head">
-          <p className="skinny-kicker mono">LIVE_GITHUB</p>
-          <h1>Trending</h1>
+          <p className="skinny-kicker mono">REPO_RANKINGS</p>
+          <h1>Repo Rankings</h1>
           <p className="trending-copy">
-            Repos ranked by attention volume across the latest feed windows. Tap any repo to
-            render its live data.
+            GitHub repositories ranked by attention volume across 1-day, 7-day, and 30-day windows. Tap any repo to explore drilldown telemetry.
           </p>
         </header>
         <RepoRankings windows={windows} />

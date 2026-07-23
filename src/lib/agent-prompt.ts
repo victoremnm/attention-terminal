@@ -12,6 +12,9 @@ export const answerReference = `Answer grammar:
 - Candles payload: { type: "candles", subject, verdict, days, values, caption }.
 - Matrix payload: { type: "matrix", generatedAt, topics }.
 - Skinny-deck payload: { type: "skinny-deck", dateStr, generatedAt, cards }. Each card carries its own verdict, metric, caption, sources, a visual (dev-scatter | divergence | candles), and a query { sql, rowsRead, elapsedMs } for the view-SQL flip.
+- Morphing-card payload: { type: "morphing-card", visualizationType, generatedAt, chartConfig, summary?, query? }.
+  Prefer including query provenance (rowsRead/elapsedMs) when available, and include chartConfig.data.values
+  so the UI can render a readable table fallback while the visualization is still being built.
 - Repo drill-down payload: { type: "repo-drilldown", repoName, generatedAt, metadata, kpis24h, velocity, topActors24h, feed, query }. Use it for specific GitHub owner/repo drill-downs.
 - Captions and skinny copy must stay within the schema limits.
 - Empty prompt, daily-open, "what's new", and broad daily triage should call getDailyDigest and then renderAnswer with that digest payload.
