@@ -1,0 +1,224 @@
+<!doctype html><html><head><meta charset="utf-8"><title>docs preview</title><style>body{background:#14171a;color:#cdd6dd;font-family:system-ui;padding:24px;max-width:820px;margin:auto}</style></head><body><h1 style="color:#38cdec">/docs/architecture/SYSTEM-ARCHITECTURE (live render preview)</h1><h1>Attention Terminal — End-to-End System Architecture</h1>
+<blockquote>
+<p><strong>Architectural Blueprint &amp; Flow Diagrams (Inputs $\rightarrow$ Processing $\rightarrow$ Data $\rightarrow$ Backend $\rightarrow$ Frontend)</strong></p>
+</blockquote>
+<hr>
+<h2>1. High-Level Architecture Overview</h2>
+<p>Attention Terminal is a real-time, LLM-powered telemetry and analytics dashboard for open-source developer activity. It ingests high-volume raw event streams from GitHub and Hacker News into ClickHouse, processes high-frequency metrics through background tasks and materialized views, and serves narrative-driven SVG visualizations through a Next.js App Router interface.</p>
+<pre><code class="language-mermaid">flowchart TD
+    subgraph Inputs["1. INPUT LAYER"]
+        GH["GitHub Archive Stream\n(Push, PR, Issues, Stars)"]
+        HN["Hacker News API &amp; Algolia\n(Top Stories, Comments)"]
+        USER["User Chat Prompts &amp;\nInteractions"]
+    end
+
+    subgraph Processing["2. PROCESSING LAYER"]
+        TRIGGER["Trigger.dev v4 Tasks\n(Scheduled Ingestion &amp; Enrichment)"]
+        DBT["dbt Models &amp;\nAnalytical Transformations"]
+        GOOSE["Goose DDL Migrations\n(Versioned Schema Deployments)"]
+    end
+
+    subgraph Data["3. DATA LAYER (ClickHouse)"]
+        RAW["Raw Telemetry Tables\n(github_events, hackernews)"]
+        MV["Materialized Views &amp;\nSkipping Indexes"]
+        SYSTEM["System Telemetry Tables\n(subagent_runs, session_learnings)"]
+    end
+
+    subgraph Backend["4. BACKEND LAYER (Next.js App Router)"]
+        ROUTER["API Endpoint Handlers\n(/api/chat, /api/trending, /api/ticker)"]
+        AGENTS["Data Retrieval Agents &amp;\nAI Prompt System"]
+        CH_CLIENT["ClickHouse Client Pool &amp;\nFail-Open Spooler"]
+    end
+
+    subgraph Frontend["5. FRONTEND LAYER (React &amp; Next.js Client)"]
+        TERMINAL["Attention Terminal UI\n(Geist Monospaced Theme)"]
+        CANVAS["Morphing Canvas &amp;\nSVG Chart Primitives"]
+        EXPORTER["Asset Export Engine\n(Copy Markdown &amp; HTML)"]
+    end
+
+    GH --&gt; TRIGGER
+    HN --&gt; TRIGGER
+    TRIGGER --&gt; DBT
+    GOOSE --&gt; RAW
+    DBT --&gt; RAW
+    RAW --&gt; MV
+    SYSTEM --&gt; CH_CLIENT
+
+    USER --&gt; ROUTER
+    ROUTER --&gt; AGENTS
+    AGENTS --&gt; CH_CLIENT
+    CH_CLIENT --&gt; RAW
+    CH_CLIENT --&gt; MV
+
+    ROUTER --&gt; TERMINAL
+    TERMINAL --&gt; CANVAS
+    CANVAS --&gt; EXPORTER
+</code></pre>
+<hr>
+<h2>2. Ingestion &amp; Processing Pipeline (Inputs $\rightarrow$ Processing $\rightarrow$ Data)</h2>
+<p>The processing layer transforms raw external events into structured ClickHouse analytical tables. Background jobs run on Trigger.dev v4, executing streaming inserts and continuous aggregations.</p>
+<pre><code class="language-mermaid">sequenceDiagram
+    autonumber
+    participant GH as GitHub / HN APIs
+    participant TD as Trigger.dev v4 Worker
+    participant CH as ClickHouse DB
+    participant MV as Materialized Views
+
+    TD-&gt;&gt;GH: Poll high-frequency event stream (1min interval)
+    GH--&gt;&gt;TD: Return payload (JSON/NDJSON events)
+    TD-&gt;&gt;CH: Async batch INSERT INTO github_events (raw event grain)
+    Note over TD,CH: Bot filtering (lower(actor_login) NOT LIKE '%[bot]%') is applied at query/projection time
+    CH-&gt;&gt;MV: Materialize post-creation inserts (gh_repo_activity_feed_mv)
+    Note over CH,MV: Backfilling pre-existing rows requires an explicit INSERT INTO ... SELECT
+    MV--&gt;&gt;CH: Update gh_repo_drilldown_hourly &amp; period rollups
+</code></pre>
+<h3>Pseudo-Medallion Data Architecture (Bronze $\rightarrow$ Silver $\rightarrow$ Gold)</h3>
+<p>Instead of a traditional Kimball star schema (which introduces expensive joins in real-time OLAP queries), Attention Terminal organizes data in a <strong>Pseudo-Medallion Architecture</strong>:</p>
+<pre><code class="language-mermaid">flowchart TD
+    BRONZE["Bronze Layer (Raw Ingestion)\ngithub_events / hackernews\nAppend-only JSON event stream"] --&gt; SILVER
+    SILVER["Silver Layer (Cleansed Facts &amp; Indexes)\nFiltered bot accounts (lower(actor_login) NOT LIKE '%[bot]%')\nToken bloom filter index (idx_github_events_actor_login)"] --&gt; GOLD
+    GOLD["Gold Layer (Rollup Projections)\n_hourly, _daily, _monthly AggregatingMergeTrees\ngh_repo_activity_feed_mv / gh_repo_daily_mv / gh_repo_monthly_mv"]
+</code></pre>
+<ol>
+<li><strong>Bronze (Raw Append-Only)</strong>: Ingests GitHub Archive and Hacker News raw event payloads at high throughput into <code>default.github_events</code> and <code>default.hackernews</code>. Per ADR-0006, all read-path SQL queries these through the <code>raw</code> database (<code>raw.github_events</code>, <code>raw.hackernews</code>) — thin passthrough Views created for query isolation without moving the physical tables. Ingestion tasks must still write to <code>default.*</code> directly, since ClickHouse Views cannot be <code>INSERT</code> targets.</li>
+<li><strong>Silver (Cleansed &amp; Indexed Facts)</strong>: Cleansed event facts filter bot traffic (<code>[bot]</code>, <code>copilot</code>, <code>dependabot</code>) via <code>lower(actor_login) NOT LIKE '%[bot]%'</code>. The <code>idx_github_events_actor_login</code> token bloom-filter skipping index is defined on this column for equality/<code>LIKE</code> lookups, but per <code>docs/architecture/EXPLAIN-QUERY-AUDIT.md</code>'s production <code>EXPLAIN indexes = 1</code> audit it does not currently prune granules for this predicate (bot activity is too evenly distributed across the table's time-ordered granules) — see issue #201.</li>
+<li><strong>Gold (AggregatingMergeTree Rollups)</strong>: Continuous rollups are pre-computed into <code>_hourly</code>, <code>_daily</code>, and <code>_monthly</code> <code>AggregatingMergeTree</code> tables and materialized views (<code>gh_repo_activity_feed_mv</code>, <code>gh_repo_daily_mv</code>, <code>gh_repo_monthly_mv</code>), reducing query scan sizes by orders of magnitude versus scanning <code>github_events</code> directly. Historical rows for newly declared MVs require an explicit <code>INSERT INTO ... SELECT</code> backfill, per AGENTS.md conventions.</li>
+<li><strong>Goose Schema Migrations</strong>: All ClickHouse DDL is version-controlled through <strong>Goose migrations</strong> (<code>migrations/*.sql</code> + <code>./scripts/migrate.sh</code>) and deployed automatically via CD on merge to <code>main</code>.</li>
+</ol>
+<h3>Data Layer Schema Map</h3>
+<pre><code class="language-mermaid">erDiagram
+    github_events {
+        DateTime created_at PK
+        String repo_name
+        String actor_login
+        String type
+        String payload
+    }
+    gh_repo_activity_feed {
+        DateTime created_at PK
+        String repo_name
+        String actor_login
+        String event_type
+        UInt32 commits
+        UInt32 distinct_commits
+        UInt8 pr_merged
+        String title
+        Array_String labels
+    }
+    gh_repo_drilldown_hourly {
+        DateTime window_start PK
+        String repo_name
+        UInt64 push_count
+        UInt64 pr_count
+        UInt64 issue_count
+        UInt64 star_count
+    }
+    subagent_runs {
+        DateTime ts PK
+        String session_id
+        String prompt_id
+        String model
+        UInt64 latency_ms
+        UInt64 input_tokens
+        UInt64 output_tokens
+        Float64 cost_usd
+        UInt8 ok
+    }
+    session_learnings {
+        DateTime ts PK
+        String session
+        String slug
+        String category
+        String learning
+        Array_String tags
+    }
+
+    github_events ||--o{ gh_repo_activity_feed : "materializes event-level feed"
+    gh_repo_activity_feed ||--o{ gh_repo_drilldown_hourly : "aggregates into hourly KPI"
+    subagent_runs ||--o{ session_learnings : "correlates session telemetry"
+</code></pre>
+<hr>
+<h2>3. Backend Agent Routing &amp; Query Architecture</h2>
+<p>When a user submits a query to <code>/api/chat</code> or requests a repo drilldown, the backend orchestrates data retrieval through specialized AI prompt agents and executes optimized ClickHouse queries.</p>
+<pre><code class="language-mermaid">flowchart LR
+    subgraph Client
+        REQ["User Question / Prompt"]
+    end
+
+    subgraph NextJS["Next.js Server Runtime"]
+        API["/api/chat Handler"]
+        AGENT["Data Retrieval Agent"]
+        TEMPLATE["Query Selector &amp; SQL Generator"]
+    end
+
+    subgraph ClickHouse["ClickHouse Database"]
+        INDEX["Skipping Index Scan\n(idx_github_events_actor_login)"]
+        EXEC["Query Execution Engine"]
+    end
+
+    REQ --&gt; API
+    API --&gt; AGENT
+    AGENT --&gt; TEMPLATE
+    TEMPLATE --&gt; INDEX
+    INDEX --&gt; EXEC
+    EXEC --&gt; API
+</code></pre>
+<hr>
+<h2>4. Frontend Component &amp; Morphing Canvas Architecture</h2>
+<p>The frontend renders analytical answers via the <strong>Morphing Canvas</strong>. Based on the <code>visualizationType</code> returned in the render payload, the adapter routes data to dedicated Tufte-aligned SVG chart primitives.</p>
+<pre><code class="language-mermaid">flowchart TD
+    PAYLOAD["Render Payload\n(RenderPayload Schema)"] --&gt; ADAPTER["buildMorphingChart Adapter"]
+
+    ADAPTER --&gt;|Bar Chart / Nominal| BAR["HorizontalBarChart / VerticalBarChart"]
+    ADAPTER --&gt;|Pie Chart / Donut| PIE["PieChart\n(7 Slices Cap + Other Ring)"]
+    ADAPTER --&gt;|Stacked Bar| STACK["StackedBarChart\n(Global Key Color Mapping)"]
+    ADAPTER --&gt;|Waterfall / Progression| WATER["WaterfallChart\n(Delta &amp; Total Steps)"]
+    ADAPTER --&gt;|Treemap / Volume| TREE["TreemapChart\n(Proportional Tile Grid)"]
+    ADAPTER --&gt;|Scatter Correlation| SCATTER["DevScatterChart\n(Commits vs PR Merges)"]
+
+    BAR --&gt; RENDER["Rendered Morphing Card"]
+    PIE --&gt; RENDER
+    STACK --&gt; RENDER
+    WATER --&gt; RENDER
+    TREE --&gt; RENDER
+    SCATTER --&gt; RENDER
+
+    RENDER --&gt; COPY["Asset Exporter\n(Copy Markdown / Copy HTML)"]
+</code></pre>
+<hr>
+<h2>5. System Design Principles Summary</h2>
+<table>
+<thead>
+<tr>
+<th align="left">Layer</th>
+<th align="left">Primary Responsibilities</th>
+<th align="left">Core Architectural Choice</th>
+</tr>
+</thead>
+<tbody><tr>
+<td align="left"><strong>1. Inputs</strong></td>
+<td align="left">Event collection from GitHub Archive, HN, user chat</td>
+<td align="left">Asynchronous background polling via Trigger.dev</td>
+</tr>
+<tr>
+<td align="left"><strong>2. Processing</strong></td>
+<td align="left">Stream parsing, bot filtering, schema migrations</td>
+<td align="left">Goose DDL migrations &amp; dbt models</td>
+</tr>
+<tr>
+<td align="left"><strong>3. Data</strong></td>
+<td align="left">Fast OLAP analytics, telemetry tracking, session memory</td>
+<td align="left">ClickHouse with skipping indexes &amp; <code>FINAL</code> deduplication</td>
+</tr>
+<tr>
+<td align="left"><strong>4. Backend</strong></td>
+<td align="left">API routing, AI agent orchestration, ClickHouse pool</td>
+<td align="left">Next.js App Router + streaming JSON responses</td>
+</tr>
+<tr>
+<td align="left"><strong>5. Frontend</strong></td>
+<td align="left">Visualization, responsive layout, markdown/HTML export</td>
+<td align="left">Hand-rolled SVG primitives that maximize Tufte data-ink ratio</td>
+</tr>
+</tbody></table>
+</body></html>
