@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import type { CandlesPayload, DigestPayload, DivergencePayload, MatrixPayload, MorphingCardPayload, RenderPayload, RepoDrilldownPayload, RepoDrilldownActivity, RepoDrilldownPulse, RepoDrilldownTrend, TickerPayload, VerdictTile } from "@/lib/render-payload";
 import { VERDICT_COLOR } from "@/lib/verdict-color";
 import { AreaChart, DualLine, HorizontalBarChart, Sparkline, VerticalBarChart } from "./charts";
@@ -52,23 +53,25 @@ function parseMetricValue(metric: string): number | null {
   if (lower.includes("utc") || lower.includes("born") || lower.includes("ago")) {
     return null;
   }
-  const cleaned = metric.replace(/\/(1h|24h|7d|30d)/gi, "").trim();
-  const match = cleaned.match(/[\d,]+(?:\.\d+)?/);
-  if (!match) return null;
-  const num = parseFloat(match[0].replace(/,/g, ""));
-  return isNaN(num) ? null : num;
+  const cleaned = metric
+    .replace(/\b\d+(?:\.\d+)?\s*(?:s|m|h|d|w|mo|y)\b/gi, " ")
+    .replace(/\/(1h|24h|7d|30d)/gi, " ")
+    .trim();
+  const matches = cleaned.match(/(?<![\w.])[-+]?\d[\d,]*(?:\.\d+)?(?![\w.])/g);
+  const token = matches?.at(-1);
+  if (!token) return null;
+  const num = Number(token.replace(/,/g, ""));
+  return Number.isFinite(num) ? num : null;
 }
 
 function TickerAnswer({ payload }: { payload: TickerPayload }) {
   const barItems = payload.items
-    .map((item, idx) => {
+    .map((item) => {
       const val = parseMetricValue(item.metric);
       if (val === null) return null;
-      const colors = ["var(--cyan)", "var(--mag)", "var(--emerald)", "var(--amber)", "var(--blue)", "var(--purple)"];
       return {
         label: item.name,
         value: val,
-        color: colors[idx % colors.length],
       };
     })
     .filter((item): item is NonNullable<typeof item> => item !== null)
@@ -97,6 +100,82 @@ function TickerAnswer({ payload }: { payload: TickerPayload }) {
           </a>
         ))}
       </div>
+    </div>
+  );
+}
+
+type MorphingCardRow = Record<string, unknown>;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function humanizeKey(key: string) {
+  return key
+    .replace(/_/g, " ")
+    .replace(/\b([a-z])/g, (match) => match.toUpperCase());
+}
+
+function formatTableCell(value: unknown): string {
+  if (value === null || value === undefined || value === "") return "—";
+  if (typeof value === "number") return Number.isFinite(value) ? value.toLocaleString() : "—";
+  if (typeof value === "boolean") return value ? "true" : "false";
+  if (Array.isArray(value)) return value.map((item) => formatTableCell(item)).join(", ");
+  if (isRecord(value)) return JSON.stringify(value);
+  return String(value);
+}
+
+function MorphingCardTable({
+  rows,
+  chartConfig,
+}: {
+  rows: MorphingCardRow[];
+  chartConfig: MorphingCardPayload["chartConfig"];
+}) {
+  const config = chartConfig as Record<string, unknown>;
+  const encoding = isRecord(config.encoding) ? config.encoding : undefined;
+  const tooltip = Array.isArray(encoding?.tooltip) ? encoding.tooltip.filter(isRecord) : [];
+  const firstRow = rows[0] ?? {};
+
+  const columns = (
+    tooltip.length
+      ? tooltip
+          .map((item) => {
+            const field = typeof item.field === "string" ? item.field : "";
+            if (!field) return null;
+            return {
+              field,
+              label: typeof item.title === "string" && item.title.trim().length > 0 ? item.title : humanizeKey(field),
+            };
+          })
+          .filter((column): column is { field: string; label: string } => column !== null)
+      : Object.keys(firstRow).map((field) => ({ field, label: humanizeKey(field) }))
+  ).slice(0, 6);
+
+  if (columns.length === 0) {
+    return <div className="repo-empty mono">no tabular values were provided for this chart</div>;
+  }
+
+  return (
+    <div className="table-responsive">
+      <table className="telemetry-table">
+        <thead>
+          <tr>
+            {columns.map((column) => (
+              <th key={column.field}>{column.label}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.slice(0, 8).map((row, index) => (
+            <tr key={`${index}-${columns[0]?.field ?? "row"}`}>
+              {columns.map((column) => (
+                <td key={column.field}>{formatTableCell(row[column.field])}</td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }
@@ -201,69 +280,157 @@ function RepoVelocityChart({ payload }: { payload: RepoDrilldownPayload }) {
   );
 }
 
+type TrendCategoryKey = "stars" | "forks" | "releases" | "pr_merged" | "issue_opened";
+
+interface TrendCategory {
+  key: TrendCategoryKey;
+  label: string;
+  color: string;
+}
+
+const TREND_CATEGORIES: TrendCategory[] = [
+  { key: "stars", label: "stars", color: "var(--amber)" },
+  { key: "forks", label: "forks", color: "var(--blue)" },
+  { key: "releases", label: "releases", color: "var(--emerald)" },
+  { key: "pr_merged", label: "PR merges", color: "var(--cyan)" },
+  { key: "issue_opened", label: "issues", color: "var(--mag)" },
+];
+
+function trendCategoryValue(row: RepoDrilldownTrend, key: TrendCategoryKey): number {
+  if (key === "stars") return row.stars;
+  if (key === "forks") return row.forks;
+  return row.events.filter((ev) => ev.type === key).length;
+}
+
+function trendCategoryTitle(row: RepoDrilldownTrend, category: TrendCategory, value: number): string {
+  if (category.key === "stars" || category.key === "forks") {
+    return `${row.date}: ${value} ${category.label}`;
+  }
+  const details = row.events
+    .filter((ev) => ev.type === category.key)
+    .map((ev) => ev.label)
+    .join("; ");
+  return `${row.date} [${category.key}]: ${details}`;
+}
+
 function RepoTrendChart({ trends }: { trends: RepoDrilldownTrend[] }) {
-  const W = 640, H = 180, padL = 34, padR = 10, padT = 12, padB = 24;
-  const iw = W - padL - padR, ih = H - padT - padB;
-  if (trends.length < 2) {
+  const [showStars, setShowStars] = useState(true);
+  const [showForks, setShowForks] = useState(true);
+  const [showReleases, setShowReleases] = useState(true);
+  const [showPrs, setShowPrs] = useState(true);
+  const [showIssues, setShowIssues] = useState(true);
+
+  if (!trends || trends.length < 2) {
     return <div className="repo-empty mono">not enough trend data for a 30-day chart</div>;
   }
-  const stars = trends.map((t) => t.stars);
-  const forks = trends.map((t) => t.forks);
-  const max = Math.max(...stars, ...forks, 1);
-  const x = (i: number) => padL + (i / (trends.length - 1)) * iw;
-  const y = (v: number) => padT + ih - (v / max) * ih;
-  const line = (values: number[]) => values.map((v, i) => `${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(" ");
+
+  const visibility: Record<TrendCategoryKey, boolean> = {
+    stars: showStars,
+    forks: showForks,
+    releases: showReleases,
+    pr_merged: showPrs,
+    issue_opened: showIssues,
+  };
+
+  const allHidden = !showStars && !showForks && !showReleases && !showPrs && !showIssues;
+  const resetAll = () => {
+    setShowStars(true);
+    setShowForks(true);
+    setShowReleases(true);
+    setShowPrs(true);
+    setShowIssues(true);
+  };
+
+  const activeCategories = TREND_CATEGORIES.filter((c) => visibility[c.key]);
+
+  const dayTotals = trends.map((row) =>
+    activeCategories.reduce((sum, c) => sum + trendCategoryValue(row, c.key), 0)
+  );
+  const max = Math.max(...dayTotals, 1);
+
+  const W = 640, H = 180, padL = 34, padR = 10, padT = 12, padB = 24;
+  const iw = W - padL - padR, ih = H - padT - padB;
+  const barGap = 2;
+  const barWidth = Math.max(1, iw / trends.length - barGap);
+  const barX = (i: number) => padL + (i / trends.length) * iw + barGap / 2;
   const labelStep = Math.max(1, Math.floor((trends.length - 1) / 4));
-  const eventMarker = (type: RepoDrilldownTrend["events"][number]["type"]) =>
-    type === "release" ? "▲" : type === "pr_merged" ? "●" : "◆";
-  const eventColor = (type: RepoDrilldownTrend["events"][number]["type"]) =>
-    type === "release" ? "var(--amber)" : type === "pr_merged" ? "var(--cyan)" : "var(--mag)";
+
+  const activeSummary = activeCategories.map((c) => c.label).join(", ") || "none";
+
+  const TOGGLES = [
+    { key: "stars" as const, isOn: showStars, setter: setShowStars },
+    { key: "forks" as const, isOn: showForks, setter: setShowForks },
+    { key: "releases" as const, isOn: showReleases, setter: setShowReleases },
+    { key: "pr_merged" as const, isOn: showPrs, setter: setShowPrs },
+    { key: "issue_opened" as const, isOn: showIssues, setter: setShowIssues },
+  ];
 
   return (
     <figure className="chart repo-trend">
-      <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`${trends.length}-day trend timeline with release, PR-merge, and issue-open event markers`}>
-        {[0, 0.5, 1].map((t) => (
-          <g key={t}>
-            <line x1={padL} x2={W - padR} y1={y(max * t)} y2={y(max * t)} stroke="var(--line)" strokeWidth="1" />
-            <text x={padL - 6} y={y(max * t) + 3} fontSize="9.5" fill="var(--muted)" textAnchor="end" className="mono">
-              {Math.round(max * t)}
+      <div className="trend-controls mono" role="group" aria-label="Trend chart series toggles">
+        {TOGGLES.map(({ key, isOn, setter }) => {
+          const category = TREND_CATEGORIES.find((c) => c.key === key)!;
+          return (
+            <button
+              key={key}
+              type="button"
+              className={`trend-toggle ${isOn ? "active" : ""}`}
+              aria-pressed={isOn}
+              onClick={() => setter(!isOn)}
+            >
+              <i className="swatch" style={{ background: category.color }} /> {category.label}
+            </button>
+          );
+        })}
+        <button type="button" className="trend-reset" onClick={resetAll}>
+          Reset
+        </button>
+      </div>
+
+      {allHidden ? (
+        <div className="repo-empty mono" style={{ padding: "2rem", textAlign: "center" }}>
+          Every series is hidden. Toggle a series above to view data.
+        </div>
+      ) : (
+        <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`${trends.length}-day stacked activity chart (showing: ${activeSummary})`}>
+          {[0, 0.5, 1].map((t) => (
+            <g key={t}>
+              <line x1={padL} x2={W - padR} y1={padT + ih - ih * t} y2={padT + ih - ih * t} stroke="var(--line)" strokeWidth="1" />
+              <text x={padL - 6} y={padT + ih - ih * t + 3} fontSize="9.5" fill="var(--muted)" textAnchor="end" className="mono">
+                {Math.round(max * t)}
+              </text>
+            </g>
+          ))}
+          {trends.map((row, i) => i % labelStep === 0 || i === trends.length - 1 ? (
+            <text
+              key={row.date}
+              x={Math.min(Math.max(barX(i) + barWidth / 2, padL + 14), W - padR - 14)}
+              y={H - 6}
+              fontSize="9.5"
+              fill="var(--muted)"
+              textAnchor="middle"
+              className="mono"
+            >
+              {row.date.slice(5)}
             </text>
-          </g>
-        ))}
-        {trends.map((row, i) => i % labelStep === 0 || i === trends.length - 1 ? (
-          <text
-            key={row.date}
-            x={Math.min(Math.max(x(i), padL + 14), W - padR - 14)}
-            y={H - 6}
-            fontSize="9.5"
-            fill="var(--muted)"
-            textAnchor="middle"
-            className="mono"
-          >
-            {row.date.slice(5)}
-          </text>
-        ) : null)}
-        <polyline points={line(stars)} fill="none" stroke="var(--amber)" strokeWidth="2" strokeLinejoin="round" />
-        <polyline points={line(forks)} fill="none" stroke="var(--cyan)" strokeWidth="2" strokeLinejoin="round" />
-        {trends.map((row, i) => row.events.map((ev, j) => (
-          <text
-            key={`${row.date}-${ev.type}-${j}`}
-            x={x(i)}
-            y={padT + 10 + j * 11}
-            fontSize="11"
-            fill={eventColor(ev.type)}
-            textAnchor="middle"
-            className="mono"
-          >
-            {eventMarker(ev.type)}
-          </text>
-        )))}
-      </svg>
-      <figcaption className="legend">
-        <span><i className="swatch" style={{ background: "var(--amber)" }} /> stars</span>
-        <span><i className="swatch" style={{ background: "var(--cyan)" }} /> forks</span>
-        <span className="legend-events">▲ release · ● PR merged · ◆ issue opened</span>
-      </figcaption>
+          ) : null)}
+          {trends.map((row, i) => {
+            let cumulative = 0;
+            return activeCategories.map((category) => {
+              const value = trendCategoryValue(row, category.key);
+              if (value <= 0) return null;
+              const segHeight = (value / max) * ih;
+              const segY = padT + ih - cumulative - segHeight;
+              cumulative += segHeight;
+              return (
+                <rect key={`${row.date}-${category.key}`} x={barX(i)} y={segY} width={barWidth} height={segHeight} fill={category.color}>
+                  <title>{trendCategoryTitle(row, category, value)}</title>
+                </rect>
+              );
+            });
+          })}
+        </svg>
+      )}
     </figure>
   );
 }
@@ -518,15 +685,34 @@ function RepoDrilldownAnswer({ payload }: { payload: RepoDrilldownPayload }) {
 }
 
 function MorphingCardAnswer({ payload }: { payload: MorphingCardPayload }) {
+  const config = payload.chartConfig as Record<string, unknown>;
+  const title = typeof config.title === "string" && config.title.trim().length > 0 ? config.title : undefined;
+  const markType = isRecord(config.mark) && typeof config.mark.type === "string" ? config.mark.type : payload.visualizationType.toLowerCase();
+  const dataValues = isRecord(config.data) && Array.isArray(config.data.values)
+    ? config.data.values.filter(isRecord)
+    : [];
+
   return (
     <div className="agent-answer morphing-card">
       <div className="agent-answer-head mono">
         {payload.visualizationType.toUpperCase()}
+        <span>{title ?? `${dataValues.length} rows`}</span>
       </div>
-      <div className="agent-chart-placeholder" style={{ padding: '1rem', background: '#f5f5f5', color: '#000', margin: '1rem 0' }}>
-        {payload.summary && <p style={{ marginBottom: '0.5rem' }}>{payload.summary}</p>}
-        <i>[Morphing Canvas for {payload.visualizationType}]</i>
+      <div className="agent-caption">
+        {payload.summary && <p>{payload.summary}</p>}
+        <p className="mono">
+          previewing {markType} markup · {dataValues.length.toLocaleString()} rows shown while the visualization is prepared
+        </p>
       </div>
+      <MorphingCardTable rows={dataValues} chartConfig={payload.chartConfig} />
+      {payload.query && (
+        <details className="agent-query">
+          <summary className="mono">
+            query analytics · {payload.query.rowsRead.toLocaleString()} rows read · {payload.query.elapsedMs}ms
+          </summary>
+          <pre className="mono">{payload.query.sql}</pre>
+        </details>
+      )}
     </div>
   );
 }
