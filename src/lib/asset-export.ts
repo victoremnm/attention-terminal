@@ -1,7 +1,7 @@
 import type {
   CandlesPayload, DigestPayload, DigestCluster, DivergencePayload,
   MatrixPayload, MorphingCardPayload, RenderPayload, RepoDrilldownPayload,
-  SkinnyDeckPayload, TickerPayload,
+  SkinnyDeckPayload, TablePayload, TickerPayload,
 } from "./render-payload";
 
 const STYLE = `
@@ -158,6 +158,43 @@ function morphingCardHtml(payload: MorphingCardPayload): string {
     <p style="color:rgba(255,255,255,0.78);font-size:13px">${esc(payload.summary || "Morphing card")}</p>`);
 }
 
+function formatCell(raw: unknown, colType: string): string {
+  if (raw === null || raw === undefined) return "—";
+  if (colType === "number" && typeof raw === "number") return esc(raw.toLocaleString());
+  if (colType === "link" && typeof raw === "string") return esc(raw);
+  return esc(String(raw));
+}
+
+function tableHtml(payload: TablePayload): string {
+  const colAlign = (col: TablePayload["columns"][number]): string => {
+    if (col.type === "number") return "right";
+    if (col.type === "date") return "center";
+    return "left";
+  };
+  const rows = payload.rows.slice(0, 100);
+  const thead = `<tr>${payload.columns.map((c) => `<th style="text-align:${colAlign(c)}">${esc(c.label)}</th>`).join("")}</tr>`;
+  const tbody = rows.map((row) =>
+    `<tr>${payload.columns.map((col) => {
+      const raw = row[col.key];
+      if (col.type === "link" && typeof raw === "string" && raw.startsWith("http")) {
+        return `<td style="text-align:${colAlign(col)}"><a href="${esc(raw)}">${esc(raw)}</a></td>`;
+      }
+      return `<td style="text-align:${colAlign(col)}">${formatCell(raw, col.type)}</td>`;
+    }).join("")}</tr>`
+  ).join("");
+  const tfoot = payload.totals
+    ? `<tr>${payload.columns.map((col) =>
+        `<td style="text-align:${colAlign(col)};font-weight:700;border-top:2px solid ${LINE}">${
+          col.type === "number" && typeof payload.totals![col.key] === "number"
+            ? (payload.totals![col.key] as number).toLocaleString()
+            : col.key === payload.columns[0]?.key ? "Total" : ""
+        }</td>`
+      ).join("")}</tr>`
+    : "";
+  const caption = payload.summary ? `<p style="color:rgba(255,255,255,0.78);font-size:13px;margin-bottom:8px">${esc(payload.summary)}</p>` : "";
+  return wrap(`<div class="mono muted" style="font-size:10px;letter-spacing:.12em;margin-bottom:8px">DATA TABLE · ${payload.columns.length} columns · ${payload.rows.length} rows</div>${caption}<table>${thead}${tbody}${tfoot}</table>`);
+}
+
 function skinnyDeckHtml(payload: SkinnyDeckPayload): string {
   const cards = payload.cards.map((c) =>
     `<div style="border:1px solid ${LINE};border-radius:8px;padding:12px;margin:6px 0;background:rgba(31,36,41,0.6)">
@@ -299,6 +336,7 @@ export function exportAssetAsMarkdown(payload: RenderPayload): string {
     case "skinny-deck": return skinnyDeckMarkdown(payload);
     case "repo-drilldown": return repoDrilldownMarkdown(payload);
     case "morphing-card": return morphingCardMarkdown(payload);
+    case "table": return tableMarkdown(payload);
   }
 }
 
@@ -431,6 +469,36 @@ function morphingCardMarkdown(payload: MorphingCardPayload): string {
   return lines.join("\n");
 }
 
+function tableMarkdown(payload: TablePayload): string {
+  const fmt = (raw: unknown, colType: string): string => {
+    if (raw === null || raw === undefined) return "";
+    if (colType === "number" && typeof raw === "number") return raw.toLocaleString();
+    return String(raw);
+  };
+  const lines: string[] = [`### DATA TABLE · ${payload.columns.length} columns · ${payload.rows.length} rows`];
+  if (payload.summary) {
+    lines.push(payload.summary);
+    lines.push(``);
+  }
+  lines.push(`| ${payload.columns.map((c) => c.label).join(" | ")} |`);
+  lines.push(`| ${payload.columns.map((c) => c.type === "number" ? "---:" : ":---").join(" | ")} |`);
+  for (const row of payload.rows.slice(0, 50)) {
+    lines.push(`| ${payload.columns.map((c) => fmt(row[c.key], c.type)).join(" | ")} |`);
+  }
+  if (payload.totals) {
+    lines.push(`| ${payload.columns.map((c) => {
+      if (c.type === "number" && typeof payload.totals![c.key] === "number") return `**${(payload.totals![c.key] as number).toLocaleString()}**`;
+      if (c.key === payload.columns[0]?.key) return "**Total**";
+      return "";
+    }).join(" | ")} |`);
+  }
+  if (payload.rows.length > 50) {
+    lines.push(``);
+    lines.push(`*Showing 50 of ${payload.rows.length.toLocaleString()} rows*`);
+  }
+  return lines.join("\n");
+}
+
 export function exportAssetAsHTML(payload: RenderPayload): string {
   switch (payload.type) {
     case "digest": return digestHtml(payload);
@@ -441,6 +509,7 @@ export function exportAssetAsHTML(payload: RenderPayload): string {
     case "skinny-deck": return skinnyDeckHtml(payload);
     case "repo-drilldown": return repoDrilldownHtml(payload);
     case "morphing-card": return morphingCardHtml(payload);
+    case "table": return tableHtml(payload);
   }
 }
 

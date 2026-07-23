@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import type { CandlesPayload, DigestPayload, DivergencePayload, MatrixPayload, MorphingCardPayload, RenderPayload, RepoDrilldownPayload, RepoDrilldownActivity, RepoDrilldownPulse, RepoDrilldownTrend, TickerPayload, VerdictTile } from "@/lib/render-payload";
+import type { CandlesPayload, DigestPayload, DivergencePayload, MatrixPayload, MorphingCardPayload, RenderPayload, RepoDrilldownPayload, RepoDrilldownActivity, RepoDrilldownPulse, RepoDrilldownTrend, TableColumn, TablePayload, TickerPayload, VerdictTile } from "@/lib/render-payload";
 import { VERDICT_COLOR } from "@/lib/verdict-color";
 import { AreaChart, DualLine, HorizontalBarChart, Sparkline, VerticalBarChart } from "./charts";
 import { MarkdownText } from "./MarkdownText";
@@ -746,6 +746,28 @@ function MorphingCardAnswer({ payload }: { payload: MorphingCardPayload }) {
     ? config.data.values.filter(isRecord)
     : [];
 
+  if (payload.visualizationType === "Data Table") {
+    return (
+      <div className="agent-answer table-answer">
+        <div className="agent-answer-head mono">
+          DATA TABLE
+          <span>{title ?? `${dataValues.length} rows`}</span>
+        </div>
+        {payload.summary && <div className="agent-caption"><MarkdownText text={payload.summary} /></div>}
+        <MorphingCardTable rows={dataValues} chartConfig={payload.chartConfig} />
+        {dataValues.length > 8 && <p className="mono muted" style={{ fontSize: 11, marginTop: 4, textAlign: "right" }}>showing 8 of {dataValues.length.toLocaleString()} rows</p>}
+        {payload.query && (
+          <details className="agent-query">
+            <summary className="mono">
+              query analytics · {payload.query.rowsRead.toLocaleString()} rows read · {payload.query.elapsedMs}ms
+            </summary>
+            <pre className="mono">{payload.query.sql}</pre>
+          </details>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className="agent-answer morphing-card">
       <div className="agent-answer-head mono">
@@ -771,6 +793,93 @@ function MorphingCardAnswer({ payload }: { payload: MorphingCardPayload }) {
   );
 }
 
+function TableAnswer({ payload }: { payload: TablePayload }) {
+  const colAlign = (col: TableColumn): React.CSSProperties["textAlign"] => {
+    if (col.type === "number") return "right";
+    if (col.type === "date") return "center";
+    return "left";
+  };
+
+  if (payload.rows.length === 0) {
+    return (
+      <div className="agent-answer table-answer">
+        <div className="agent-answer-head mono">DATA TABLE</div>
+        {payload.summary && <div className="agent-caption"><MarkdownText text={payload.summary} /></div>}
+        <div className="repo-empty mono">no rows returned</div>
+      </div>
+    );
+  }
+
+  const showLimit = payload.rows.length > 20;
+  const displayRows = payload.rows.slice(0, 20);
+
+  return (
+    <div className="agent-answer table-answer">
+      <div className="agent-answer-head mono">
+        DATA TABLE
+        <span>{payload.columns.length} columns · {payload.rows.length.toLocaleString()} rows</span>
+      </div>
+      {payload.summary && <div className="agent-caption"><MarkdownText text={payload.summary} /></div>}
+      <div className="table-responsive">
+        <table className="telemetry-table">
+          <thead>
+            <tr>
+              {payload.columns.map((col) => (
+                <th key={col.key} style={{ textAlign: colAlign(col) }}>{col.label}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {displayRows.map((row, rowIndex) => (
+              <tr key={rowIndex}>
+                {payload.columns.map((col) => {
+                  const raw = row[col.key];
+                  if (col.type === "link" && typeof raw === "string" && raw.startsWith("http")) {
+                    return (
+                      <td key={col.key} style={{ textAlign: colAlign(col) }}>
+                        <a href={raw} target="_blank" rel="noreferrer">{raw}</a>
+                      </td>
+                    );
+                  }
+                  return (
+                    <td key={col.key} style={{ textAlign: colAlign(col) }}>
+                      {formatTableCell(raw)}
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+          {payload.totals && (
+            <tfoot>
+              <tr>
+                {payload.columns.map((col) => (
+                  <td key={col.key} style={{ textAlign: colAlign(col), fontWeight: 600, borderTop: "2px solid var(--line)" }}>
+                    {col.type === "number" && typeof payload.totals![col.key] === "number"
+                      ? payload.totals![col.key].toLocaleString()
+                      : col.key === payload.columns[0]?.key
+                      ? "Total"
+                      : ""}
+                  </td>
+                ))}
+              </tr>
+            </tfoot>
+          )}
+        </table>
+      </div>
+      {showLimit && <p className="mono muted" style={{ fontSize: 11, marginTop: 4, textAlign: "right" }}>showing 20 of {payload.rows.length.toLocaleString()} rows</p>}
+      {payload.query && (
+        <details className="agent-query">
+          <summary className="mono">
+            query analytics · {payload.query.rowsRead.toLocaleString()} rows read · {payload.query.elapsedMs}ms
+          </summary>
+          <pre className="mono">{payload.query.sql}</pre>
+        </details>
+      )}
+    </div>
+  );
+}
+
 export function RenderedAnswer({ payload, showCopy = true }: { payload: RenderPayload; showCopy?: boolean }) {
   let answer: React.ReactNode;
   if (payload.type === "digest") answer = <DigestAnswer payload={payload} />;
@@ -780,6 +889,7 @@ export function RenderedAnswer({ payload, showCopy = true }: { payload: RenderPa
   else if (payload.type === "skinny-deck") answer = <SkinnyDeck payload={payload} />;
   else if (payload.type === "repo-drilldown") answer = <RepoDrilldownAnswer payload={payload} />;
   else if (payload.type === "morphing-card") answer = <MorphingCardAnswer payload={payload} />;
+  else if (payload.type === "table") answer = <TableAnswer payload={payload} />;
   else answer = <MatrixAnswer payload={payload} />;
 
   return <CopyableAnswer payload={payload} showCopy={showCopy}>{answer}</CopyableAnswer>;

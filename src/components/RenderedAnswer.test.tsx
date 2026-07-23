@@ -3,10 +3,12 @@
  */
 
 import "@testing-library/jest-dom/vitest";
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { RenderPayload } from "@/lib/render-payload";
 import { RenderedAnswer } from "./RenderedAnswer";
+
+afterEach(() => cleanup());
 
 describe("RenderedAnswer", () => {
   it("parses numeric values without reading the 30 out of field names", () => {
@@ -135,5 +137,112 @@ describe("RenderedAnswer copy-as-HTML button", () => {
     const btns = screen.getAllByRole("button", { name: "Copy as Markdown" });
     await act(() => fireEvent.click(btns[0]));
     expect(screen.getByText("Copied MD!")).toBeInTheDocument();
+  });
+});
+
+describe("RenderedAnswer table payload", () => {
+  const tablePayload: RenderPayload = {
+    type: "table",
+    columns: [
+      { key: "repo", label: "Repository", type: "string" },
+      { key: "stars", label: "Stars", type: "number" },
+      { key: "url", label: "URL", type: "link" },
+    ],
+    rows: [
+      { repo: "acme/widgets", stars: 1500, url: "https://github.com/acme/widgets" },
+      { repo: "acme/tools", stars: 800, url: "https://github.com/acme/tools" },
+    ],
+    totals: { stars: 2300 },
+    summary: "Top ACME repos",
+  };
+
+  it("renders column headers from table payload", () => {
+    render(<RenderedAnswer payload={tablePayload} />);
+    expect(screen.getByText("Repository")).toBeInTheDocument();
+    expect(screen.getByText("Stars")).toBeInTheDocument();
+    expect(screen.getByText("URL")).toBeInTheDocument();
+  });
+
+  it("renders table cell values", () => {
+    render(<RenderedAnswer payload={tablePayload} />);
+    expect(screen.getByText("acme/widgets")).toBeInTheDocument();
+    expect(screen.getByText("1,500")).toBeInTheDocument();
+  });
+
+  it("renders link columns as anchor tags", () => {
+    const { container } = render(<RenderedAnswer payload={tablePayload} />);
+    const links = container.querySelectorAll("a[href='https://github.com/acme/widgets']");
+    expect(links.length).toBeGreaterThan(0);
+  });
+
+  it("renders totals row", () => {
+    const { container } = render(<RenderedAnswer payload={tablePayload} />);
+    const tfoot = container.querySelector("tfoot");
+    expect(tfoot).toBeInTheDocument();
+    expect(tfoot?.textContent).toContain("Total");
+    expect(tfoot?.textContent).toContain("2,300");
+  });
+
+  it("renders summary when provided", () => {
+    render(<RenderedAnswer payload={tablePayload} />);
+    expect(screen.getByText("Top ACME repos")).toBeInTheDocument();
+  });
+
+  it("shows column count and row count in header", () => {
+    render(<RenderedAnswer payload={tablePayload} />);
+    expect(screen.getByText(/3 columns/)).toBeInTheDocument();
+    expect(screen.getByText(/2 rows/)).toBeInTheDocument();
+  });
+
+  it("shows empty state when rows array is empty", () => {
+    const empty: RenderPayload = {
+      type: "table",
+      columns: [{ key: "col", label: "Column", type: "string" }],
+      rows: [],
+    };
+    render(<RenderedAnswer payload={empty} />);
+    expect(screen.getByText("no rows returned")).toBeInTheDocument();
+  });
+
+  it("limits displayed rows to 20 and shows count note for larger datasets", () => {
+    const manyRows = Array.from({ length: 25 }, (_, i) => ({ col: `row ${i + 1}` }));
+    const big: RenderPayload = {
+      type: "table",
+      columns: [{ key: "col", label: "Col", type: "string" }],
+      rows: manyRows,
+    };
+    const { container } = render(<RenderedAnswer payload={big} />);
+    const rows = container.querySelectorAll("tbody tr");
+    expect(rows.length).toBe(20);
+    expect(screen.getByText(/showing 20 of 25/)).toBeInTheDocument();
+  });
+
+  it("renders Data Table morphing-card without previewing message", () => {
+    const dtPayload: RenderPayload = {
+      type: "morphing-card",
+      visualizationType: "Data Table",
+      generatedAt: "2026-07-23T08:27:40.000Z",
+      summary: "Repo list",
+      chartConfig: {
+        data: {
+          values: [
+            { repo: "acme/widgets", stars: 1500 },
+          ],
+        },
+        encoding: {
+          tooltip: [
+            { field: "repo", title: "Repo" },
+            { field: "stars", title: "Stars" },
+          ],
+        },
+      },
+    };
+    render(<RenderedAnswer payload={dtPayload} />);
+    expect(screen.getByText("DATA TABLE")).toBeInTheDocument();
+    expect(screen.getByText("Repo")).toBeInTheDocument();
+    expect(screen.getByText("Stars")).toBeInTheDocument();
+    expect(screen.getByText("acme/widgets")).toBeInTheDocument();
+    expect(screen.getByText("1,500")).toBeInTheDocument();
+    expect(screen.queryByText(/previewing/)).not.toBeInTheDocument();
   });
 });
