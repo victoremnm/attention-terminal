@@ -274,6 +274,9 @@ export const RepoDrilldownSchema = z.object({
     distinctCommits: z.number().int().nonnegative(),
     prsOpened: z.number().int().nonnegative(),
     prsMerged: z.number().int().nonnegative(),
+    issuesOpened: z.number().int().nonnegative(),
+    releasesPublished: z.number().int().nonnegative(),
+    isBot: z.boolean().default(false),
   })).default([]),
   feed: z.array(z.object({
     at: z.string(),

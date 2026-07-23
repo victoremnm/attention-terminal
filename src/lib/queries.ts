@@ -399,6 +399,9 @@ interface RepoDrilldownActorSqlRow {
   distinct_commits: string;
   prs_opened: string;
   prs_merged: string;
+  issues_opened: string;
+  releases_count: string;
+  is_bot: number | string;
 }
 
 interface RepoDrilldownFeedSqlRow {
@@ -760,45 +763,73 @@ export async function repoDrilldown(repoName: string): Promise<RepoDrilldownPayl
     )
   );
 
+  // Releases are pre-aggregated to one row per author in their own CTE, then
+  // FULL OUTER JOINed against the (also pre-aggregated) per-actor totals.
+  // Joining gh_repo_releases directly against the per-hour actor rows (as an
+  // earlier version of this query did) fans out: an actor active in H hours
+  // with R releases would get every push/commit/PR/issue sum multiplied by R,
+  // and release counts multiplied by H. The FULL OUTER JOIN (rather than
+  // LEFT JOIN from the actor side) also surfaces release-only contributors
+  // who published without any push/PR/issue activity in the window.
   const actorsQuery = useAggregates
     ? highWater.then((anchor) => q<RepoDrilldownActorSqlRow>(
-        `SELECT
+        `WITH actor_totals AS (
+           SELECT
+             actor_login AS actor,
+             sum(pushes) AS push_total,
+             sum(commits) AS commit_total,
+             sum(distinct_commits) AS distinct_commit_total,
+             sum(prs_opened) AS pr_opened_total,
+             sum(prs_merged) AS pr_merged_total,
+             sum(issues_opened) AS issues_opened_total
+           FROM gh_repo_actor_hourly
+           WHERE repo_name = {repoName: String}
+             AND hour > {highWater: DateTime} - INTERVAL 24 HOUR
+           GROUP BY actor_login
+         ),
+         release_totals AS (
+           SELECT author AS actor, count() AS releases_total
+           FROM gh_repo_releases FINAL
+           WHERE repo_name = {repoName: String}
+             AND published_at > {highWater: DateTime} - INTERVAL 24 HOUR
+           GROUP BY author
+         )
+         SELECT
            actor,
            toString(push_total) AS pushes,
            toString(commit_total) AS commits,
            toString(distinct_commit_total) AS distinct_commits,
            toString(pr_opened_total) AS prs_opened,
-           toString(pr_merged_total) AS prs_merged
+           toString(pr_merged_total) AS prs_merged,
+           toString(issues_opened_total) AS issues_opened,
+           toString(releases_total) AS releases_count,
+           actor ILIKE '%[bot]%' AS is_bot
          FROM (
            SELECT
-              actor_login AS actor,
-              sum(pushes) AS push_total,
-              sum(commits) AS commit_total,
-              sum(distinct_commits) AS distinct_commit_total,
-              sum(prs_opened) AS pr_opened_total,
-              sum(prs_merged) AS pr_merged_total,
-              (commit_total * 3) + (distinct_commit_total * 2) + (pr_opened_total * 3) + (pr_merged_total * 5) + least(push_total, commit_total) AS activity_score
-            FROM gh_repo_actor_hourly
-            WHERE repo_name = {repoName: String}
-              AND hour > {highWater: DateTime} - INTERVAL 24 HOUR
-            GROUP BY actor_login
-            HAVING commit_total > 0 OR pr_opened_total > 0 OR pr_merged_total > 0
-          )
-          ORDER BY activity_score DESC, actor
-          LIMIT 8`,
-        ["gh_repo_actor_hourly"],
+             coalesce(at.actor, rt.actor) AS actor,
+             coalesce(at.push_total, 0) AS push_total,
+             coalesce(at.commit_total, 0) AS commit_total,
+             coalesce(at.distinct_commit_total, 0) AS distinct_commit_total,
+             coalesce(at.pr_opened_total, 0) AS pr_opened_total,
+             coalesce(at.pr_merged_total, 0) AS pr_merged_total,
+             coalesce(at.issues_opened_total, 0) AS issues_opened_total,
+             coalesce(rt.releases_total, 0) AS releases_total,
+             (coalesce(at.commit_total, 0) * 3) + (coalesce(at.distinct_commit_total, 0) * 2)
+               + (coalesce(at.pr_opened_total, 0) * 3) + (coalesce(at.pr_merged_total, 0) * 5)
+               + least(coalesce(at.push_total, 0), coalesce(at.commit_total, 0))
+               + (coalesce(rt.releases_total, 0) * 4) AS activity_score
+           FROM actor_totals AS at
+           FULL OUTER JOIN release_totals AS rt ON at.actor = rt.actor
+         )
+         WHERE commit_total > 0 OR pr_opened_total > 0 OR pr_merged_total > 0 OR issues_opened_total > 0 OR releases_total > 0
+         ORDER BY activity_score DESC, actor
+         LIMIT 8`,
+        ["gh_repo_actor_hourly", "gh_repo_releases"],
         { ...queryParams, highWater: anchor },
         request
       ))
     : highWater.then((anchor) => q<RepoDrilldownActorSqlRow>(
-        `SELECT
-           actor,
-           toString(push_total) AS pushes,
-           toString(commit_total) AS commits,
-           toString(distinct_commit_total) AS distinct_commits,
-           toString(pr_opened_total) AS prs_opened,
-           toString(pr_merged_total) AS prs_merged
-         FROM (
+        `WITH actor_totals AS (
            SELECT
              actor_login AS actor,
              countIf(event_type = 'PushEvent') AS push_total,
@@ -806,17 +837,51 @@ export async function repoDrilldown(repoName: string): Promise<RepoDrilldownPayl
              sum(distinct_commit_count) AS distinct_commit_total,
              countIf(event_type = 'PullRequestEvent' AND action = 'opened') AS pr_opened_total,
              countIf(event_type = 'PullRequestEvent' AND action = 'closed' AND pr_merged = 1) AS pr_merged_total,
-             (commit_total * 3) + (distinct_commit_total * 2) + (pr_opened_total * 3) + (pr_merged_total * 5) + least(push_total, commit_total) AS activity_score
+             countIf(event_type = 'IssuesEvent' AND action = 'opened') AS issues_opened_total
            FROM github_events
            WHERE repo_name = {repoName: String}
              AND created_at > {highWater: DateTime} - INTERVAL 24 HOUR
-             AND event_type IN ('PushEvent', 'PullRequestEvent')
+             AND event_type IN ('PushEvent', 'PullRequestEvent', 'IssuesEvent')
            GROUP BY actor_login
-           HAVING commit_total > 0 OR pr_opened_total > 0 OR pr_merged_total > 0
+         ),
+         release_totals AS (
+           SELECT author AS actor, count() AS releases_total
+           FROM gh_repo_releases FINAL
+           WHERE repo_name = {repoName: String}
+             AND published_at > {highWater: DateTime} - INTERVAL 24 HOUR
+           GROUP BY author
          )
+         SELECT
+           actor,
+           toString(push_total) AS pushes,
+           toString(commit_total) AS commits,
+           toString(distinct_commit_total) AS distinct_commits,
+           toString(pr_opened_total) AS prs_opened,
+           toString(pr_merged_total) AS prs_merged,
+           toString(issues_opened_total) AS issues_opened,
+           toString(releases_total) AS releases_count,
+           actor ILIKE '%[bot]%' AS is_bot
+         FROM (
+           SELECT
+             coalesce(at.actor, rt.actor) AS actor,
+             coalesce(at.push_total, 0) AS push_total,
+             coalesce(at.commit_total, 0) AS commit_total,
+             coalesce(at.distinct_commit_total, 0) AS distinct_commit_total,
+             coalesce(at.pr_opened_total, 0) AS pr_opened_total,
+             coalesce(at.pr_merged_total, 0) AS pr_merged_total,
+             coalesce(at.issues_opened_total, 0) AS issues_opened_total,
+             coalesce(rt.releases_total, 0) AS releases_total,
+             (coalesce(at.commit_total, 0) * 3) + (coalesce(at.distinct_commit_total, 0) * 2)
+               + (coalesce(at.pr_opened_total, 0) * 3) + (coalesce(at.pr_merged_total, 0) * 5)
+               + least(coalesce(at.push_total, 0), coalesce(at.commit_total, 0))
+               + (coalesce(rt.releases_total, 0) * 4) AS activity_score
+           FROM actor_totals AS at
+           FULL OUTER JOIN release_totals AS rt ON at.actor = rt.actor
+         )
+         WHERE commit_total > 0 OR pr_opened_total > 0 OR pr_merged_total > 0 OR issues_opened_total > 0 OR releases_total > 0
          ORDER BY activity_score DESC, actor
          LIMIT 8`,
-        ["github_events"],
+        ["github_events", "gh_repo_releases"],
         { ...queryParams, highWater: anchor },
         request
       ));
@@ -1259,6 +1324,9 @@ export async function repoDrilldown(repoName: string): Promise<RepoDrilldownPayl
       distinctCommits: Number(row.distinct_commits),
       prsOpened: Number(row.prs_opened),
       prsMerged: Number(row.prs_merged),
+      issuesOpened: Number(row.issues_opened),
+      releasesPublished: Number(row.releases_count),
+      isBot: Number(row.is_bot) === 1,
     })),
     feed: feed.rows.map((row) => ({
       at: row.at,
