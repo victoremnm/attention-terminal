@@ -202,6 +202,39 @@ function RepoVelocityChart({ payload }: { payload: RepoDrilldownPayload }) {
   );
 }
 
+type TrendCategoryKey = "stars" | "forks" | "releases" | "pr_merged" | "issue_opened";
+
+interface TrendCategory {
+  key: TrendCategoryKey;
+  label: string;
+  color: string;
+}
+
+const TREND_CATEGORIES: TrendCategory[] = [
+  { key: "stars", label: "stars", color: "var(--amber)" },
+  { key: "forks", label: "forks", color: "var(--blue)" },
+  { key: "releases", label: "releases", color: "var(--emerald)" },
+  { key: "pr_merged", label: "PR merges", color: "var(--cyan)" },
+  { key: "issue_opened", label: "issues", color: "var(--mag)" },
+];
+
+function trendCategoryValue(row: RepoDrilldownTrend, key: TrendCategoryKey): number {
+  if (key === "stars") return row.stars;
+  if (key === "forks") return row.forks;
+  return row.events.filter((ev) => ev.type === key).length;
+}
+
+function trendCategoryTitle(row: RepoDrilldownTrend, category: TrendCategory, value: number): string {
+  if (category.key === "stars" || category.key === "forks") {
+    return `${row.date}: ${value} ${category.label}`;
+  }
+  const details = row.events
+    .filter((ev) => ev.type === category.key)
+    .map((ev) => ev.label)
+    .join("; ");
+  return `${row.date} [${category.key}]: ${details}`;
+}
+
 function RepoTrendChart({ trends }: { trends: RepoDrilldownTrend[] }) {
   const [showStars, setShowStars] = useState(true);
   const [showForks, setShowForks] = useState(true);
@@ -213,6 +246,14 @@ function RepoTrendChart({ trends }: { trends: RepoDrilldownTrend[] }) {
     return <div className="repo-empty mono">not enough trend data for a 30-day chart</div>;
   }
 
+  const visibility: Record<TrendCategoryKey, boolean> = {
+    stars: showStars,
+    forks: showForks,
+    releases: showReleases,
+    pr_merged: showPrs,
+    issue_opened: showIssues,
+  };
+
   const allHidden = !showStars && !showForks && !showReleases && !showPrs && !showIssues;
   const resetAll = () => {
     setShowStars(true);
@@ -222,79 +263,47 @@ function RepoTrendChart({ trends }: { trends: RepoDrilldownTrend[] }) {
     setShowIssues(true);
   };
 
-  const stars = trends.map((t) => t.stars);
-  const forks = trends.map((t) => t.forks);
+  const activeCategories = TREND_CATEGORIES.filter((c) => visibility[c.key]);
 
-  const activeSeriesMaxVals: number[] = [];
-  if (showStars) activeSeriesMaxVals.push(...stars);
-  if (showForks) activeSeriesMaxVals.push(...forks);
-  const max = Math.max(...activeSeriesMaxVals, 1);
+  const dayTotals = trends.map((row) =>
+    activeCategories.reduce((sum, c) => sum + trendCategoryValue(row, c.key), 0)
+  );
+  const max = Math.max(...dayTotals, 1);
 
   const W = 640, H = 180, padL = 34, padR = 10, padT = 12, padB = 24;
   const iw = W - padL - padR, ih = H - padT - padB;
-  const x = (i: number) => padL + (i / (trends.length - 1)) * iw;
-  const y = (v: number) => padT + ih - (v / max) * ih;
-  const line = (values: number[]) => values.map((v, i) => `${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(" ");
+  const barGap = 2;
+  const barWidth = Math.max(1, iw / trends.length - barGap);
+  const barX = (i: number) => padL + (i / trends.length) * iw + barGap / 2;
   const labelStep = Math.max(1, Math.floor((trends.length - 1) / 4));
 
-  const isEventVisible = (type: RepoDrilldownTrend["events"][number]["type"]) => {
-    if (type === "release") return showReleases;
-    if (type === "pr_merged") return showPrs;
-    if (type === "issue_opened") return showIssues;
-    return true;
-  };
+  const activeSummary = activeCategories.map((c) => c.label).join(", ") || "none";
 
-  const activeSummary = [
-    showStars && "stars",
-    showForks && "forks",
-    showReleases && "releases",
-    showPrs && "PR merges",
-    showIssues && "issues",
-  ].filter(Boolean).join(", ") || "none";
+  const TOGGLES = [
+    { key: "stars" as const, isOn: showStars, setter: setShowStars },
+    { key: "forks" as const, isOn: showForks, setter: setShowForks },
+    { key: "releases" as const, isOn: showReleases, setter: setShowReleases },
+    { key: "pr_merged" as const, isOn: showPrs, setter: setShowPrs },
+    { key: "issue_opened" as const, isOn: showIssues, setter: setShowIssues },
+  ];
 
   return (
     <figure className="chart repo-trend">
       <div className="trend-controls mono" role="group" aria-label="Trend chart series toggles">
-        <button
-          type="button"
-          className={`trend-toggle ${showStars ? "active" : ""}`}
-          aria-pressed={showStars}
-          onClick={() => setShowStars(!showStars)}
-        >
-          <i className="swatch" style={{ background: "var(--amber)" }} /> stars
-        </button>
-        <button
-          type="button"
-          className={`trend-toggle ${showForks ? "active" : ""}`}
-          aria-pressed={showForks}
-          onClick={() => setShowForks(!showForks)}
-        >
-          <i className="swatch" style={{ background: "var(--cyan)" }} /> forks
-        </button>
-        <button
-          type="button"
-          className={`trend-toggle ${showReleases ? "active" : ""}`}
-          aria-pressed={showReleases}
-          onClick={() => setShowReleases(!showReleases)}
-        >
-          ▲ releases
-        </button>
-        <button
-          type="button"
-          className={`trend-toggle ${showPrs ? "active" : ""}`}
-          aria-pressed={showPrs}
-          onClick={() => setShowPrs(!showPrs)}
-        >
-          ● PR merges
-        </button>
-        <button
-          type="button"
-          className={`trend-toggle ${showIssues ? "active" : ""}`}
-          aria-pressed={showIssues}
-          onClick={() => setShowIssues(!showIssues)}
-        >
-          ◆ issues
-        </button>
+        {TOGGLES.map(({ key, isOn, setter }) => {
+          const category = TREND_CATEGORIES.find((c) => c.key === key)!;
+          return (
+            <button
+              key={key}
+              type="button"
+              className={`trend-toggle ${isOn ? "active" : ""}`}
+              aria-pressed={isOn}
+              onClick={() => setter(!isOn)}
+            >
+              <i className="swatch" style={{ background: category.color }} /> {category.label}
+            </button>
+          );
+        })}
         <button type="button" className="trend-reset" onClick={resetAll}>
           Reset
         </button>
@@ -305,11 +314,11 @@ function RepoTrendChart({ trends }: { trends: RepoDrilldownTrend[] }) {
           Every series is hidden. Toggle a series above to view data.
         </div>
       ) : (
-        <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`${trends.length}-day trend timeline (showing: ${activeSummary})`}>
+        <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`${trends.length}-day stacked activity chart (showing: ${activeSummary})`}>
           {[0, 0.5, 1].map((t) => (
             <g key={t}>
-              <line x1={padL} x2={W - padR} y1={y(max * t)} y2={y(max * t)} stroke="var(--line)" strokeWidth="1" />
-              <text x={padL - 6} y={y(max * t) + 3} fontSize="9.5" fill="var(--muted)" textAnchor="end" className="mono">
+              <line x1={padL} x2={W - padR} y1={padT + ih - ih * t} y2={padT + ih - ih * t} stroke="var(--line)" strokeWidth="1" />
+              <text x={padL - 6} y={padT + ih - ih * t + 3} fontSize="9.5" fill="var(--muted)" textAnchor="end" className="mono">
                 {Math.round(max * t)}
               </text>
             </g>
@@ -317,7 +326,7 @@ function RepoTrendChart({ trends }: { trends: RepoDrilldownTrend[] }) {
           {trends.map((row, i) => i % labelStep === 0 || i === trends.length - 1 ? (
             <text
               key={row.date}
-              x={Math.min(Math.max(x(i), padL + 14), W - padR - 14)}
+              x={Math.min(Math.max(barX(i) + barWidth / 2, padL + 14), W - padR - 14)}
               y={H - 6}
               fontSize="9.5"
               fill="var(--muted)"
@@ -327,30 +336,21 @@ function RepoTrendChart({ trends }: { trends: RepoDrilldownTrend[] }) {
               {row.date.slice(5)}
             </text>
           ) : null)}
-          {showStars && (
-            <polyline points={line(stars)} fill="none" stroke="var(--amber)" strokeWidth="2" strokeLinejoin="round" />
-          )}
-          {showForks && (
-            <polyline points={line(forks)} fill="none" stroke="var(--cyan)" strokeWidth="2" strokeLinejoin="round" />
-          )}
-          {trends.map((row, i) =>
-            row.events
-              .filter((ev) => isEventVisible(ev.type))
-              .map((ev, j) => (
-                <text
-                  key={`${row.date}-${ev.type}-${j}`}
-                  x={x(i)}
-                  y={padT + 10 + j * 11}
-                  fontSize="11"
-                  fill={ev.type === "release" ? "var(--amber)" : ev.type === "pr_merged" ? "var(--cyan)" : "var(--mag)"}
-                  textAnchor="middle"
-                  className="mono"
-                >
-                  <title>{`${row.date} [${ev.type}]: ${ev.label}`}</title>
-                  {ev.type === "release" ? "▲" : ev.type === "pr_merged" ? "●" : "◆"}
-                </text>
-              ))
-          )}
+          {trends.map((row, i) => {
+            let cumulative = 0;
+            return activeCategories.map((category) => {
+              const value = trendCategoryValue(row, category.key);
+              if (value <= 0) return null;
+              const segHeight = (value / max) * ih;
+              const segY = padT + ih - cumulative - segHeight;
+              cumulative += segHeight;
+              return (
+                <rect key={`${row.date}-${category.key}`} x={barX(i)} y={segY} width={barWidth} height={segHeight} fill={category.color}>
+                  <title>{trendCategoryTitle(row, category, value)}</title>
+                </rect>
+              );
+            });
+          })}
         </svg>
       )}
     </figure>

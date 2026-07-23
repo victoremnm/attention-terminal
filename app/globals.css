@@ -12,6 +12,8 @@
   --cyan: #38cdec;
   --mag: #ff4f97;
   --amber: #f5b53d;
+  --emerald: #34d399;
+  --blue: #4f9dff;
   --mono: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
   --sans: system-ui, -apple-system, "Segoe UI", sans-serif;
 }
@@ -1106,6 +1108,13 @@ a { color: inherit; }
   border-color: var(--cyan);
   color: var(--ink);
   font-weight: 600;
+}
+.trend-toggle .swatch {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+  margin-right: 5px;
 }
 .trend-reset {
   margin-left: auto;

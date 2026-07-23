@@ -28,19 +28,36 @@ describe("RepoTrendChart interactive toggles & rescaling", () => {
     const payload = {
       type: "repo-drilldown" as const,
       repoName: "acme/repo",
-      description: "Test repo",
-      language: "TypeScript",
-      topics: ["test"],
-      stars: 50,
-      forks: 20,
-      kpis24h: { pushes: 1, commits: 2, distinctCommits: 2, actors: 1 },
+      generatedAt: new Date().toISOString(),
+      metadata: {
+        description: "Test repo",
+        language: "TypeScript",
+        topics: ["test"],
+        githubStars: 50,
+        githubForks: 20,
+        openIssues: 5,
+      },
+      kpis24h: {
+        pushes: 1,
+        commits: 2,
+        distinctCommits: 2,
+        forks: 1,
+        stars: 2,
+        issuesOpened: 1,
+        prsOpened: 1,
+        prsMerged: 1,
+        actors: 1,
+      },
       velocity: [],
+      topActors24h: [],
+      feed: [],
       trends: sampleTrends,
       query: { sql: "SELECT 1", elapsedMs: 5, rowsRead: 3 },
     };
 
     const element = createElement(RenderedAnswer, { payload });
+    expect(element.type).toBe(RenderedAnswer);
     expect(element.props.payload.type).toBe("repo-drilldown");
-    expect(element.props.payload.trends).toHaveLength(3);
+    expect((element.props.payload as typeof payload).trends).toHaveLength(3);
   });
 });
