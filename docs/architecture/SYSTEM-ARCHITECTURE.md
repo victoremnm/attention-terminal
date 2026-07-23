@@ -6,7 +6,7 @@
 
 ## 1. High-Level Architecture Overview
 
-Attention Terminal is a real-time, LLM-powered telemetry and analytics dashboard for open-source developer activity. It ingests massive raw event streams from GitHub and Hacker News into ClickHouse, processes high-frequency metrics through background tasks and materialized views, and serves narrative-driven SVG visualizations through a Next.js App Router interface.
+Attention Terminal is a real-time, LLM-powered telemetry and analytics dashboard for open-source developer activity. It ingests high-volume raw event streams from GitHub and Hacker News into ClickHouse, processes high-frequency metrics through background tasks and materialized views, and serves narrative-driven SVG visualizations through a Next.js App Router interface.
 
 ```mermaid
 flowchart TD
@@ -17,13 +17,13 @@ flowchart TD
     end
 
     subgraph Processing["2. PROCESSING LAYER"]
-        TRIGGER["Trigger.dev v3 Tasks\n(Scheduled Ingestion & Enrichment)"]
+        TRIGGER["Trigger.dev v4 Tasks\n(Scheduled Ingestion & Enrichment)"]
         DBT["dbt Models &\nAnalytical Transformations"]
         GOOSE["Goose DDL Migrations\n(Versioned Schema Deployments)"]
     end
 
     subgraph Data["3. DATA LAYER (ClickHouse)"]
-        RAW["Raw Telemetry Tables\n(github_events, hn_stories)"]
+        RAW["Raw Telemetry Tables\n(github_events, hackernews)"]
         MV["Materialized Views &\nSkipping Indexes"]
         SYSTEM["System Telemetry Tables\n(subagent_runs, session_learnings)"]
     end
@@ -63,40 +63,40 @@ flowchart TD
 
 ## 2. Ingestion & Processing Pipeline (Inputs $\rightarrow$ Processing $\rightarrow$ Data)
 
-The processing layer transforms raw external events into structured ClickHouse analytical tables. Background jobs run on Trigger.dev v3, executing streaming inserts and continuous aggregations.
+The processing layer transforms raw external events into structured ClickHouse analytical tables. Background jobs run on Trigger.dev v4, executing streaming inserts and continuous aggregations.
 
 ```mermaid
 sequenceDiagram
     autonumber
     participant GH as GitHub / HN APIs
-    participant TD as Trigger.dev v3 Worker
+    participant TD as Trigger.dev v4 Worker
     participant CH as ClickHouse DB
     participant MV as Materialized Views
 
     TD->>GH: Poll high-frequency event stream (1min interval)
     GH-->>TD: Return payload (JSON/NDJSON events)
     TD->>CH: Async batch INSERT INTO github_events (raw event grain)
-    Note over TD,CH: Bot filtering (lower(actor) NOT LIKE '%[bot]%') is applied at query/projection time
-    CH->>MV: Materialize post-creation inserts into MV (gh_repo_activity_feed_mv)
-    Note over CH,MV: Historical backfills over existing data require explicit INSERT INTO ... SELECT
+    Note over TD,CH: Bot filtering (lower(actor_login) NOT LIKE '%[bot]%') is applied at query/projection time
+    CH->>MV: Materialize post-creation inserts (gh_repo_activity_feed_mv)
+    Note over CH,MV: Backfilling pre-existing rows requires an explicit INSERT INTO ... SELECT
     MV-->>CH: Update gh_repo_drilldown_hourly & period rollups
 ```
 
 ### Pseudo-Medallion Data Architecture (Bronze $\rightarrow$ Silver $\rightarrow$ Gold)
 
-Instead of a traditional Kimball star schema (which introduces expensive joins in real-time OLAP queries), Attention Terminal structures data using a **Pseudo-Medallion Architecture**:
+Instead of a traditional Kimball star schema (which introduces expensive joins in real-time OLAP queries), Attention Terminal organizes data in a **Pseudo-Medallion Architecture**:
 
 ```mermaid
 flowchart TD
-    BRONZE["Bronze Layer (Raw Ingestion)\ngithub_events / hn_stories\nAppend-only JSON event stream"] --> SILVER
+    BRONZE["Bronze Layer (Raw Ingestion)\ngithub_events / hackernews\nAppend-only JSON event stream"] --> SILVER
     SILVER["Silver Layer (Cleansed Facts & Indexes)\nFiltered bot accounts (lower(actor_login) NOT LIKE '%[bot]%')\nToken bloom filter index (idx_github_events_actor_login)"] --> GOLD
-    GOLD["Gold Layer (Rollup Projections)\n_hourly, _daily, _weekly AggregatingMergeTrees\ngh_repo_activity_feed_mv / gh_repo_period_rollups"]
+    GOLD["Gold Layer (Rollup Projections)\n_hourly, _daily, _monthly AggregatingMergeTrees\ngh_repo_activity_feed_mv / gh_repo_daily_mv / gh_repo_monthly_mv"]
 ```
 
-1. **Bronze (Raw Append-Only)**: Ingests GitHub Archive and Hacker News raw event payloads at high throughput into `github_events` and `hn_stories`.
-2. **Silver (Cleansed & Indexed Facts)**: Cleansed event facts utilizing `idx_github_events_actor_login` token bloom filter skipping indexes to filter bot traffic (`[bot]`, `copilot`, `dependabot`) without full-table scans. Bot exclusions execute during query/projection evaluation.
-3. **Gold (AggregatingMergeTree Rollups)**: Continuous rollups pre-computed into `_hourly`, `_daily`, and `_weekly` `AggregatingMergeTree` tables and Materialized Views (`gh_repo_activity_feed_mv`, `gh_repo_period_rollups`), reducing query scan sizes by >95%. Historical backfills for newly declared MVs require explicit `INSERT INTO ... SELECT` backfill tasks per AGENTS.md conventions.
-4. **Goose Schema Migrations**: All ClickHouse DDL transformations are version-controlled via **Goose DDL migrations** (`migrations/*.sql` + `./scripts/migrate.sh`) and automatically deployed via CD on merge to `main`.
+1. **Bronze (Raw Append-Only)**: Ingests GitHub Archive and Hacker News raw event payloads at high throughput into `github_events` and `hackernews`.
+2. **Silver (Cleansed & Indexed Facts)**: Cleansed event facts filter bot traffic (`[bot]`, `copilot`, `dependabot`) via `lower(actor_login) NOT LIKE '%[bot]%'`. The `idx_github_events_actor_login` token bloom-filter skipping index is defined on this column for equality/`LIKE` lookups, but per `docs/architecture/EXPLAIN-QUERY-AUDIT.md`'s production `EXPLAIN indexes = 1` audit it does not currently prune granules for this predicate (bot activity is too evenly distributed across the table's time-ordered granules) — see issue #201.
+3. **Gold (AggregatingMergeTree Rollups)**: Continuous rollups are pre-computed into `_hourly`, `_daily`, and `_monthly` `AggregatingMergeTree` tables and materialized views (`gh_repo_activity_feed_mv`, `gh_repo_daily_mv`, `gh_repo_monthly_mv`), reducing query scan sizes by orders of magnitude versus scanning `github_events` directly. Historical rows for newly declared MVs require an explicit `INSERT INTO ... SELECT` backfill, per AGENTS.md conventions.
+4. **Goose Schema Migrations**: All ClickHouse DDL is version-controlled through **Goose migrations** (`migrations/*.sql` + `./scripts/migrate.sh`) and deployed automatically via CD on merge to `main`.
 
 ### Data Layer Schema Map
 
@@ -221,4 +221,4 @@ flowchart TD
 | **2. Processing** | Stream parsing, bot filtering, schema migrations | Goose DDL migrations & dbt models |
 | **3. Data** | Fast OLAP analytics, telemetry tracking, session memory | ClickHouse with skipping indexes & `FINAL` deduplication |
 | **4. Backend** | API routing, AI agent orchestration, ClickHouse pool | Next.js App Router + streaming JSON responses |
-| **5. Frontend** | Visualization, responsive layout, markdown/HTML export | Tufte data-ink maximized hand-rolled SVG primitives |
+| **5. Frontend** | Visualization, responsive layout, markdown/HTML export | Hand-rolled SVG primitives that maximize Tufte data-ink ratio |

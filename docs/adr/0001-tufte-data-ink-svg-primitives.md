@@ -5,7 +5,7 @@
 - **Context**: Issue #180 (Morphing Canvas Chart Coverage)
 
 ## Context & Problem Statement
-The Morphing Canvas previously defaulted non-bar payloads (such as Pie Chart, Stacked Bar Chart, Waterfall Chart, and Treemap requests) to raw tabular text views due to a lack of visual chart primitives. Heavy third-party charting libraries (Recharts, Chart.js) introduce runtime bundle bloat, DOM overhead, and unpredictable CSS layout reflows.
+The Morphing Canvas previously fell back to raw tabular text for non-bar payloads (Pie, Stacked Bar, Waterfall, and Treemap requests) because it had no visual chart primitives. Heavy third-party charting libraries (Recharts, Chart.js) add runtime bundle bloat, DOM overhead, and unpredictable CSS layout reflows.
 
 ## Decision Drivers
 1. **Data-Ink Ratio Maximization**: Edward Tufte's core principles dictate that every pixel must convey quantitative information. Outer bounding boxes, 3D effects, and heavy gridlines are eliminated or dimmed to $\le 10\%$ opacity.

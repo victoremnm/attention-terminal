@@ -7,35 +7,36 @@
 ## 1. Problem Statement & The "Beyond the Wall of Text" Philosophy
 
 ### 1.1 Hackathon Brief & Theme
-Traditional AI chat interfaces fail users by delivering a **"wall of text"**—dense paragraphs, repetitive bullet points, or raw unreadable log/table dumps. Attention Terminal fundamentally rejects this paradigm.
+Traditional AI chat interfaces answer with a **"wall of text"**—dense paragraphs, repeated bullet points, or raw log and table dumps. Attention Terminal rejects that default.
 
 > **Theme**: *Beyond the Wall of Text*  
-> **Core Mandate**: The response *itself* must be the product: visual, interactive, and explorable. If an agent’s best answer is a paragraph, it has missed the brief.
+> **Core Mandate**: The response *itself* is the product: visual, interactive, and explorable. If an agent’s best answer is a paragraph, it has missed the brief.
 
 ### 1.2 Dual Engine: Trigger.dev + ClickHouse (25% Evaluation Score)
-Attention Terminal leverages a high-throughput dual-engine architecture:
-- **ClickHouse**: Serves as the ultra-fast real-time data layer executing sub-second analytical queries across millions of developer events (`github_events`, `hn_stories`) using specialized skipping indexes (`idx_github_events_actor_login`).
-- **Trigger.dev v3**: Orchestrates background ingestion workers, dbt continuous transformations, and async agent execution loops.
+Attention Terminal runs on two engines:
+- **ClickHouse**: the real-time data layer, running sub-second analytical queries across millions of developer events (`github_events`, `hackernews`) via data-skipping indexes (`idx_github_events_actor_login`).
+- **Trigger.dev v4**: orchestrates scheduled ingestion workers and async agent execution loops.
 
-### 1.3 Unpursued Exploration & Dataset Comparison
-During initial discovery, we evaluated additional external APIs and datasets to triangulate developer activity:
-- **Hacker News**: Attempted to cross-reference HN stories and comments with developer activity. Met limited success due to unstructured text titles and sparse dimensional attributes, yielding noisy signals.
-- **GitHub Archive Stream**: Exceptionally rich with explicit facts, timestamps, and multi-dimensional entities (`repo_name`, `actor_login`, `org`, event types). The deep structure of GitHub events provided superior introspection capabilities.
-- **HuggingFace Models & Spaces**: Explored correlating HuggingFace model weight releases and dataset activity with AI GitHub repos. Ran out of discovery time; model weight drops felt somewhat orthogonal to source code commit velocity, though valuable for future expansion.
-- **Google Places / Maps API**: Evaluated rendering geographical contributor maps or physical hackathon event heatmaps. Deferred because physical location lacked a strong fit for core telemetry metrics (which prioritize repository speed, star breakouts, and commit deltas).
+### 1.3 Dataset Exploration & Comparison
+During discovery we evaluated several APIs and datasets against the two we shipped on (HN + GitHub):
+<!-- TODO(claude-review): the HN bullet below reads as if HN were an unpursued/low-value source, but CLAUDE.md and ANSWER-GRAMMAR treat HN as a co-equal live feed (the "talk" signal in the Divergence answer type). Reframe: HN is a primary source; only the story↔repo correlation was noisy, not HN itself. -->
+- **Hacker News (primary "talk" feed)**: The story/repo cross-reference proved noisy—unstructured titles and sparse attributes—so HN feeds the attention/"talk" signal rather than direct entity joins.
+- **GitHub Archive (primary "code" feed)**: Rich in explicit facts, timestamps, and multi-dimensional entities (`repo_name`, `actor_login`, `org`, event types), making it the structural backbone.
+- **HuggingFace Models & Spaces**: Considered correlating model releases with AI repos; deferred (out of discovery time) since weight drops track loosely against commit velocity. A candidate for later expansion.
+- **Google Places / Maps API**: Considered contributor or event heatmaps; deferred because physical location fits the core metrics (repo velocity, star breakouts, commit deltas) poorly.
 
 ### 1.4 Data Warehousing Rationale: Pseudo-Medallion vs. Kimball Modeling
 Rather than implementing a traditional **Kimball star schema** (which imposes join penalties across dimensional lookup tables in real-time analytical queries), we designed a **Pseudo-Medallion Architecture**:
 - **Bronze Layer**: Append-only raw facts in `github_events`.
 - **Silver Layer**: Cleansed events with bot-filtering (`lower(actor_login) NOT LIKE '%[bot]%'`) and token bloom filter skipping indexes (`idx_github_events_actor_login`).
-- **Gold Layer**: Pre-aggregated rollups via `_hourly`, `_daily`, and `_weekly` `AggregatingMergeTree` tables and Materialized Views (`gh_repo_activity_feed_mv`, `gh_repo_period_rollups`), reducing scan sizes by >95%.
+- **Gold Layer**: Pre-aggregated rollups via `_hourly`, `_daily`, and `_monthly` `AggregatingMergeTree` tables fed by materialized views (`gh_repo_activity_feed_mv`, `gh_repo_daily_mv`, `gh_repo_monthly_mv`), cutting scan sizes dramatically.
 - **Migration System**: Version-controlled DDL evolution using **Goose DDL migrations** (`migrations/*.sql` + `./scripts/migrate.sh`) integrated into production CD pipelines.
 
 ---
 
 ## 2. Key Interactive Components Built for Discovery
 
-To empower users to introspect data and ask straightforward discovery questions, Attention Terminal implements two primary frontend component innovations:
+Attention Terminal ships two frontend components for data discovery:
 
 ```mermaid
 flowchart TD
@@ -63,11 +64,11 @@ flowchart TD
 ```
 
 ### 2.1 Persistent Floating Chatbox (Gemini-Style Drawer)
-- **Component**: [`src/components/FloatingChat.tsx`](file:///Users/victorem/Code/Repositories/victoremnm/clickhouse-trigger-hackathon/src/components/FloatingChat.tsx) / [`ChatTrigger.tsx`](file:///Users/victorem/Code/Repositories/victoremnm/clickhouse-trigger-hackathon/src/components/ChatTrigger.tsx)
-- **Role**: Provides a persistent, floating drawer interface across all pages (trending repos, ticker, repo drilldowns). Users can introspect datasets, ask natural language discovery questions ("Why is repository X accelerating?", "Show PR merge ratios for AI repos"), and receive inline visual cards without losing their current page state.
+- **Component**: [`src/components/FloatingChat.tsx`](../../src/components/FloatingChat.tsx) / [`ChatTrigger.tsx`](../../src/components/ChatTrigger.tsx)
+- **Role**: A persistent floating drawer available on every page (trending repos, ticker, repo drilldowns). Users ask natural-language discovery questions ("Why is repository X accelerating?", "Show PR merge ratios for AI repos") and get inline visual cards without losing page state.
 
 ### 2.2 Morphing Canvas Figures & Visual Primitives
-- **Component**: [`src/components/RenderedAnswer.tsx`](file:///Users/victorem/Code/Repositories/victoremnm/clickhouse-trigger-hackathon/src/components/RenderedAnswer.tsx) $\rightarrow$ [`src/components/charts.tsx`](file:///Users/victorem/Code/Repositories/victoremnm/clickhouse-trigger-hackathon/src/components/charts.tsx)
+- **Component**: [`src/components/RenderedAnswer.tsx`](../../src/components/RenderedAnswer.tsx) $\rightarrow$ [`src/components/charts.tsx`](../../src/components/charts.tsx)
 - **Role**: Replaces raw text dumps with custom SVG figures tailored to the payload `visualizationType`:
   - **`PieChart`**: Donut distributions with aggregate center totals and `Other` slice capping.
   - **`StackedBarChart`**: Multi-category comparisons with global segment key color indexing.
@@ -76,6 +77,7 @@ flowchart TD
   - **`DevScatterChart`**: Multidimensional correlation (X=repos, Y=pushes, size=commits, color=PR merges).
   - **`HorizontalBarChart`**: Tabular nominal rankings with zero rotated text.
 
+<!-- TODO(claude-review): section 2.3 references github_events columns that do not exist in the schema. The `sum(push_size)` SQL and the `push_size`/`push_distinct_size` bullets should be `sum(commit_count)` / `commit_count` / `distinct_commit_count` (see migration 20260717000005). Columns `additions`, `deletions`, `changed_files`, `author_association`, `ref`, and `commit_id` are NOT on github_events — they are REST-fetched into separate gh_repo_* tables (src/lib/github-repo.ts). This also contradicts ANSWER-GRAMMAR.md, which states the product "does not show branch refs, LOC churn, or author association." Reconcile with the actual firehose schema before publishing. -->
 ### 2.3 The "Double-Click" Repo Drill-Down Card Specification
 When a user "double-clicks" on a repository in the terminal, Attention Terminal renders a structured 4-tier drill-down card powered by single-pass ClickHouse queries:
 
@@ -152,4 +154,4 @@ All agent work occurs inside dedicated Git worktrees (`.claude/worktrees/agent-<
 
 ## 5. Summary Verdict
 
-The Attention Terminal codebase fulfills the **Beyond the Wall of Text** brief by integrating ClickHouse and Trigger.dev with hand-rolled SVG morphing figures and a persistent Gemini-style floating chatbox for seamless data discovery.
+Attention Terminal meets the **Beyond the Wall of Text** brief by pairing ClickHouse and Trigger.dev with hand-rolled SVG morphing figures and a persistent floating chatbox—every answer is a visual, not a paragraph.

@@ -1,3 +1,4 @@
+<!-- TODO(claude-review): this ADR's SQL and column-mapping table reference github_events columns that do not exist in the schema. `sum(push_size)` and the `push_size`/`push_distinct_size` bullets should be `sum(commit_count)` / `commit_count` / `distinct_commit_count` (see migration 20260717000005_github_activity_measures.sql). `additions`, `deletions`, `changed_files`, `author_association`, `ref`, and `commit_id` are not columns on github_events -- they are REST-fetched into separate gh_repo_* tables (src/lib/github-repo.ts). This also contradicts docs/ANSWER-GRAMMAR.md, which states the product "does not show branch refs, LOC churn, or author association." Same issue flagged in PRODUCT-VISION-AND-METHODOLOGY.md section 2.3, which this ADR mirrors -- reconcile both against the actual firehose schema before treating this as Accepted/implemented. -->
 # ADR 0005: "Double-Click" Repo Drill-Down Card & Single-Pass Velocity Queries
 
 - **Status**: Accepted

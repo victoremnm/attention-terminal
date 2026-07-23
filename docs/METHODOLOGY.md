@@ -18,10 +18,10 @@ Traditional AI chat agents deliver a **wall of text**—paragraphs, bullet point
 
 | ADR | Title | Key Architectural Choice | Status |
 | :--- | :--- | :--- | :--- |
-| **[ADR 0001](adr/0001-tufte-data-ink-svg-primitives.md)** | **Tufte Data-Ink Maximization & Hand-Rolled SVG Primitives** | Replaced heavy third-party charting libraries with 5 zero-dependency React SVG primitives (`PieChart`, `StackedBarChart`, `WaterfallChart`, `TreemapChart`, `HorizontalBarChart`). | **Accepted** |
+| **[ADR 0001](adr/0001-tufte-data-ink-svg-primitives.md)** | **Tufte Data-Ink Maximization & Hand-Rolled SVG Chart Primitives** | Replaced heavy third-party charting libraries with hand-rolled, zero-dependency React SVG primitives (`PieChart`, `StackedBarChart`, `WaterfallChart`, `TreemapChart`, `HorizontalBarChart`). | **Accepted** |
 | **[ADR 0002](adr/0002-clickhouse-skipping-index-predicates.md)** | **ClickHouse Case-Insensitive Skipping Index Predicates** | Refactored `actor_login ILIKE '%[bot]%'` to `lower(actor_login) LIKE '%[bot]%'` to leverage ClickHouse `idx_github_events_actor_login` token bloom filter index. | **Accepted** |
 | **[ADR 0003](adr/0003-subagent-telemetry-and-session-learnings.md)** | **Subagent Telemetry, Session Learnings & Fail-Open Spooling** | Standardized ClickHouse telemetry tracking (`subagent_runs`, `session_learnings`) with local NDJSON spooling fallbacks. | **Accepted** |
-| **[ADR 0004](adr/0004-pseudo-medallion-clickhouse-data-modeling.md)** | **Pseudo-Medallion Architecture & Dataset Triangulation Trade-offs** | Implemented Bronze/Silver/Gold `_hourly`/`_daily`/`_weekly` `AggregatingMergeTree` rollups and Goose DDL migrations instead of Kimball star schemas. | **Accepted** |
+| **[ADR 0004](adr/0004-pseudo-medallion-clickhouse-data-modeling.md)** | **Pseudo-Medallion Architecture & Dataset Triangulation Trade-offs** | Implemented Bronze/Silver/Gold `_hourly`/`_daily`/`_monthly` `AggregatingMergeTree` rollups and Goose DDL migrations instead of Kimball star schemas. | **Accepted** |
 | **[ADR 0005](adr/0005-double-click-repo-drilldown-card.md)** | **"Double-Click" Repo Drill-Down Card & Single-Pass Velocity Queries** | Standardized 4-tier drill-down card layout, single-pass hourly velocity SQL query strategy, and Push Preview Feed payload column mapping. | **Accepted** |
 
 ---
@@ -31,7 +31,7 @@ Traditional AI chat agents deliver a **wall of text**—paragraphs, bullet point
 - **[System Architecture & Mermaid Flowcharts](architecture/SYSTEM-ARCHITECTURE.md)**: 5-layer system overview (Inputs $\rightarrow$ Processing $\rightarrow$ Data $\rightarrow$ Backend $\rightarrow$ Frontend).
 - **[Storytelling with Data & UI Philosophies](architecture/STORYTELLING-WITH-DATA-AND-UI-PHILOSOPHIES.md)**: Edward Tufte principles, Geist monospaced precision, and visual preattentive attributes.
 - **[Product Owner Vision & Problem Statement](product/PRODUCT-VISION-AND-METHODOLOGY.md)**: Hackathon brief, Beyond the Wall of Text philosophy, and component breakdown.
-- **[Rendered SVG Primitives Evidence](pr-evidence/208/primitives-rendered-evidence.html)**: Static HTML rendered snapshot evidence for PR #208.
+- **[Rendered SVG Primitives Evidence](pr-evidence/208/primitives-rendered-evidence.html)**: Static HTML snapshot evidence for PR #208.
 
 ---
 
