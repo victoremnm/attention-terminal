@@ -19,7 +19,7 @@
 
 <div class="grid">
   <div class="card"><div>default page size</div><div class="value">100</div><div>max: 100</div></div>
-  <div class="card"><div>pagination</div><div class="value">LIMIT / OFFSET</div><div>offset max: 1,000,000</div></div>
+  <div class="card"><div>pagination</div><div class="value">LIMIT / OFFSET</div><div>offset max: 10,000</div></div>
   <div class="card"><div>ordering</div><div class="value">8 measures</div><div>repo_name tie-break</div></div>
 </div>
 
@@ -37,8 +37,8 @@
     "search": "github"
   },
   "sourceTables": ["gh_repo_daily", "gh_repo_metadata"],
-  "elapsedMs": "ClickHouse response timing",
-  "rowsRead": "ClickHouse response read count"
+  "elapsedMs": 541,
+  "rowsRead": 2613366
 }</pre>
 
 <h2>Rejected request examples</h2>
@@ -47,4 +47,5 @@ GET /api/trending?sort=raw_sql   → 400 sort is not supported
 GET /api/trending?window=90d     → 400 window is not supported</pre>
 
 <h2>Verification</h2>
-<p><span class="ok">✓</span> 29 unit tests passed · <span class="ok">✓</span> TypeScript passed · <span class="ok">✓</span> Next production build passed</p>
+<p><span class="ok">✓</span> 31 tests passed · <span class="ok">✓</span> 13 credentialed ClickHouse integration tests passed · <span class="ok">✓</span> TypeScript passed · <span class="ok">✓</span> Next production build passed</p>
+<p>Runtime proof captured from a credentialed <code>repoActivityWindow("30d", { limit: 2 })</code> read after the metadata prefilter and <code>ANY LEFT JOIN</code> change.</p>
