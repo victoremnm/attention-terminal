@@ -12,7 +12,7 @@ function ActorLeaderboardTable({
   rows: ActorLeaderboardRow[];
 }) {
   return (
-    <section className="rounded-2xl border border-white/10 bg-white/5 p-4 shadow-sm shadow-black/20">
+    <section className="actor-leaderboard-table">
       <div className="mb-3 flex items-baseline justify-between gap-4">
         <h2 className="text-xs font-semibold uppercase tracking-[0.24em] text-zinc-400">{title}</h2>
         <span className="mono text-[11px] text-zinc-500">{rows.length ? `showing ${rows.length}` : "no rows"}</span>
@@ -54,7 +54,7 @@ function ActorLeaderboardTable({
   );
 }
 
-export function ActorLeaderboardSurface({
+export function ActorLeaderboardCard({
   humans,
   bots,
 }: {
@@ -62,8 +62,8 @@ export function ActorLeaderboardSurface({
   bots: ActorLeaderboardRow[];
 }) {
   return (
-    <section className="space-y-4">
-      <div className="flex items-baseline justify-between gap-3">
+    <div className="tk-card actor-leaderboard-card">
+      <div className="actor-leaderboard-head">
         <div>
           <p className="skinny-kicker mono">ACTOR_LEADERBOARD</p>
           <h2 className="mt-1 text-xl font-semibold text-zinc-100">Prolific actors over the last 24h</h2>
@@ -74,6 +74,6 @@ export function ActorLeaderboardSurface({
       <ActorLeaderboardTable title="Prolific humans" rows={humans} />
 
       {bots.length > 0 && <ActorLeaderboardTable title="Automation / bots" rows={bots} />}
-    </section>
+    </div>
   );
 }

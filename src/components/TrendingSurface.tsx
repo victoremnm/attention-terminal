@@ -1,5 +1,4 @@
 import { ChatCtaBanner } from "@/components/ChatCtaBanner";
-import { ActorLeaderboardSurface } from "@/components/ActorLeaderboard";
 import { SurfaceNav } from "@/components/SurfaceNav";
 import { TickerRail } from "@/components/TickerRail";
 import { tickerLanes } from "@/lib/queries";
@@ -24,9 +23,6 @@ export async function TrendingSurface() {
           </p>
         </header>
         <TickerRail initial={lanes} ingestToken={token} />
-        {lanes.actors && (
-          <ActorLeaderboardSurface humans={lanes.actors.humans} bots={lanes.actors.bots} />
-        )}
         <ChatCtaBanner />
       </main>
     </>
