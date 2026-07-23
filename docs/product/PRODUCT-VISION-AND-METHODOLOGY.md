@@ -17,10 +17,12 @@ Attention Terminal leverages a high-throughput dual-engine architecture:
 - **ClickHouse**: Serves as the ultra-fast real-time data layer executing sub-second analytical queries across millions of developer events (`github_events`, `hn_stories`) using specialized skipping indexes (`idx_github_events_actor_login`).
 - **Trigger.dev v3**: Orchestrates background ingestion workers, dbt continuous transformations, and async agent execution loops.
 
-### 1.3 Unpursued Exploration & Dataset Comparison: Hacker News vs. GitHub Stream
-During initial discovery, we attempted to cross-reference and triangulate Hacker News stories and comments with developer activity. However, we met **limited success** due to the shape of the data:
-- **Hacker News**: Unstructured text titles, URL links, and comment threads with sparse dimensional attributes. Triangulation yielded weak correlation signals and high noise.
+### 1.3 Unpursued Exploration & Dataset Comparison
+During initial discovery, we evaluated additional external APIs and datasets to triangulate developer activity:
+- **Hacker News**: Attempted to cross-reference HN stories and comments with developer activity. Met limited success due to unstructured text titles and sparse dimensional attributes, yielding noisy signals.
 - **GitHub Archive Stream**: Exceptionally rich with explicit facts, timestamps, and multi-dimensional entities (`repo_name`, `actor_login`, `org`, event types). The deep structure of GitHub events provided superior introspection capabilities.
+- **HuggingFace Models & Spaces**: Explored correlating HuggingFace model weight releases and dataset activity with AI GitHub repos. Ran out of discovery time; model weight drops felt somewhat orthogonal to source code commit velocity, though valuable for future expansion.
+- **Google Places / Maps API**: Evaluated rendering geographical contributor maps or physical hackathon event heatmaps. Deferred because physical location lacked a strong fit for core telemetry metrics (which prioritize repository speed, star breakouts, and commit deltas).
 
 ### 1.4 Data Warehousing Rationale: Pseudo-Medallion vs. Kimball Modeling
 Rather than implementing a traditional **Kimball star schema** (which imposes join penalties across dimensional lookup tables in real-time analytical queries), we designed a **Pseudo-Medallion Architecture**:

@@ -14,6 +14,8 @@ During initial design, we evaluated two primary data integration strategies:
 ### 1. Dataset Shape & Triangulation Rationale
 - **Hacker News Limitations**: Hacker News payloads consist of unstructured text titles and comment threads with minimal dimensional structure (`id`, `by`, `score`, `title`, `url`). Triangulating HN stories to GitHub repos required fragile string matching on URLs/names and yielded noisy, sparse signals.
 - **GitHub Event Stream Richness**: The GitHub Archive event stream provides rich, strongly-typed facts across multiple native dimensions (`repo`, `actor`, `org`, `created_at`) and granular event shapes (`PushEvent`, `PullRequestEvent`, `IssuesEvent`, `WatchEvent`, `ForkEvent`).
+- **HuggingFace Exploration (Deferred)**: Evaluated integrating HuggingFace models, datasets, and spaces metadata to correlate ML model trends with GitHub repositories. Ran out of discovery time; model weight releases felt somewhat orthogonal to source code commit velocity, though relevant for AI repository tracking.
+- **Google Places API (Deferred)**: Evaluated Google Places / Maps API to render geographical contributor maps or physical event heatmaps. Deferred because physical location lacked a strong fit for core telemetry metrics (which prioritize repository speed, star breakouts, and commit deltas).
 
 ### 2. Pseudo-Medallion Architecture vs. Kimball Modeling
 Instead of complex Kimball star schemas (which require expensive SQL joins across `dim_actor`, `dim_repo`, `fact_events`), we implemented a high-performance **Pseudo-Medallion Architecture** optimized for ClickHouse columnar execution:
