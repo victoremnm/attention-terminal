@@ -55,6 +55,12 @@ describe("normalizeUnionQuery", () => {
     const normalized = normalizeUnionQuery(raw);
     expect(normalized).toBe("SELECT 1 UNION ALL SELECT 2");
   });
+
+  it("preserves union keyword inside string literals", () => {
+    const raw = "SELECT title FROM hn WHERE lower(title) LIKE '%union%' UNION SELECT title FROM gh";
+    const normalized = normalizeUnionQuery(raw);
+    expect(normalized).toBe("SELECT title FROM hn WHERE lower(title) LIKE '%union%' UNION ALL SELECT title FROM gh");
+  });
 });
 
 describe("runDataRetrievalAgent", () => {

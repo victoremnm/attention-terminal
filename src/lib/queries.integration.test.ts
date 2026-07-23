@@ -53,6 +53,16 @@ describe.skipIf(!hasCH)("query layer (integration)", () => {
     expect(result.sql).toContain("repo_name ASC");
   }, 120_000);
 
+  it("search filters out non-matching repos instead of just blanking their metadata", async () => {
+    const searched = await repoActivityWindow("30d", {
+      limit: 100,
+      sort: "events",
+      direction: "desc",
+      search: "zzz-no-such-repo-should-match-nothing-zzz",
+    });
+    expect(searched.data.length).toBe(0);
+  }, 120_000);
+
   it("returns deterministic ties across repeated reads", async () => {
     const first = await repoActivityWindow("7d", { limit: 10, sort: "events" });
     const second = await repoActivityWindow("7d", { limit: 10, sort: "events" });
