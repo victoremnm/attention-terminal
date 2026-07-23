@@ -5,6 +5,14 @@ import { clickhouse, clickhouseInsert, ensureTablesExist, missingTables } from "
 import { fetchRepoRow } from "./github-repo";
 import { analyzeAndStoreRepo } from "./repo-analysis";
 import type { DevPoint, RepoDrilldownPayload } from "./render-payload";
+import {
+  normalizeRepoActivityOptions,
+  type NormalizedRepoActivityOptions,
+  type RepoActivityOptions,
+  type RepoActivitySort,
+  type RepoWindow,
+} from "./repo-activity-query";
+export type { RepoActivityDirection, RepoActivityOptions, RepoActivitySort, RepoWindow } from "./repo-activity-query";
 
 // Every query returns its provenance so the SQL-flip card back can show the
 // exact statement, timing, and rows read - no black boxes.
@@ -1405,8 +1413,6 @@ export async function freshness() {
 // `gh_repo_metadata USING (repo_name)` - plain WHERE clauses over the existing
 // tables, never new DB objects (goose owns all DDL; see migrations/20260720000009).
 
-export type RepoWindow = "1d" | "7d" | "30d" | "td";
-
 const REPO_WINDOW_DAYS: Record<RepoWindow, number> = {
   "1d": 1,
   "7d": 7,
@@ -1462,10 +1468,36 @@ interface RepoWindowSqlRow {
   spark: string[];
 }
 
+export interface RepoActivityProof {
+  queryId: "repo_activity_window";
+  params: NormalizedRepoActivityOptions;
+  sourceTables: ["gh_repo_daily", "gh_repo_metadata"];
+}
+
+export interface RepoActivityResult extends QueryResult<RepoWindowRow[]> {
+  proof: RepoActivityProof;
+}
+
+const REPO_ACTIVITY_SORT_SQL: Record<RepoActivitySort, string> = {
+  events: "events",
+  actors: "actors",
+  pushes: "pushes",
+  commits: "commits",
+  stars: "stars",
+  forks: "forks",
+  prsOpened: "prs_opened",
+  prsMerged: "prs_merged",
+};
+
 // Repo activity + metadata for one of the fixed windows, ranked by event volume.
 // `gh_repo_metadata` is joined FINAL (ReplacingMergeTree - ungrouped parts can
 // hold stale duplicate rows pre-merge, same reasoning as `hackernews FINAL`).
-export async function repoActivityWindow(window: RepoWindow, limit = 20): Promise<QueryResult<RepoWindowRow[]>> {
+export async function repoActivityWindow(
+  window: RepoWindow,
+  input: RepoActivityOptions | number = {}
+): Promise<RepoActivityResult> {
+  const options = normalizeRepoActivityOptions(input);
+  const sortSql = REPO_ACTIVITY_SORT_SQL[options.sort];
   // Two-level aggregation: the inner query rolls each repo up per day (so we can
   // emit an ordered per-day event array for the sparkline), the outer collapses
   // days into the window total. Additive metrics (events/pushes/.../prs) sum
@@ -1473,6 +1505,21 @@ export async function repoActivityWindow(window: RepoWindow, limit = 20): Promis
   // uniqMergeState per day and union it with uniqMerge in the outer query -
   // summing per-day uniqs would double-count anyone active on multiple days.
   const sql = `
+    WITH filtered_metadata AS (
+      SELECT
+        repo_name,
+        owner,
+        description,
+        language,
+        topics,
+        github_stars
+      FROM gh_repo_metadata FINAL
+      WHERE {search: String} = ''
+         OR positionCaseInsensitiveUTF8(
+              concat(repo_name, ' ', owner, ' ', description, ' ', language, ' ', arrayStringConcat(topics, ' ')),
+              {search: String}
+            ) > 0
+    )
     SELECT
       repo_name,
       any(owner) AS owner,
@@ -1507,16 +1554,20 @@ export async function repoActivityWindow(window: RepoWindow, limit = 20): Promis
         sum(d.prs_opened) AS day_prs_opened,
         sum(d.prs_merged) AS day_prs_merged
       FROM gh_repo_daily AS d
-      LEFT JOIN gh_repo_metadata AS m FINAL ON m.repo_name = d.repo_name
+      ANY LEFT JOIN filtered_metadata AS m ON m.repo_name = d.repo_name
       WHERE ${repoWindowClause(window)}
       GROUP BY d.repo_name, d.day
     )
     GROUP BY repo_name
-    ORDER BY events DESC
-    LIMIT {limit: UInt32}
+    ORDER BY ${sortSql} ${options.direction}, repo_name ASC
+    LIMIT {limit: UInt32} OFFSET {offset: UInt32}
   `.trim();
 
-  const { rows, provenance } = await q<RepoWindowSqlRow>(sql, ["gh_repo_daily", "gh_repo_metadata"], { limit });
+  const { rows, provenance } = await q<RepoWindowSqlRow>(sql, ["gh_repo_daily", "gh_repo_metadata"], {
+    limit: options.limit,
+    offset: options.offset,
+    search: options.search,
+  });
 
   const data: RepoWindowRow[] = rows.map((r) => ({
     repo_name: r.repo_name,
@@ -1536,7 +1587,14 @@ export async function repoActivityWindow(window: RepoWindow, limit = 20): Promis
     spark: (r.spark ?? []).map(Number),
   }));
 
-  return toQueryResult(data, provenance);
+  return {
+    ...toQueryResult(data, provenance),
+    proof: {
+      queryId: "repo_activity_window",
+      params: options,
+      sourceTables: ["gh_repo_daily", "gh_repo_metadata"],
+    },
+  };
 }
 
 // Named convenience wrappers for the four windows named in the contract.
