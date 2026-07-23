@@ -4,8 +4,14 @@ import { useState } from "react";
 import type { CandlesPayload, DigestPayload, DivergencePayload, MatrixPayload, MorphingCardPayload, RenderPayload, RepoDrilldownPayload, RepoDrilldownActivity, RepoDrilldownPulse, RepoDrilldownTrend, TickerPayload, VerdictTile } from "@/lib/render-payload";
 import { VERDICT_COLOR } from "@/lib/verdict-color";
 import { AreaChart, DualLine, HorizontalBarChart, Sparkline, VerticalBarChart } from "./charts";
+import { MarkdownText } from "./MarkdownText";
 import { SkinnyDeck } from "./SkinnyDeck";
 import { copyToClipboard, exportAssetAsHTML } from "@/lib/asset-export";
+
+function FreshnessBadge({ freshness }: { freshness?: string }) {
+  if (!freshness) return null;
+  return <span className="agent-freshness mono">{freshness}</span>;
+}
 
 function VerdictBadge({ verdict }: { verdict: VerdictTile }) {
   return (
@@ -188,6 +194,7 @@ function DivergenceAnswer({ payload }: { payload: DivergencePayload }) {
       <VerdictBadge verdict={payload.verdict} />
       <DualLine days={payload.days} a={payload.talk} b={payload.code} aLabel="talk · HN" bLabel="code · GH" />
       <p className="agent-caption">{payload.caption}</p>
+      <FreshnessBadge freshness={payload.freshness} />
     </div>
   );
 }
@@ -198,6 +205,7 @@ function CandlesAnswer({ payload }: { payload: CandlesPayload }) {
       <div className="agent-answer-head mono">{payload.subject}</div>
       <VerdictBadge verdict={payload.verdict} />
       <AreaChart days={payload.days} values={payload.values} label={payload.caption} />
+      <FreshnessBadge freshness={payload.freshness} />
     </div>
   );
 }
@@ -700,7 +708,7 @@ function MorphingCardAnswer({ payload }: { payload: MorphingCardPayload }) {
         <span>{title ?? `${dataValues.length} rows`}</span>
       </div>
       <div className="agent-caption">
-        {payload.summary && <p>{payload.summary}</p>}
+        {payload.summary && <MarkdownText text={payload.summary} />}
         <p className="mono">
           previewing {markType} markup · {dataValues.length.toLocaleString()} rows shown while the visualization is prepared
         </p>
