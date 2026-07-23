@@ -119,16 +119,13 @@ fi
 if [ -n "$REPO" ]; then
   TMPFILE=$(mktemp)
   printf '%s\n' "$COMMENT_BODY" > "$TMPFILE"
-  # The .env GITHUB_TOKEN may be stale and override gh's keyring auth.
-  # Save it, unset it for the gh call, then restore.
-  _SAVED_GH_TOKEN="${GITHUB_TOKEN:-}"
-  unset GITHUB_TOKEN
-  if gh pr comment "$PR_NUM" --repo "$REPO" --body-file "$TMPFILE" 2>&1; then
+  # Ignore env-provided tokens for this call so an expired .env token cannot
+  # override the authenticated GitHub CLI credential in the keychain.
+  if env -u GITHUB_TOKEN -u GH_TOKEN gh pr comment "$PR_NUM" --repo "$REPO" --body-file "$TMPFILE" 2>&1; then
     echo "[pre-push-telemetry] Posted telemetry comment to PR #${PR_NUM}."
   else
     echo "[pre-push-telemetry] Failed to post comment (non-blocking)."
   fi
-  export GITHUB_TOKEN="$_SAVED_GH_TOKEN"
   rm -f "$TMPFILE"
 else
   echo "[pre-push-telemetry] Could not determine repo, skipping comment."
