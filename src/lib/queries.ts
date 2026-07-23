@@ -1545,6 +1545,169 @@ export const repoActivityL7d = (limit?: number) => repoActivityWindow("7d", limi
 export const repoActivityL30d = (limit?: number) => repoActivityWindow("30d", limit);
 export const repoActivityLtd = (limit?: number) => repoActivityWindow("td", limit);
 
+// --- Active contribution rankings (issue #140) -----------------------------
+//
+// This ranking deliberately reads the repo/actor/hour rollup instead of the
+// raw github_events firehose. The rollup preserves the measures needed for a
+// useful ranking while keeping the time window bounded. It does not retain a
+// push ref, so default-branch versus non-default-branch activity is exposed as
+// "unknown" rather than inferred. Likewise, dependency-update attribution is
+// not available in GH Archive and is exposed as "unknown".
+//
+// `substantivePushBuckets` counts actor/repo/hour buckets that contain both a
+// push and at least one commit. It is intentionally not called
+// `substantivePushes`: the current rollup does not retain commit counts per
+// individual push. Ranking by this measure removes zero-commit push noise and
+// avoids rewarding raw push volume while preserving the raw `pushes` measure.
+export type ActiveContributionWindow = "1d" | "7d" | "30d";
+export type ActiveContributionSort = "commits" | "pushes";
+
+const ACTIVE_CONTRIBUTION_WINDOW_DAYS: Record<ActiveContributionWindow, number> = {
+  "1d": 1,
+  "7d": 7,
+  "30d": 30,
+};
+
+const ACTIVE_CONTRIBUTION_SORT_SQL: Record<ActiveContributionSort, string> = {
+  commits: "distinct_commits",
+  // A "pushes" ranking means substantive push buckets, not raw push count.
+  pushes: "substantive_push_buckets",
+};
+
+const ACTIVE_CONTRIBUTION_MAX_LIMIT = 100;
+
+export interface ActiveContributionRow {
+  repoName: string;
+  commits: number;
+  distinctCommits: number;
+  pushes: number;
+  substantivePushBuckets: number;
+  pushers: number;
+  humanPushers: number;
+  botPushers: number;
+  prsOpened: number;
+  prsMerged: number;
+  activityScore: number;
+  branchScope: "unknown";
+  dependencyUpdateAttribution: "unknown";
+}
+
+interface ActiveContributionSqlRow {
+  repo_name: string;
+  commits: string;
+  distinct_commits: string;
+  pushes: string;
+  substantive_push_buckets: string;
+  pushers: string;
+  human_pushers: string;
+  bot_pushers: string;
+  prs_opened: string;
+  prs_merged: string;
+  activity_score: string;
+  branch_scope: "unknown";
+  dependency_update_attribution: "unknown";
+}
+
+export interface ActiveContributionResult extends QueryResult<ActiveContributionRow[]> {
+  window: ActiveContributionWindow;
+  sort: ActiveContributionSort;
+  limit: number;
+}
+
+function activeContributionLimit(limit: number) {
+  if (!Number.isInteger(limit) || limit < 1 || limit > ACTIVE_CONTRIBUTION_MAX_LIMIT) {
+    throw new RangeError(`active contribution limit must be an integer between 1 and ${ACTIVE_CONTRIBUTION_MAX_LIMIT}`);
+  }
+  return limit;
+}
+
+export async function activeContributionRanking(
+  window: ActiveContributionWindow,
+  sort: ActiveContributionSort = "commits",
+  limit = 40
+): Promise<ActiveContributionResult> {
+  const days = ACTIVE_CONTRIBUTION_WINDOW_DAYS[window];
+  if (!days) throw new RangeError(`unsupported active contribution window: ${window}`);
+  if (!Object.prototype.hasOwnProperty.call(ACTIVE_CONTRIBUTION_SORT_SQL, sort)) {
+    throw new RangeError(`unsupported active contribution sort: ${sort}`);
+  }
+  const boundedLimit = activeContributionLimit(limit);
+  const sortSql = ACTIVE_CONTRIBUTION_SORT_SQL[sort];
+
+  const sql = `
+    WITH (SELECT max(hour) FROM gh_repo_actor_hourly) AS high_water
+    SELECT
+      repo_name,
+      toString(commits) AS commits,
+      toString(distinct_commits) AS distinct_commits,
+      toString(pushes) AS pushes,
+      toString(substantive_push_buckets) AS substantive_push_buckets,
+      toString(pushers) AS pushers,
+      toString(human_pushers) AS human_pushers,
+      toString(bot_pushers) AS bot_pushers,
+      toString(prs_opened) AS prs_opened,
+      toString(prs_merged) AS prs_merged,
+      toString(
+        (distinct_commits * 4)
+        + (commits * 2)
+        + (substantive_push_buckets * 3)
+        + (prs_opened * 2)
+        + (prs_merged * 5)
+      ) AS activity_score,
+      'unknown' AS branch_scope,
+      'unknown' AS dependency_update_attribution
+    FROM (
+      SELECT
+        repo_name,
+        sum(commits) AS commits,
+        sum(distinct_commits) AS distinct_commits,
+        sum(pushes) AS pushes,
+        sum(toUInt64(pushes > 0 AND commits > 0)) AS substantive_push_buckets,
+        uniqExactIf(actor_login, pushes > 0) AS pushers,
+        uniqExactIf(actor_login, pushes > 0 AND NOT actor_login ILIKE '%[bot]%') AS human_pushers,
+        uniqExactIf(actor_login, pushes > 0 AND actor_login ILIKE '%[bot]%') AS bot_pushers,
+        sum(prs_opened) AS prs_opened,
+        sum(prs_merged) AS prs_merged
+      FROM gh_repo_actor_hourly
+      WHERE hour > high_water - INTERVAL ${days} DAY
+      GROUP BY repo_name
+      -- Empty pushes and push-only PR noise do not qualify as active code.
+      HAVING commits > 0 OR prs_opened > 0 OR prs_merged > 0
+    )
+    ORDER BY ${sortSql} DESC, activity_score DESC, repo_name ASC
+    LIMIT {limit: UInt32}
+  `.trim();
+
+  const { rows, provenance } = await q<ActiveContributionSqlRow>(
+    sql,
+    ["gh_repo_actor_hourly"],
+    { limit: boundedLimit }
+  );
+
+  const data = rows.map((row) => ({
+    repoName: row.repo_name,
+    commits: Number(row.commits),
+    distinctCommits: Number(row.distinct_commits),
+    pushes: Number(row.pushes),
+    substantivePushBuckets: Number(row.substantive_push_buckets),
+    pushers: Number(row.pushers),
+    humanPushers: Number(row.human_pushers),
+    botPushers: Number(row.bot_pushers),
+    prsOpened: Number(row.prs_opened),
+    prsMerged: Number(row.prs_merged),
+    activityScore: Number(row.activity_score),
+    branchScope: row.branch_scope,
+    dependencyUpdateAttribution: row.dependency_update_attribution,
+  }));
+
+  return {
+    ...toQueryResult(data, provenance),
+    window,
+    sort,
+    limit: boundedLimit,
+  };
+}
+
 // --- DevScatter read fn (issue #25) - the "real builders" data source ---
 //
 // Per-actor push/PR aggregates over github_events, filtered for human signal:
