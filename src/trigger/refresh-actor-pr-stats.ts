@@ -127,8 +127,8 @@ async function pickActors(): Promise<string[]> {
            countIf(event_type = 'PushEvent') AS pushes,
            uniqExact(repo_name) AS repos,
            countIf(event_type = 'PullRequestEvent' AND action = 'opened') AS prs
-         FROM github_events
-         WHERE created_at > (SELECT max(created_at) FROM github_events) - INTERVAL 30 DAY
+          FROM raw.github_events
+          WHERE created_at > (SELECT max(created_at) FROM raw.github_events) - INTERVAL 30 DAY
            AND actor_login != ''
          GROUP BY actor_login
        )

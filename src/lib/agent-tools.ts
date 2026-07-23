@@ -108,7 +108,7 @@ function requireDescribedTables(query: string) {
 }
 
 export const FALLBACK_TABLES = [
-  { database: "default", name: "github_events", engine: "MergeTree", total_rows: "estimated", size: "N/A" },
+  { database: "raw", name: "github_events", engine: "MergeTree", total_rows: "estimated", size: "N/A" },
   { database: "default", name: "gh_repo_metadata", engine: "ReplacingMergeTree", total_rows: "estimated", size: "N/A" },
   { database: "default", name: "gh_repo_daily", engine: "SummingMergeTree", total_rows: "estimated", size: "N/A" },
   { database: "default", name: "gh_repo_hourly", engine: "SummingMergeTree", total_rows: "estimated", size: "N/A" },

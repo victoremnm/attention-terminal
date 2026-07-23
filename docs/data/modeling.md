@@ -19,6 +19,8 @@ This is a Kimball/Inmon-style modeling boundary, not a medallion hierarchy. The 
 
 Raw source tables keep their existing names for compatibility with ingestion tasks. New product queries should prefer dbt models once they exist for the needed grain.
 
+Since migration `20260724000001_database_families.sql`, `raw` is also a literal ClickHouse database, not only a dbt source label: `raw.github_events`, `raw.hackernews`, and `raw.hf_model_snapshots` are thin passthrough Views (`SELECT * FROM default.<table>`) over the physical tables, which still live in `default`. This gives read-path SQL a stable, isolated namespace without moving or re-materializing anything. ClickHouse Views cannot be `INSERT` targets, so writes always go to `default.<table>` directly — every ingestion task inserts into `default.*`, never `raw.*`.
+
 `hackernews` is a `ReplacingMergeTree(update_time)` that receives reinserted rows when scores or comments change. Keep `stg_hackernews_items` as a thin view over that stream, then use `stg_hackernews_items_current` whenever a consumer needs one latest row per HN item. HN facts and search documents read from the current-state model so thread counts and latest comment totals are not inflated by raw update reinsertions or the `hn_hourly` materialized view.
 
 ## dbt Boundary

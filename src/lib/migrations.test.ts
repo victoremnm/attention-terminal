@@ -39,7 +39,7 @@ describe("Goose Migrations & Skipping Index Verification", () => {
 
     try {
       const hnRes = await clickhouse.query({
-        query: "EXPLAIN indexes = 1 SELECT count() FROM hackernews WHERE time > now() - INTERVAL 6 HOUR",
+        query: "EXPLAIN indexes = 1 SELECT count() FROM raw.hackernews WHERE time > now() - INTERVAL 6 HOUR",
         format: "TabSeparated",
       });
       hnExplain = await hnRes.text();
