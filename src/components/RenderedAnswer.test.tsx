@@ -219,5 +219,39 @@ describe("RenderedAnswer", () => {
       expect(container.querySelectorAll("figure.chart svg rect").length).toBeGreaterThan(0);
       expect(screen.queryByText(/previewing .* markup/i)).not.toBeInTheDocument();
     });
+
+    it("caps and log-scales a high-cardinality, high-variance nominal Bar Chart instead of flattening every bar", () => {
+      // Reproduces the reported "bar chart looks bad" regression: 28 unrelated
+      // repos with one dominant outlier flattened every other bar to ~0px tall.
+      const values = Array.from({ length: 28 }, (_, i) => ({
+        repo: `owner${i}/repo-${i}`,
+        stars: i === 0 ? 50_000 : 1 + (i % 5),
+      }));
+      const payload: RenderPayload = {
+        type: "morphing-card",
+        visualizationType: "Bar Chart",
+        generatedAt: "2026-07-23T09:00:00.000Z",
+        chartConfig: {
+          encoding: {
+            x: { field: "repo", type: "nominal" },
+            y: { field: "stars", type: "quantitative" },
+          },
+          data: { values },
+          mark: { type: "bar" },
+        },
+      } as RenderPayload;
+
+      const { container } = render(<RenderedAnswer payload={payload} />);
+
+      const bars = container.querySelectorAll("figure.chart.bar-chart-vertical svg > g");
+      expect(bars.length).toBeLessThanOrEqual(15);
+      // Every rendered bar should have a visible, non-degenerate height -- the
+      // whole point of log scale is that the smallest bars aren't ~0px.
+      for (const bar of Array.from(bars)) {
+        const rect = bar.querySelector("rect");
+        const height = Number(rect?.getAttribute("height"));
+        expect(height).toBeGreaterThan(2);
+      }
+    });
   });
 });

@@ -722,15 +722,31 @@ function buildMorphingChart(
   if (!yField) return null;
 
   const yTitle = typeof yEncoding?.title === "string" && yEncoding.title.trim().length > 0 ? yEncoding.title : yField;
-  const labels = dataValues.map((row) => String(row[xField] ?? ""));
-  const values = dataValues.map((row) => Number(row[yField]) || 0);
+  const isTemporal = xEncoding?.type === "temporal";
+  const MAX_BARS = 15;
+
+  let rows = dataValues.map((row) => ({ label: String(row[xField] ?? ""), value: Number(row[yField]) || 0 }));
+  // Non-temporal (categorical) series with more rows than a bar chart can show
+  // legibly get sorted to their most significant values and pruned -- a
+  // 28-bar comparison of unrelated repo names is unreadable regardless of
+  // scale. Temporal (date) series keep chronological order and every point.
+  if (!isTemporal && rows.length > MAX_BARS) {
+    rows = [...rows].sort((a, b) => b.value - a.value).slice(0, MAX_BARS);
+  }
+  const labels = rows.map((r) => r.label);
+  const values = rows.map((r) => r.value);
 
   const isBar = visualizationType === "Bar Chart" || markType === "bar";
   const isLineOrArea =
     visualizationType === "Line Graph" || visualizationType === "Area Chart" || markType === "line" || markType === "area";
 
   if (isBar) {
-    return <VerticalBarChart items={labels.map((label, i) => ({ label, value: values[i] }))} title={yTitle} />;
+    const positives = values.filter((v) => v > 0);
+    const varianceRatio = positives.length > 0 ? Math.max(...positives) / Math.min(...positives) : 1;
+    const scale = varianceRatio > 20 ? "log" : "linear";
+    return (
+      <VerticalBarChart items={labels.map((label, i) => ({ label, value: values[i] }))} title={yTitle} scale={scale} />
+    );
   }
   if (isLineOrArea) {
     return <AreaChart days={labels} values={values} label={yTitle} />;
