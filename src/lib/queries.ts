@@ -1556,6 +1556,7 @@ export async function repoActivityWindow(
       FROM gh_repo_daily AS d
       ANY LEFT JOIN filtered_metadata AS m ON m.repo_name = d.repo_name
       WHERE ${repoWindowClause(window)}
+        AND ({search: String} = '' OR m.repo_name != '')
       GROUP BY d.repo_name, d.day
     )
     GROUP BY repo_name
