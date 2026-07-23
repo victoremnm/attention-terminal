@@ -13,7 +13,10 @@ graphify-out/
 reference-design/
 .vercel
 .next/
+*.tsbuildinfo
 .claude/
 .codex/
 .antigravity/
 .agy/
+tsconfig.tsbuildinfo
+*.tsbuildinfo
