@@ -6,6 +6,36 @@ interface ModelDistributionChartProps {
   stats: ModelDistributionSummary[];
 }
 
+// Tukey's fences (1.5x IQR) -- the standard box-plot convention for
+// separating the "core" distribution from outliers. A single very slow (or
+// very fast) run would otherwise stretch the whisker/violin shape and
+// compress every other model's box into a sliver of the shared axis.
+const OUTLIER_IQR_MULTIPLIER = 1.5;
+// If the widest model's core range is at least this many times the
+// narrowest model's, a linear axis makes the narrower groups unreadable --
+// switch to a log scale instead of trying to fit both on one linear ruler.
+const LOG_SCALE_SPREAD_THRESHOLD = 10;
+
+type ModelFences = {
+  whiskerMin: number;
+  whiskerMax: number;
+  outliers: number[];
+};
+
+function computeFences(s: ModelDistributionSummary): ModelFences {
+  const iqr = s.q3LatencyMs - s.q1LatencyMs;
+  const lowerFence = s.q1LatencyMs - OUTLIER_IQR_MULTIPLIER * iqr;
+  const upperFence = s.q3LatencyMs + OUTLIER_IQR_MULTIPLIER * iqr;
+  // s.latencies is sorted ascending (see computeModelDistributionStats).
+  const inliers = s.latencies.filter((lat) => lat >= lowerFence && lat <= upperFence);
+  const outliers = s.latencies.filter((lat) => lat < lowerFence || lat > upperFence);
+  return {
+    whiskerMin: inliers.length > 0 ? inliers[0] : s.minLatencyMs,
+    whiskerMax: inliers.length > 0 ? inliers[inliers.length - 1] : s.maxLatencyMs,
+    outliers,
+  };
+}
+
 export function ModelDistributionChart({ stats }: ModelDistributionChartProps) {
   if (!stats || stats.length === 0) return null;
 
@@ -18,13 +48,25 @@ export function ModelDistributionChart({ stats }: ModelDistributionChartProps) {
   const H = padT + stats.length * rowHeight + padB;
   const iw = W - padL - padR;
 
-  // Max latency across all models for scale
-  const globalMaxLatency = Math.max(...stats.map((s) => s.maxLatencyMs || 1000), 1000);
-  const minScale = 0;
-  const maxScale = Math.ceil(globalMaxLatency / 1000) * 1000;
+  const fencesByModel = new Map(stats.map((s) => [s.model, computeFences(s)]));
+  const whiskerMaxes = stats.map((s) => fencesByModel.get(s.model)!.whiskerMax).filter((v) => v > 0);
+  const whiskerMins = stats.map((s) => fencesByModel.get(s.model)!.whiskerMin).filter((v) => v > 0);
+
+  // Scale domain is driven by each model's *core* range, not raw min/max --
+  // an outlier still gets plotted (clamped to the domain edge with its own
+  // marker below), it just no longer dictates the axis.
+  const domainMax = Math.max(...whiskerMaxes, 1000) * 1.15;
+  const spreadRatio = whiskerMins.length > 0 ? domainMax / Math.max(1, Math.min(...whiskerMins)) : 1;
+  const useLogScale = spreadRatio >= LOG_SCALE_SPREAD_THRESHOLD;
+  const logDomainMax = Math.max(domainMax, 10);
 
   const xScale = (valMs: number) => {
-    const ratio = Math.min(1, Math.max(0, valMs / maxScale));
+    if (useLogScale) {
+      const clamped = Math.min(logDomainMax, Math.max(1, valMs));
+      const ratio = Math.log10(clamped) / Math.log10(logDomainMax);
+      return padL + Math.min(1, Math.max(0, ratio)) * iw;
+    }
+    const ratio = Math.min(1, Math.max(0, valMs / domainMax));
     return padL + ratio * iw;
   };
 
@@ -44,7 +86,16 @@ export function ModelDistributionChart({ stats }: ModelDistributionChartProps) {
     return `${ms}ms`;
   };
 
-  const ticks = [0, maxScale * 0.25, maxScale * 0.5, maxScale * 0.75, maxScale];
+  // Log ticks land on powers of ten (1, 10, 100, 1000, ...) up to the
+  // domain; linear ticks stay evenly spaced across it.
+  const ticks = useLogScale
+    ? (() => {
+        const out: number[] = [];
+        for (let p = 1; p <= logDomainMax; p *= 10) out.push(p);
+        if (out[out.length - 1] !== logDomainMax) out.push(logDomainMax);
+        return out;
+      })()
+    : [0, domainMax * 0.25, domainMax * 0.5, domainMax * 0.75, domainMax];
 
   return (
     <div className="model-analysis-container space-y-6">
@@ -53,7 +104,10 @@ export function ModelDistributionChart({ stats }: ModelDistributionChartProps) {
           <div>
             <h3 className="text-lg font-bold text-slate-100">Model Latency Distribution (Violin / Box Plot)</h3>
             <p className="text-xs text-slate-400">
-              Interquartile range (Q1–Q3 box), Median (center line), Whiskers (Min–Max), and kernel density violin contours grouped by model.
+              Interquartile range (Q1–Q3 box), Median (center line), Whiskers (core range within 1.5×IQR), and kernel
+              density violin contours grouped by model. Points beyond 1.5×IQR are plotted as individual outlier
+              markers past the whisker rather than stretching the axis.
+              {useLogScale && " Axis is log-scaled — model latencies differ by more than 10x."}
             </p>
           </div>
           <div className="legend-pills flex items-center gap-3 text-xs mono">
@@ -81,15 +135,20 @@ export function ModelDistributionChart({ stats }: ModelDistributionChartProps) {
               const cy = padT + idx * rowHeight + rowHeight / 2;
               const boxHeight = 18;
               const colors = getModelColor(s.model);
+              const fences = fencesByModel.get(s.model)!;
 
-              const xMin = xScale(s.minLatencyMs);
+              const xMin = xScale(fences.whiskerMin);
               const xQ1 = xScale(s.q1LatencyMs);
               const xMed = xScale(s.medianLatencyMs);
               const xQ3 = xScale(s.q3LatencyMs);
-              const xMax = xScale(s.maxLatencyMs);
+              const xMax = xScale(fences.whiskerMax);
 
               const boxW = Math.max(4, xQ3 - xQ1);
               const violinW = Math.max(12, xMax - xMin);
+
+              const inlierLatencies = s.latencies.filter(
+                (lat) => lat >= fences.whiskerMin && lat <= fences.whiskerMax
+              );
 
               return (
                 <g key={s.model} className="model-row-group">
@@ -98,15 +157,15 @@ export function ModelDistributionChart({ stats }: ModelDistributionChartProps) {
                     {s.model}
                   </text>
                   <text x={padL - 12} y={cy + 18} fontSize="9" fill="#64748b" textAnchor="end" className="mono">
-                    n = {s.count} runs
+                    n = {s.count} runs{fences.outliers.length > 0 ? ` (${fences.outliers.length} outlier${fences.outliers.length === 1 ? "" : "s"})` : ""}
                   </text>
 
                   {/* Violin Contour Path */}
                   <path
-                    d={`M ${xMin} ${cy} 
-                        C ${xMin + violinW * 0.25} ${cy - 16}, ${xQ1 + boxW * 0.5} ${cy - 14}, ${xQ3} ${cy - 10} 
-                        C ${xMax - 2} ${cy - 4}, ${xMax} ${cy}, ${xMax} ${cy} 
-                        C ${xMax} ${cy}, ${xMax - 2} ${cy + 4}, ${xQ3} ${cy + 10} 
+                    d={`M ${xMin} ${cy}
+                        C ${xMin + violinW * 0.25} ${cy - 16}, ${xQ1 + boxW * 0.5} ${cy - 14}, ${xQ3} ${cy - 10}
+                        C ${xMax - 2} ${cy - 4}, ${xMax} ${cy}, ${xMax} ${cy}
+                        C ${xMax} ${cy}, ${xMax - 2} ${cy + 4}, ${xQ3} ${cy + 10}
                         C ${xQ1 + boxW * 0.5} ${cy + 14}, ${xMin + violinW * 0.25} ${cy + 16}, ${xMin} ${cy} Z`}
                     fill={colors.fill}
                     stroke={colors.primary}
@@ -114,7 +173,7 @@ export function ModelDistributionChart({ stats }: ModelDistributionChartProps) {
                     strokeOpacity="0.5"
                   />
 
-                  {/* Whisker Line (Min to Max) */}
+                  {/* Whisker Line (fenced core range) */}
                   <line x1={xMin} x2={xMax} y1={cy} y2={cy} stroke={colors.primary} strokeWidth="1.5" />
                   <line x1={xMin} x2={xMin} y1={cy - 6} y2={cy + 6} stroke={colors.primary} strokeWidth="1.5" />
                   <line x1={xMax} x2={xMax} y1={cy - 6} y2={cy + 6} stroke={colors.primary} strokeWidth="1.5" />
@@ -134,10 +193,10 @@ export function ModelDistributionChart({ stats }: ModelDistributionChartProps) {
                   {/* Median Line */}
                   <line x1={xMed} x2={xMed} y1={cy - boxHeight / 2} y2={cy + boxHeight / 2} stroke="#ffffff" strokeWidth="2.5" />
 
-                  {/* Data Points (Scatter Dots) */}
-                  {s.latencies.map((lat, dotIdx) => (
+                  {/* Data Points (Scatter Dots) -- core distribution only */}
+                  {inlierLatencies.map((lat, dotIdx) => (
                     <circle
-                      key={`${s.model}-${dotIdx}-${lat}`}
+                      key={`${s.model}-in-${dotIdx}-${lat}`}
                       cx={xScale(lat)}
                       cy={cy + (dotIdx % 2 === 0 ? -3 : 3)}
                       r="2.5"
@@ -145,6 +204,24 @@ export function ModelDistributionChart({ stats }: ModelDistributionChartProps) {
                       opacity="0.85"
                     />
                   ))}
+
+                  {/* Outlier markers -- diamonds past the whisker, clamped to the domain edge if needed */}
+                  {fences.outliers.map((lat, dotIdx) => {
+                    const cx = xScale(lat);
+                    const r = 3.5;
+                    return (
+                      <path
+                        key={`${s.model}-out-${dotIdx}-${lat}`}
+                        d={`M ${cx} ${cy - r} L ${cx + r} ${cy} L ${cx} ${cy + r} L ${cx - r} ${cy} Z`}
+                        fill="none"
+                        stroke={colors.primary}
+                        strokeWidth="1.5"
+                        opacity="0.9"
+                      >
+                        <title>{`outlier: ${formatMs(lat)}`}</title>
+                      </path>
+                    );
+                  })}
                 </g>
               );
             })}
