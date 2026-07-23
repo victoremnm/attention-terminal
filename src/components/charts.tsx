@@ -5,8 +5,8 @@ import type { DevPoint } from "@/lib/render-payload";
 // Hand-rolled SVG charts per the wireframes - no chart libraries.
 // Cyan = talk/HN, magenta = code/GitHub, muted grid, tabular numerals.
 
-export function Sparkline({ data, color = "var(--cyan)", w = 64, h = 18 }: {
-  data: number[]; color?: string; w?: number; h?: number;
+export function Sparkline({ data, color = "var(--cyan)", w = 64, h = 18, label }: {
+  data: number[]; color?: string; w?: number; h?: number; label?: string;
 }) {
   if (!data || data.length < 2) return null;
   const max = Math.max(...data, 1);
@@ -15,8 +15,11 @@ export function Sparkline({ data, color = "var(--cyan)", w = 64, h = 18 }: {
   const pts = data
     .map((v, i) => `${x(i)},${y(v)}`)
     .join(" ");
+  const attrs = label
+    ? { role: "img" as const, "aria-label": label }
+    : { "aria-hidden": true as const };
   return (
-    <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} aria-hidden="true">
+    <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} {...attrs}>
       <polyline points={pts} fill="none" stroke={color} strokeWidth="1.5" strokeLinejoin="round" />
       {data.map((v, i) => (
         <circle

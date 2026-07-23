@@ -5,6 +5,14 @@ import { clickhouse, clickhouseInsert, ensureTablesExist, missingTables } from "
 import { fetchRepoRow } from "./github-repo";
 import { analyzeAndStoreRepo } from "./repo-analysis";
 import type { DevPoint, RepoDrilldownPayload } from "./render-payload";
+import {
+  normalizeRepoActivityOptions,
+  type NormalizedRepoActivityOptions,
+  type RepoActivityOptions,
+  type RepoActivitySort,
+  type RepoWindow,
+} from "./repo-activity-query";
+export type { RepoActivityDirection, RepoActivityOptions, RepoActivitySort, RepoWindow } from "./repo-activity-query";
 
 // Every query returns its provenance so the SQL-flip card back can show the
 // exact statement, timing, and rows read - no black boxes.
@@ -1405,8 +1413,6 @@ export async function freshness() {
 // `gh_repo_metadata USING (repo_name)` - plain WHERE clauses over the existing
 // tables, never new DB objects (goose owns all DDL; see migrations/20260720000009).
 
-export type RepoWindow = "1d" | "7d" | "30d" | "td";
-
 const REPO_WINDOW_DAYS: Record<RepoWindow, number> = {
   "1d": 1,
   "7d": 7,
@@ -1462,10 +1468,36 @@ interface RepoWindowSqlRow {
   spark: string[];
 }
 
+export interface RepoActivityProof {
+  queryId: "repo_activity_window";
+  params: NormalizedRepoActivityOptions;
+  sourceTables: ["gh_repo_daily", "gh_repo_metadata"];
+}
+
+export interface RepoActivityResult extends QueryResult<RepoWindowRow[]> {
+  proof: RepoActivityProof;
+}
+
+const REPO_ACTIVITY_SORT_SQL: Record<RepoActivitySort, string> = {
+  events: "events",
+  actors: "actors",
+  pushes: "pushes",
+  commits: "commits",
+  stars: "stars",
+  forks: "forks",
+  prsOpened: "prs_opened",
+  prsMerged: "prs_merged",
+};
+
 // Repo activity + metadata for one of the fixed windows, ranked by event volume.
 // `gh_repo_metadata` is joined FINAL (ReplacingMergeTree - ungrouped parts can
 // hold stale duplicate rows pre-merge, same reasoning as `hackernews FINAL`).
-export async function repoActivityWindow(window: RepoWindow, limit = 20): Promise<QueryResult<RepoWindowRow[]>> {
+export async function repoActivityWindow(
+  window: RepoWindow,
+  input: RepoActivityOptions | number = {}
+): Promise<RepoActivityResult> {
+  const options = normalizeRepoActivityOptions(input);
+  const sortSql = REPO_ACTIVITY_SORT_SQL[options.sort];
   // Two-level aggregation: the inner query rolls each repo up per day (so we can
   // emit an ordered per-day event array for the sparkline), the outer collapses
   // days into the window total. Additive metrics (events/pushes/.../prs) sum
@@ -1473,6 +1505,21 @@ export async function repoActivityWindow(window: RepoWindow, limit = 20): Promis
   // uniqMergeState per day and union it with uniqMerge in the outer query -
   // summing per-day uniqs would double-count anyone active on multiple days.
   const sql = `
+    WITH filtered_metadata AS (
+      SELECT
+        repo_name,
+        owner,
+        description,
+        language,
+        topics,
+        github_stars
+      FROM gh_repo_metadata FINAL
+      WHERE {search: String} = ''
+         OR positionCaseInsensitiveUTF8(
+              concat(repo_name, ' ', owner, ' ', description, ' ', language, ' ', arrayStringConcat(topics, ' ')),
+              {search: String}
+            ) > 0
+    )
     SELECT
       repo_name,
       any(owner) AS owner,
@@ -1507,16 +1554,20 @@ export async function repoActivityWindow(window: RepoWindow, limit = 20): Promis
         sum(d.prs_opened) AS day_prs_opened,
         sum(d.prs_merged) AS day_prs_merged
       FROM gh_repo_daily AS d
-      LEFT JOIN gh_repo_metadata AS m FINAL ON m.repo_name = d.repo_name
+      ANY LEFT JOIN filtered_metadata AS m ON m.repo_name = d.repo_name
       WHERE ${repoWindowClause(window)}
       GROUP BY d.repo_name, d.day
     )
     GROUP BY repo_name
-    ORDER BY events DESC
-    LIMIT {limit: UInt32}
+    ORDER BY ${sortSql} ${options.direction}, repo_name ASC
+    LIMIT {limit: UInt32} OFFSET {offset: UInt32}
   `.trim();
 
-  const { rows, provenance } = await q<RepoWindowSqlRow>(sql, ["gh_repo_daily", "gh_repo_metadata"], { limit });
+  const { rows, provenance } = await q<RepoWindowSqlRow>(sql, ["gh_repo_daily", "gh_repo_metadata"], {
+    limit: options.limit,
+    offset: options.offset,
+    search: options.search,
+  });
 
   const data: RepoWindowRow[] = rows.map((r) => ({
     repo_name: r.repo_name,
@@ -1536,7 +1587,14 @@ export async function repoActivityWindow(window: RepoWindow, limit = 20): Promis
     spark: (r.spark ?? []).map(Number),
   }));
 
-  return toQueryResult(data, provenance);
+  return {
+    ...toQueryResult(data, provenance),
+    proof: {
+      queryId: "repo_activity_window",
+      params: options,
+      sourceTables: ["gh_repo_daily", "gh_repo_metadata"],
+    },
+  };
 }
 
 // Named convenience wrappers for the four windows named in the contract.
@@ -1544,6 +1602,184 @@ export const repoActivityL1d = (limit?: number) => repoActivityWindow("1d", limi
 export const repoActivityL7d = (limit?: number) => repoActivityWindow("7d", limit);
 export const repoActivityL30d = (limit?: number) => repoActivityWindow("30d", limit);
 export const repoActivityLtd = (limit?: number) => repoActivityWindow("td", limit);
+
+// --- Active contribution rankings (issue #140) -----------------------------
+//
+// This ranking deliberately reads the repo/actor/hour rollup instead of the
+// raw github_events firehose. The rollup preserves the measures needed for a
+// useful ranking while keeping the time window bounded. It does not retain a
+// push ref, so default-branch versus non-default-branch activity is exposed as
+// "unknown" rather than inferred. Likewise, dependency-update attribution is
+// not available in GH Archive and is exposed as "unknown".
+//
+// `substantivePushBuckets` counts actor/repo/hour buckets that contain both a
+// push and at least one commit. It is intentionally not called
+// `substantivePushes`: the current rollup does not retain commit counts per
+// individual push. Ranking by this measure removes zero-commit push noise and
+// avoids rewarding raw push volume while preserving the raw `pushes` measure.
+export type ActiveContributionWindow = "1d" | "7d" | "30d";
+export type ActiveContributionSort = "commits" | "pushes";
+
+const ACTIVE_CONTRIBUTION_WINDOW_DAYS: Record<ActiveContributionWindow, number> = {
+  "1d": 1,
+  "7d": 7,
+  "30d": 30,
+};
+
+const ACTIVE_CONTRIBUTION_SORT_SQL: Record<ActiveContributionSort, string> = {
+  commits: "distinct_commit_total",
+  // A "pushes" ranking means substantive push buckets, not raw push count.
+  pushes: "substantive_push_bucket_total",
+};
+
+const ACTIVE_CONTRIBUTION_MAX_LIMIT = 100;
+
+export interface ActiveContributionRow {
+  repoName: string;
+  commits: number;
+  distinctCommits: number;
+  pushes: number;
+  substantivePushBuckets: number;
+  pushers: number;
+  humanPushers: number;
+  botPushers: number;
+  prsOpened: number;
+  prsMerged: number;
+  activityScore: number;
+  branchScope: "unknown";
+  dependencyUpdateAttribution: "unknown";
+}
+
+interface ActiveContributionSqlRow {
+  repo_name: string;
+  commits: string;
+  distinct_commits: string;
+  pushes: string;
+  substantive_push_buckets: string;
+  pushers: string;
+  human_pushers: string;
+  bot_pushers: string;
+  prs_opened: string;
+  prs_merged: string;
+  activity_score: string;
+  branch_scope: "unknown";
+  dependency_update_attribution: "unknown";
+}
+
+export interface ActiveContributionResult extends QueryResult<ActiveContributionRow[]> {
+  window: ActiveContributionWindow;
+  sort: ActiveContributionSort;
+  limit: number;
+  notes: string[];
+}
+
+function activeContributionLimit(limit: number) {
+  if (!Number.isInteger(limit) || limit < 1 || limit > ACTIVE_CONTRIBUTION_MAX_LIMIT) {
+    throw new RangeError(`active contribution limit must be an integer between 1 and ${ACTIVE_CONTRIBUTION_MAX_LIMIT}`);
+  }
+  return limit;
+}
+
+export async function activeContributionRanking(
+  window: ActiveContributionWindow,
+  sort: ActiveContributionSort = "commits",
+  limit = 40
+): Promise<ActiveContributionResult> {
+  const days = ACTIVE_CONTRIBUTION_WINDOW_DAYS[window];
+  if (!days) throw new RangeError(`unsupported active contribution window: ${window}`);
+  if (!Object.prototype.hasOwnProperty.call(ACTIVE_CONTRIBUTION_SORT_SQL, sort)) {
+    throw new RangeError(`unsupported active contribution sort: ${sort}`);
+  }
+  const boundedLimit = activeContributionLimit(limit);
+  const sortSql = ACTIVE_CONTRIBUTION_SORT_SQL[sort];
+  const eligibilitySql = sort === "pushes"
+    ? "substantive_push_bucket_total > 0"
+    : "commit_total > 0 OR pr_opened_total > 0 OR pr_merged_total > 0";
+
+  const sql = `
+    WITH (SELECT max(hour) FROM gh_repo_actor_hourly) AS high_water
+    SELECT
+      repo_name,
+      toString(commit_total) AS commits,
+      toString(distinct_commit_total) AS distinct_commits,
+      toString(push_total) AS pushes,
+      toString(substantive_push_bucket_total) AS substantive_push_buckets,
+      toString(pusher_total) AS pushers,
+      toString(human_pusher_total) AS human_pushers,
+      toString(bot_pusher_total) AS bot_pushers,
+      toString(pr_opened_total) AS prs_opened,
+      toString(pr_merged_total) AS prs_merged,
+      toString(
+        (distinct_commit_total * 4)
+        + (commit_total * 2)
+        + (substantive_push_bucket_total * 3)
+        + (pr_opened_total * 2)
+        + (pr_merged_total * 5)
+      ) AS activity_score,
+      'unknown' AS branch_scope,
+      'unknown' AS dependency_update_attribution
+    FROM (
+      SELECT
+        bucket.repo_name AS repo_name,
+        sum(bucket.commits) AS commit_total,
+        sum(bucket.distinct_commits) AS distinct_commit_total,
+        sum(bucket.pushes) AS push_total,
+        sum(toUInt64(bucket.pushes > 0 AND bucket.commits > 0)) AS substantive_push_bucket_total,
+        uniqExactIf(bucket.actor_login, bucket.pushes > 0) AS pusher_total,
+        uniqExactIf(bucket.actor_login, bucket.pushes > 0 AND NOT bucket.actor_login ILIKE '%[bot]%') AS human_pusher_total,
+        uniqExactIf(bucket.actor_login, bucket.pushes > 0 AND bucket.actor_login ILIKE '%[bot]%') AS bot_pusher_total,
+        sum(bucket.prs_opened) AS pr_opened_total,
+        sum(bucket.prs_merged) AS pr_merged_total
+      FROM (
+        SELECT repo_name, actor_login, pushes, commits, distinct_commits, prs_opened, prs_merged
+        FROM gh_repo_actor_hourly
+        WHERE hour > high_water - INTERVAL ${days} DAY
+      ) AS bucket
+      GROUP BY repo_name
+      -- Empty pushes and push-only PR noise do not qualify for push mode.
+      HAVING ${eligibilitySql}
+    )
+    ORDER BY ${sortSql} DESC, activity_score DESC, repo_name ASC
+    LIMIT {limit: UInt32}
+  `.trim();
+
+  const { rows, provenance } = await q<ActiveContributionSqlRow>(
+    sql,
+    ["gh_repo_actor_hourly"],
+    { limit: boundedLimit }
+  );
+
+  const data = rows.map((row) => ({
+    repoName: row.repo_name,
+    commits: Number(row.commits),
+    distinctCommits: Number(row.distinct_commits),
+    pushes: Number(row.pushes),
+    substantivePushBuckets: Number(row.substantive_push_buckets),
+    pushers: Number(row.pushers),
+    humanPushers: Number(row.human_pushers),
+    botPushers: Number(row.bot_pushers),
+    prsOpened: Number(row.prs_opened),
+    prsMerged: Number(row.prs_merged),
+    activityScore: Number(row.activity_score),
+    branchScope: row.branch_scope,
+    dependencyUpdateAttribution: row.dependency_update_attribution,
+  }));
+
+  return {
+    ...toQueryResult(data, provenance),
+    window,
+    sort,
+    limit: boundedLimit,
+    notes: [
+      sort === "pushes"
+        ? "Push ranking requires substantive_push_bucket_total > 0; raw push volume never makes a repo eligible."
+        : "Commit ranking excludes rows with no commits and no PR activity.",
+      "branchScope is unknown because gh_repo_actor_hourly does not retain push ref/default-branch fields; main-branch filtering is not claimed.",
+      "The global ranking filters hour against ORDER BY (repo_name, hour, actor_login); this is bounded by time but hour-only filtering cannot use the rollup key prefix for full pruning.",
+      "dependencyUpdateAttribution is unknown because the source rollup does not retain dependency-update attribution.",
+    ],
+  };
+}
 
 // --- DevScatter read fn (issue #25) - the "real builders" data source ---
 //
