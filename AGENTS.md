@@ -135,6 +135,22 @@ the reviewer must add the `blocked` label and explain the blocker in a PR
 comment. These labels are review signals, not merge approval; the human merge
 gate still applies.
 
+## Handling Blocked PRs (mandatory)
+
+The `blocked` GitHub label signals that a PR has unresolved issues preventing merge. All agents (Claude, Gemini, DeepSeek, Codex, Qwen, GLM, etc.) must actively detect and resolve `blocked` PRs:
+
+1. **Causes of `blocked` state**:
+   - Merge conflicts with `main`.
+   - Unresolved review comments (automated reviews or maintainer `victoremnm` comments).
+   - Failing CI checks or build/test regressions.
+   - General review feedback left on the PR.
+
+2. **Required Resolution Workflow**:
+   - **Merge Conflicts**: Fetch `origin/main` and merge cleanly into the PR branch, resolving all conflict markers.
+   - **Review Comments**: Apply code fixes, reply inline with commit SHA (`Fixed in <sha>\n\n<explanation>`), and resolve threads via GraphQL.
+   - **Failing CI**: Read full error logs, fix the root cause (never patch or suppress tests), and verify `npm run build && npx vitest run`.
+   - **Unblock & Telemetry**: Remove the `blocked` label via `gh pr edit <PR_NUM> --remove-label "blocked"` once all blockers are resolved and CI is 100% green. Log subagent telemetry.
+
 ### Commit message convention (mandatory)
 
 Every commit authored by an agent must include a `Co-authored-by:` trailer

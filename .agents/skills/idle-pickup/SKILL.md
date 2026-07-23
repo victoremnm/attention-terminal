@@ -50,6 +50,15 @@ Brief the subagent to:
 
 Brief the subagent to: read the diff, check correctness/security/tests against repo conventions, tag the LLM model family (`Model: Gemini`, `Model: DeepSeek`, `Model: Codex`, etc.), and post findings as PR **review comments phrased as suggestions** — not approvals, not resolutions. It reports the count and severity of findings.
 
+### Blocked PR → resolution
+
+Brief the subagent to:
+1. Detect `blocked` label, merge conflicts, failing CI, or unresolved review comments on a PR.
+2. Merge `origin/main` cleanly into the branch and resolve conflict markers.
+3. Apply code fixes, reply inline with commit SHA (`Fixed in <sha>\n\n<explanation>`), and resolve GraphQL review threads.
+4. Verify build and tests (`npm run build && npx vitest run`).
+5. Remove `blocked` label via `gh pr edit <PR_NUM> --remove-label "blocked"` once CI is 100% green.
+
 ## Collecting Results
 
 Gather each subagent's structured report and present a single roll-up:
