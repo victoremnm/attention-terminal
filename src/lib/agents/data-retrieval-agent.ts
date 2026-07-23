@@ -1,4 +1,4 @@
-import { generateObject } from "ai";
+import { generateObject, type ModelMessage } from "ai";
 import { z } from "zod";
 import { openai } from "@ai-sdk/openai";
 import { createClient } from "@clickhouse/client";
@@ -6,6 +6,13 @@ import { randomUUID } from "node:crypto";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import * as os from "node:os";
+import {
+  FALLBACK_TABLES,
+  LIST_TABLES_SQL,
+  TABLE_LIST_LIMIT,
+  registerCatalogTables,
+  requireCatalogedTables,
+} from "../sql-catalog-guard";
 
 let clickhouse: ReturnType<typeof createClient> | undefined;
 
@@ -34,6 +41,16 @@ const READ_ONLY_STATEMENTS = /^\s*(select|with|show|describe|desc|explain|exists
 // path except a placeholder chart (issue #143/#144).
 const MAX_SAMPLE_ROWS = 50;
 
+// This sub-agent has no tool-calling ability of its own (generateObject only,
+// no listTables/describeTable step), and it's a *sanctioned* alternate path
+// the top-level agent can call directly for ad-hoc questions (see
+// agent-prompt.ts) — so it must ground and validate itself rather than
+// relying on the top-level agent's catalog. Bounded to keep latency sane;
+// each failed attempt feeds the concrete error back so the model corrects
+// itself instead of repeating the same fabrication.
+const MAX_ATTEMPTS = 3;
+const CATALOG_TIMEOUT_MS = 5_000;
+
 function hasMultipleStatements(query: string) {
   return query.replace(/;+\s*$/, "").includes(";");
 }
@@ -46,72 +63,146 @@ export function normalizeUnionQuery(query: string): string {
   });
 }
 
-export async function runDataRetrievalAgent(intent: string) {
-  // 1. Translate intent to SQL using LLM
-  const { object } = await generateObject({
-    model: openai("gpt-4o"),
-    system: "You are the Data Retrieval Agent. Your job is to translate a user's semantic intent into a single optimized read-only ClickHouse SQL query. Only SELECT statements are allowed. Always use explicit UNION ALL or UNION DISTINCT instead of bare UNION.",
-    prompt: `Intent: ${intent}`,
-    schema: z.object({
-      query: z.string().describe("The read-only ClickHouse SQL query"),
-    }),
-  });
+type CatalogTable = { database: string; name: string; engine: string };
 
-  const query = normalizeUnionQuery(object.query);
-
-  if (!READ_ONLY_STATEMENTS.test(query) || hasMultipleStatements(query)) {
-    throw new Error("Only one read-only SELECT-style statement is allowed.");
+async function loadCatalog(): Promise<{ tables: CatalogTable[]; referenceText: string }> {
+  try {
+    const result = await getClickHouse().query({
+      query: LIST_TABLES_SQL,
+      format: "JSONEachRow",
+      query_params: { limit: TABLE_LIST_LIMIT },
+      abort_signal: AbortSignal.timeout(CATALOG_TIMEOUT_MS),
+      clickhouse_settings: { readonly: "2", max_execution_time: 5 },
+    });
+    const tables = await result.json<CatalogTable>();
+    registerCatalogTables(tables);
+    return {
+      tables,
+      referenceText: tables.map((t) => `- ${t.database}.${t.name}`).join("\n"),
+    };
+  } catch {
+    registerCatalogTables(FALLBACK_TABLES);
+    return {
+      tables: FALLBACK_TABLES,
+      referenceText: FALLBACK_TABLES.map((t) => `- ${t.database}.${t.name}`).join("\n"),
+    };
   }
+}
 
-  // 2. Execute Query
-  const result = await getClickHouse().query({
-    query,
-    format: "JSONEachRow",
-    clickhouse_settings: {
-      readonly: "2",
-      max_execution_time: 30,
-      union_default_mode: "ALL",
+const querySchema = z.object({
+  query: z.string().describe("The read-only ClickHouse SQL query"),
+});
+
+export async function runDataRetrievalAgent(intent: string): Promise<
+  | {
+      retrievalKey: string;
+      rowCount: number;
+      metadata: Record<string, unknown>;
+      queryExecuted: string;
+      sampleRows: Record<string, unknown>[];
+    }
+  | { error: string }
+> {
+  const { referenceText } = await loadCatalog();
+
+  const messages: ModelMessage[] = [
+    {
+      role: "system",
+      content: `You are the Data Retrieval Agent. Your job is to translate a user's semantic intent into a single optimized read-only ClickHouse SQL query. Only SELECT statements are allowed. Always use explicit UNION ALL or UNION DISTINCT instead of bare UNION.
+
+Only reference tables from this catalog — never invent a table or column name:
+${referenceText}
+
+If you are unsure whether a column exists on a table, prefer a simpler query over guessing a column name.`,
     },
-  });
+    { role: "user", content: `Intent: ${intent}` },
+  ];
 
-  const rows = await result.json<Record<string, unknown>[]>();
-  
-  // 3. Persist raw result to a secure temporary storage layer
-  const retrievalKey = randomUUID();
-  const tempFilePath = path.join(os.tmpdir(), `clickhouse_result_${retrievalKey}.json`);
-  await fs.writeFile(tempFilePath, JSON.stringify(rows), "utf-8");
+  let lastError: string | undefined;
 
-  // 4. Compute schema metadata and summary statistics
-  const metadata: Record<string, any> = {};
-  if (rows.length > 0) {
-    const sample = rows[0];
-    for (const key of Object.keys(sample)) {
-      const type = typeof (sample as any)[key];
-      const values = rows.map((r) => (r as any)[key]);
-      const uniqueValues = new Set(values);
-      
-      metadata[key] = {
-        type,
-        cardinality: uniqueValues.size,
-      };
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    if (lastError) {
+      messages.push({
+        role: "user",
+        content: `That query was rejected: ${lastError}\nWrite a corrected query using only tables from the catalog above.`,
+      });
+    }
 
-      if (type === "number") {
-        const numValues = values as number[];
-        const min = Math.min(...numValues);
-        const max = Math.max(...numValues);
-        metadata[key].min = min;
-        metadata[key].max = max;
+    const { object } = await generateObject({
+      model: openai("gpt-4o"),
+      messages,
+      schema: querySchema,
+    });
+    messages.push({ role: "assistant", content: JSON.stringify(object) });
+
+    const query = normalizeUnionQuery(object.query);
+
+    if (!READ_ONLY_STATEMENTS.test(query) || hasMultipleStatements(query)) {
+      lastError = "Only one read-only SELECT-style statement is allowed.";
+      continue;
+    }
+
+    const missingTables = requireCatalogedTables(query);
+    if (missingTables.length > 0) {
+      lastError = `Unknown table reference(s): ${missingTables.join(", ")}. These tables do not exist.`;
+      continue;
+    }
+
+    try {
+      const result = await getClickHouse().query({
+        query,
+        format: "JSONEachRow",
+        clickhouse_settings: {
+          readonly: "2",
+          max_execution_time: 30,
+          union_default_mode: "ALL",
+        },
+      });
+
+      const rows = await result.json<Record<string, unknown>>();
+
+      // Persist raw result to a secure temporary storage layer
+      const retrievalKey = randomUUID();
+      const tempFilePath = path.join(os.tmpdir(), `clickhouse_result_${retrievalKey}.json`);
+      await fs.writeFile(tempFilePath, JSON.stringify(rows), "utf-8");
+
+      // Compute schema metadata and summary statistics
+      const metadata: Record<string, any> = {};
+      if (rows.length > 0) {
+        const sample = rows[0];
+        for (const key of Object.keys(sample)) {
+          const type = typeof (sample as any)[key];
+          const values = rows.map((r) => (r as any)[key]);
+          const uniqueValues = new Set(values);
+
+          metadata[key] = {
+            type,
+            cardinality: uniqueValues.size,
+          };
+
+          if (type === "number") {
+            const numValues = values as number[];
+            const min = Math.min(...numValues);
+            const max = Math.max(...numValues);
+            metadata[key].min = min;
+            metadata[key].max = max;
+          }
+        }
       }
+
+      return {
+        retrievalKey,
+        rowCount: rows.length,
+        metadata,
+        queryExecuted: query,
+        // Bounded sample the model can pass straight into a morphing-card
+        // payload's chartConfig.data.values (see MorphingCardSchema in render-payload.ts).
+        sampleRows: rows.slice(0, MAX_SAMPLE_ROWS),
+      };
+    } catch (error) {
+      lastError = error instanceof Error ? error.message : String(error);
     }
   }
 
-  return {
-    retrievalKey,
-    rowCount: rows.length,
-    metadata,
-    queryExecuted: query,
-    // Bounded sample the model can pass straight into a morphing-card
-    // payload's chartConfig.data.values (see MorphingCardSchema in render-payload.ts).
-    sampleRows: rows.slice(0, MAX_SAMPLE_ROWS),
-  };
+  return { error: `Failed to produce a valid query after ${MAX_ATTEMPTS} attempts. Last error: ${lastError}` };
 }
