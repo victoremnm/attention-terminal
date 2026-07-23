@@ -17,34 +17,41 @@ function ActorLeaderboardTable({
         <h2 className="text-xs font-semibold uppercase tracking-[0.24em] text-zinc-400">{title}</h2>
         <span className="mono text-[11px] text-zinc-500">{rows.length ? `showing ${rows.length}` : "no rows"}</span>
       </div>
-      <div className="overflow-x-auto">
-        <table className="min-w-full border-separate border-spacing-y-1 text-left">
-          <thead className="mono text-[11px] uppercase tracking-[0.18em] text-zinc-500">
+      <div className="table-responsive">
+        <table className="telemetry-table">
+          <thead>
             <tr>
-              <th className="px-3 py-2 font-medium">Actor</th>
-              <th className="px-3 py-2 font-medium text-right">Score</th>
-              <th className="px-3 py-2 font-medium text-right">Events</th>
-              <th className="px-3 py-2 font-medium text-right">Repos</th>
-              <th className="px-3 py-2 font-medium text-right">Pushes</th>
-              <th className="px-3 py-2 font-medium text-right">PRs opened</th>
-              <th className="px-3 py-2 font-medium text-right">PRs merged</th>
+              <th>Actor</th>
+              <th className="text-right">Score</th>
+              <th className="text-right">Events</th>
+              <th className="text-right">Repos</th>
+              <th className="text-right">Pushes</th>
+              <th className="text-right">PRs opened</th>
+              <th className="text-right">PRs merged</th>
             </tr>
           </thead>
           <tbody>
             {rows.map((row, index) => (
-              <tr key={row.actor_login} className="rounded-xl bg-black/15">
-                <td className="rounded-l-xl px-3 py-2">
-                  <div className="flex items-center gap-3 min-w-0">
+              <tr key={row.actor_login}>
+                <td>
+                  <div className="flex min-w-0 items-center gap-3">
                     <span className="mono text-[11px] text-zinc-500">{index + 1}</span>
-                    <span className="truncate text-sm font-medium text-zinc-100">{row.actor_login}</span>
+                    <a
+                      href={`https://github.com/${encodeURIComponent(row.actor_login)}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="truncate text-sm font-medium text-zinc-100 hover:text-cyan-300 hover:underline"
+                    >
+                      {row.actor_login}
+                    </a>
                   </div>
                 </td>
-                <td className="px-3 py-2 text-right mono text-amber-300">{row.score.toFixed(1)}</td>
-                <td className="px-3 py-2 text-right mono text-zinc-200">{formatCount(row.events)}</td>
-                <td className="px-3 py-2 text-right mono text-zinc-200">{formatCount(row.repos)}</td>
-                <td className="px-3 py-2 text-right mono text-zinc-200">{formatCount(row.pushes)}</td>
-                <td className="px-3 py-2 text-right mono text-zinc-200">{formatCount(row.prs_opened)}</td>
-                <td className="rounded-r-xl px-3 py-2 text-right mono text-zinc-200">{formatCount(row.prs_merged)}</td>
+                <td className="mono text-right text-amber-300">{row.score.toFixed(1)}</td>
+                <td className="mono text-right">{formatCount(row.events)}</td>
+                <td className="mono text-right">{formatCount(row.repos)}</td>
+                <td className="mono text-right">{formatCount(row.pushes)}</td>
+                <td className="mono text-right">{formatCount(row.prs_opened)}</td>
+                <td className="mono text-right">{formatCount(row.prs_merged)}</td>
               </tr>
             ))}
           </tbody>

@@ -42,5 +42,6 @@ describe("ActorLeaderboardSurface", () => {
     expect(screen.getByText("robot[bot]")).toBeInTheDocument();
     expect(screen.getByText("37.5")).toBeInTheDocument();
     expect(screen.getByText("40.0")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "alice" })).toHaveAttribute("href", "https://github.com/alice");
   });
 });
