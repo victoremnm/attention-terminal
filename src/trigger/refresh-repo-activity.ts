@@ -93,7 +93,7 @@ async function pickRepos(): Promise<string[]> {
     ),
     selectRows<{ repo_name: string }>(
       `SELECT repo_name,
-              uniqExactIf(actor_login, NOT actor_login ILIKE '%[bot]%') AS human_actors
+              uniqExactIf(actor_login, NOT lower(actor_login) LIKE '%[bot]%') AS human_actors
        FROM github_events
        WHERE created_at > (SELECT max(created_at) FROM github_events) - INTERVAL 7 DAY
          AND event_type IN ('PushEvent', 'PullRequestEvent', 'IssuesEvent')

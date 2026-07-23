@@ -123,7 +123,7 @@ async function pickActors(): Promise<string[]> {
        FROM (
          SELECT
            actor_login,
-           actor_login ILIKE '%[bot]%' AS is_bot,
+           lower(actor_login) LIKE '%[bot]%' AS is_bot,
            countIf(event_type = 'PushEvent') AS pushes,
            uniqExact(repo_name) AS repos,
            countIf(event_type = 'PullRequestEvent' AND action = 'opened') AS prs
