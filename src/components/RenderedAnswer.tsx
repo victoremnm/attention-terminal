@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import type { CandlesPayload, DigestPayload, DivergencePayload, MatrixPayload, MorphingCardPayload, RenderPayload, RepoDrilldownPayload, RepoDrilldownActivity, RepoDrilldownPulse, RepoDrilldownTrend, TableColumn, TablePayload, TickerPayload, VerdictTile } from "@/lib/render-payload";
 import { VERDICT_COLOR } from "@/lib/verdict-color";
 import { AreaChart, DualLine, HorizontalBarChart, Sparkline, VerticalBarChart } from "./charts";
@@ -160,6 +160,15 @@ type MorphingCardRow = Record<string, unknown>;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+// Query rows often serialize numeric aggregates as strings (e.g. ClickHouse's
+// UInt64 counts), so a plain `typeof === "number"` check misses valid metric
+// candidates like { stories: "2202" }.
+function isFiniteNumeric(value: unknown): boolean {
+  if (typeof value === "number") return Number.isFinite(value);
+  if (typeof value === "string" && value.trim().length > 0) return Number.isFinite(Number(value));
+  return false;
 }
 
 function humanizeKey(key: string) {
@@ -738,6 +747,68 @@ function RepoDrilldownAnswer({ payload }: { payload: RepoDrilldownPayload }) {
   );
 }
 
+// Adapter: turns a morphing-card's raw row objects + Vega-Lite-ish chartConfig
+// into one of the existing SVG chart components (see ./charts). Returns null
+// whenever the visualizationType/mark isn't chart-capable (yet) or the data
+// is too sparse to plot — callers fall back to the MorphingCardTable in
+// that case, they never crash. Supported set is intentionally minimal:
+// Bar Chart, Line Graph, Area Chart. Everything else (Pie Chart, Treemap,
+// Stacked Bar Chart, Scatterplot, ...) has no matching component and must
+// keep rendering the table.
+function buildMorphingChart(
+  markType: string,
+  visualizationType: MorphingCardPayload["visualizationType"],
+  dataValues: MorphingCardRow[],
+  config: Record<string, unknown>,
+): ReactNode | null {
+  if (dataValues.length < 2) return null;
+
+  const firstRow = dataValues[0];
+  const encoding = isRecord(config.encoding) ? config.encoding : undefined;
+  const xEncoding = isRecord(encoding?.x) ? encoding.x : undefined;
+  const yEncoding = isRecord(encoding?.y) ? encoding.y : undefined;
+
+  const xField = typeof xEncoding?.field === "string" ? xEncoding.field : Object.keys(firstRow)[0];
+  if (!xField) return null;
+
+  const yField = typeof yEncoding?.field === "string"
+    ? yEncoding.field
+    : Object.keys(firstRow).find((key) => key !== xField && isFiniteNumeric(firstRow[key]));
+  if (!yField) return null;
+
+  const yTitle = typeof yEncoding?.title === "string" && yEncoding.title.trim().length > 0 ? yEncoding.title : yField;
+  const isTemporal = xEncoding?.type === "temporal";
+  const MAX_BARS = 15;
+
+  let rows = dataValues.map((row) => ({ label: String(row[xField] ?? ""), value: Number(row[yField]) || 0 }));
+  // Non-temporal (categorical) series with more rows than a bar chart can show
+  // legibly get sorted to their most significant values and pruned -- a
+  // 28-bar comparison of unrelated repo names is unreadable regardless of
+  // scale. Temporal (date) series keep chronological order and every point.
+  if (!isTemporal && rows.length > MAX_BARS) {
+    rows = [...rows].sort((a, b) => b.value - a.value).slice(0, MAX_BARS);
+  }
+  const labels = rows.map((r) => r.label);
+  const values = rows.map((r) => r.value);
+
+  // Gate on the taxonomy visualizationType, not the raw Vega-Lite mark: Stacked
+  // Bar Chart configs also use mark "bar" (Vega-Lite expresses stacking via
+  // encoding, not a distinct mark type), so matching on markType alone would
+  // misrender an unsupported taxonomy type as a simplified single-series chart.
+  const isBar = visualizationType === "Bar Chart";
+  const isLineOrArea = visualizationType === "Line Graph" || visualizationType === "Area Chart";
+
+  if (isBar) {
+    return (
+      <HorizontalBarChart items={labels.map((label, i) => ({ label, value: values[i] }))} title={yTitle} />
+    );
+  }
+  if (isLineOrArea) {
+    return <AreaChart days={labels} values={values} label={yTitle} />;
+  }
+  return null;
+}
+
 function MorphingCardAnswer({ payload }: { payload: MorphingCardPayload }) {
   const config = payload.chartConfig as Record<string, unknown>;
   const title = typeof config.title === "string" && config.title.trim().length > 0 ? config.title : undefined;
@@ -745,6 +816,7 @@ function MorphingCardAnswer({ payload }: { payload: MorphingCardPayload }) {
   const dataValues = isRecord(config.data) && Array.isArray(config.data.values)
     ? config.data.values.filter(isRecord)
     : [];
+  const chart = buildMorphingChart(markType, payload.visualizationType, dataValues, config);
 
   if (payload.visualizationType === "Data Table") {
     return (
@@ -776,11 +848,23 @@ function MorphingCardAnswer({ payload }: { payload: MorphingCardPayload }) {
       </div>
       <div className="agent-caption">
         {payload.summary && <MarkdownText text={payload.summary} />}
-        <p className="mono">
-          previewing {markType} markup · {dataValues.length.toLocaleString()} rows shown while the visualization is prepared
-        </p>
+        {!chart && (
+          <p className="mono">
+            previewing {markType} markup · {dataValues.length.toLocaleString()} rows shown while the visualization is prepared
+          </p>
+        )}
       </div>
-      <MorphingCardTable rows={dataValues} chartConfig={payload.chartConfig} />
+      {chart ? (
+        <>
+          {chart}
+          <details className="agent-query">
+            <summary className="mono">data table · {dataValues.length.toLocaleString()} rows</summary>
+            <MorphingCardTable rows={dataValues} chartConfig={payload.chartConfig} />
+          </details>
+        </>
+      ) : (
+        <MorphingCardTable rows={dataValues} chartConfig={payload.chartConfig} />
+      )}
       {payload.query && (
         <details className="agent-query">
           <summary className="mono">
