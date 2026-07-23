@@ -106,7 +106,7 @@ export interface TickerLanes {
   shippingVelocity: TickerCard[];
   starBreakouts: TickerCard[];
   risingStories: TickerCard[];
-  actors?: ActorLeaderboard;
+  actors: ActorLeaderboard;
   provenance: Provenance[];
   fetchedAt: string;
 }
@@ -137,9 +137,36 @@ type ActorLeaderboardSqlRow = {
 };
 
 export async function actorLeaderboard(window: "24h" | "7d" = "24h"): Promise<ActorLeaderboard> {
-  const dayWindow = window === "24h" ? "today() - 1" : "today() - 7";
-
-  const humanSql = `
+  const dailyWindow = window === "24h" ? "today() - 1" : "today() - 7";
+  const humanQuery =
+    window === "24h"
+      ? `
+    WITH (SELECT max(created_at) FROM github_events) AS high_water
+    SELECT
+      actor_login,
+      toString(count()) AS events,
+      toString(uniqExact(repo_name)) AS repos,
+      toString(countIf(event_type = 'PushEvent')) AS pushes,
+      toString(countIf(event_type = 'PullRequestEvent' AND action = 'opened')) AS prs_opened,
+      toString(countIf(event_type = 'PullRequestEvent' AND pr_merged = 1)) AS prs_merged,
+      toString(
+        round(
+          countIf(event_type = 'PullRequestEvent' AND pr_merged = 1) * 5 +
+          countIf(event_type = 'PullRequestEvent' AND action = 'opened') * 3 +
+          countIf(event_type = 'PushEvent') * 2 +
+          count() * 1 +
+          uniqExact(repo_name) * 2,
+          1
+        )
+      ) AS score
+    FROM github_events
+    WHERE created_at > high_water - INTERVAL 24 HOUR
+      AND lower(actor_login) NOT LIKE '%[bot]%'
+    GROUP BY actor_login
+    ORDER BY toFloat64(score) DESC
+    LIMIT 10
+  `
+      : `
     SELECT
       actor_login,
       toString(countMerge(events)) AS events,
@@ -158,14 +185,33 @@ export async function actorLeaderboard(window: "24h" | "7d" = "24h"): Promise<Ac
         )
       ) AS score
     FROM gh_actor_daily
-    WHERE day >= ${dayWindow}
-      AND NOT actor_login ILIKE '%[bot]%'
+    WHERE day >= ${dailyWindow}
+      AND lower(actor_login) NOT LIKE '%[bot]%'
     GROUP BY actor_login
     ORDER BY toFloat64(score) DESC
     LIMIT 10
   `;
 
-  const botSql = `
+  const botQuery =
+    window === "24h"
+      ? `
+    WITH (SELECT max(created_at) FROM github_events) AS high_water
+    SELECT
+      actor_login,
+      toString(count()) AS events,
+      toString(uniqExact(repo_name)) AS repos,
+      toString(countIf(event_type = 'PushEvent')) AS pushes,
+      toString(countIf(event_type = 'PullRequestEvent' AND action = 'opened')) AS prs_opened,
+      toString(countIf(event_type = 'PullRequestEvent' AND pr_merged = 1)) AS prs_merged,
+      toString(round(count(), 1)) AS score
+    FROM github_events
+    WHERE created_at > high_water - INTERVAL 24 HOUR
+      AND lower(actor_login) LIKE '%[bot]%'
+    GROUP BY actor_login
+    ORDER BY toFloat64(score) DESC
+    LIMIT 10
+  `
+      : `
     SELECT
       actor_login,
       toString(countMerge(events)) AS events,
@@ -175,16 +221,16 @@ export async function actorLeaderboard(window: "24h" | "7d" = "24h"): Promise<Ac
       toString(sum(prs_merged)) AS prs_merged,
       toString(round(countMerge(events), 1)) AS score
     FROM gh_actor_daily
-    WHERE day >= ${dayWindow}
-      AND actor_login ILIKE '%[bot]%'
+    WHERE day >= ${dailyWindow}
+      AND lower(actor_login) LIKE '%[bot]%'
     GROUP BY actor_login
     ORDER BY toFloat64(score) DESC
     LIMIT 10
   `;
 
   const [humans, bots] = await Promise.all([
-    q<ActorLeaderboardSqlRow>(humanSql, ["gh_actor_daily"]),
-    q<ActorLeaderboardSqlRow>(botSql, ["gh_actor_daily"]),
+    q<ActorLeaderboardSqlRow>(humanQuery, window === "24h" ? ["github_events"] : ["gh_actor_daily"]),
+    q<ActorLeaderboardSqlRow>(botQuery, window === "24h" ? ["github_events"] : ["gh_actor_daily"]),
   ]);
 
   const mapRow = (row: ActorLeaderboardSqlRow): ActorLeaderboardRow => ({
@@ -306,7 +352,7 @@ async function assembleTickerLanes(): Promise<TickerLanes> {
        ) ps ON gh_repo_activity_feed.repo_name = ps.repo_name
        WHERE created_at > (SELECT max(created_at) FROM gh_repo_activity_feed) - INTERVAL 24 HOUR
          AND event_type IN ('PushEvent', 'PullRequestEvent', 'IssuesEvent', 'ForkEvent')
-         AND NOT actor_login ILIKE '%[bot]%'
+         AND lower(actor_login) NOT LIKE '%[bot]%'
        GROUP BY repo_name
        HAVING commit_total > 0 OR pr_count > 0 OR closed_pr_count > 0
        ORDER BY commit_total * 4 + closed_pr_count * 5 + pr_count * 3
@@ -442,7 +488,7 @@ async function assembleTickerLanes(): Promise<TickerLanes> {
       // we don't collect. The lane's velocity (pts/hr) is the temporal signal.
       href: `https://news.ycombinator.com/item?id=${r.id}`,
     })),
-    actors,
+    actors: actors ?? { humans: [], bots: [], provenance: [] },
     provenance: [repos.provenance, forks.provenance, shipping.provenance, stars.provenance, stories.provenance],
     fetchedAt: new Date().toISOString(),
   };
@@ -1835,8 +1881,8 @@ export async function activeContributionRanking(
         sum(bucket.pushes) AS push_total,
         sum(toUInt64(bucket.pushes > 0 AND bucket.commits > 0)) AS substantive_push_bucket_total,
         uniqExactIf(bucket.actor_login, bucket.pushes > 0) AS pusher_total,
-        uniqExactIf(bucket.actor_login, bucket.pushes > 0 AND NOT bucket.actor_login ILIKE '%[bot]%') AS human_pusher_total,
-        uniqExactIf(bucket.actor_login, bucket.pushes > 0 AND bucket.actor_login ILIKE '%[bot]%') AS bot_pusher_total,
+        uniqExactIf(bucket.actor_login, bucket.pushes > 0 AND lower(bucket.actor_login) NOT LIKE '%[bot]%') AS human_pusher_total,
+        uniqExactIf(bucket.actor_login, bucket.pushes > 0 AND lower(bucket.actor_login) LIKE '%[bot]%') AS bot_pusher_total,
         sum(bucket.prs_opened) AS pr_opened_total,
         sum(bucket.prs_merged) AS pr_merged_total
       FROM (

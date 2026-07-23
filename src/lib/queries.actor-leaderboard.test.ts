@@ -20,7 +20,7 @@ describe("actorLeaderboard", () => {
     mocks.ensureTablesExist.mockResolvedValue(undefined);
     mocks.query.mockImplementation(async ({ query }: { query: string }) => ({
       json: async () =>
-        query.includes("NOT actor_login ILIKE")
+        query.includes("lower(actor_login) NOT LIKE")
           ? [
               {
                 actor_login: "alice",
@@ -49,7 +49,7 @@ describe("actorLeaderboard", () => {
   it("queries gh_actor_daily for humans and bots and coerces numeric values", async () => {
     const result = await actorLeaderboard();
 
-    expect(mocks.ensureTablesExist).toHaveBeenCalledWith(["gh_actor_daily"]);
+    expect(mocks.ensureTablesExist).toHaveBeenCalledWith(["github_events"]);
     expect(result.humans).toEqual([
       {
         actor_login: "alice",
@@ -75,9 +75,9 @@ describe("actorLeaderboard", () => {
     expect(result.provenance).toHaveLength(2);
 
     const [humanCall, botCall] = mocks.query.mock.calls.map((call) => call[0]);
-    expect(String(humanCall.query)).toContain("FROM gh_actor_daily");
-    expect(String(humanCall.query)).toContain("NOT actor_login ILIKE '%[bot]%'");
-    expect(String(botCall.query)).toContain("actor_login ILIKE '%[bot]%'");
+    expect(String(humanCall.query)).toContain("FROM github_events");
+    expect(String(humanCall.query)).toContain("lower(actor_login) NOT LIKE '%[bot]%'");
+    expect(String(botCall.query)).toContain("lower(actor_login) LIKE '%[bot]%'");
     expect(String(botCall.query)).toContain("LIMIT 10");
   });
 });
