@@ -92,7 +92,8 @@ function RankRow({
 }
 
 export function RepoRankings({ windows }: { windows: Record<RepoWindow, RepoWindowRow[]> }) {
-  const [prefs, setPrefs] = useState<RankingsPreferences>(readInitialPrefs);
+  const [prefs, setPrefs] = useState<RankingsPreferences>(DEFAULT_PREFERENCES);
+  const [isHydrated, setIsHydrated] = useState(false);
   const [activeWindowTab, setActiveWindowTab] = useState<RepoWindow>("1d");
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(0);
@@ -111,20 +112,30 @@ export function RepoRankings({ windows }: { windows: Record<RepoWindow, RepoWind
   const drilldownAbort = useRef<AbortController | undefined>(undefined);
 
   const dataRequestId = useRef(0);
-  const mountedGuard = useRef(false);
+  const isInitialRender = useRef(true);
   const [refreshNonce, setRefreshNonce] = useState(0);
 
   useEffect(() => () => drilldownAbort.current?.abort(), []);
 
   useEffect(() => {
-    savePreferences(typeof window === "undefined" ? undefined : window.localStorage, prefs);
-  }, [prefs]);
+    if (typeof window !== "undefined") {
+      const loaded = loadPreferences(window.localStorage);
+      setPrefs(loaded);
+      setIsHydrated(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (isHydrated && typeof window !== "undefined") {
+      savePreferences(window.localStorage, prefs);
+    }
+  }, [prefs, isHydrated]);
 
   const source = modeConfig(prefs.mode).source;
 
   useEffect(() => {
-    if (!mountedGuard.current) {
-      mountedGuard.current = true;
+    if (isInitialRender.current) {
+      isInitialRender.current = false;
       return;
     }
     const requestId = ++dataRequestId.current;
@@ -132,18 +143,27 @@ export function RepoRankings({ windows }: { windows: Record<RepoWindow, RepoWind
     setRowsLoading(true);
     setRowsError(undefined);
 
+    const apiSort =
+      source === "attention"
+        ? prefs.sortField === "githubStars"
+          ? "stars"
+          : prefs.sortField
+        : prefs.sortField === "commits" || prefs.sortField === "pushes"
+          ? prefs.sortField
+          : modeConfig(prefs.mode).querySort;
+
     const url =
       source === "attention"
         ? `/api/trending?${new URLSearchParams({
             window: activeWindowTab,
             limit: String(PAGE_SIZE),
             offset: String(page * PAGE_SIZE),
-            sort: prefs.sortField,
+            sort: apiSort,
             direction: prefs.sortDirection,
           }).toString()}`
         : `/api/trending-active?${new URLSearchParams({
             window: activeWindowTab,
-            sort: prefs.sortField,
+            sort: apiSort,
             limit: String(ACTIVE_LIMIT),
           }).toString()}`;
 
@@ -170,8 +190,32 @@ export function RepoRankings({ windows }: { windows: Record<RepoWindow, RepoWind
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [prefs.mode, prefs.sortField, prefs.sortDirection, activeWindowTab, page, refreshNonce]);
 
-  const hasSubstantiveWork = (r: { pushes: number; prsOpened: number; prsMerged: number }) =>
-    !prefs.requireSubstantiveWork || (r.pushes > 0 && (r.prsOpened > 0 || r.prsMerged > 0));
+  function handleSelectMode(mode: RankingMode) {
+    setPage(0);
+    setPrefs((prev) => ({ ...prev, mode, sortField: modeConfig(mode).querySort, sortDirection: "desc" }));
+  }
+
+  function handleSelectWindow(win: RepoWindow) {
+    setPage(0);
+    setActiveWindowTab(win);
+  }
+
+  function handleSort(field: string) {
+    setPage(0);
+    setPrefs((prev) => ({
+      ...prev,
+      sortField: field,
+      sortDirection: nextSortDirection(prev.sortField, prev.sortDirection, field),
+    }));
+  }
+
+  const hasSubstantiveWork = (r: RepoWindowRow | ActiveContributionRow) => {
+    if (!prefs.requireSubstantiveWork) return true;
+    if ("pushes" in r) {
+      return r.pushes > 0 && (r.prsOpened > 0 || r.prsMerged > 0 || ("commits" in r && r.commits > 0));
+    }
+    return true;
+  };
 
   const attentionRowsFiltered = useMemo(
     () => attentionRawRows.filter(hasSubstantiveWork),
@@ -184,21 +228,45 @@ export function RepoRankings({ windows }: { windows: Record<RepoWindow, RepoWind
   );
 
   const rows = useMemo<RankingRowView[]>(() => {
+    let rawViews: RankingRowView[];
     if (source === "attention") {
-      return attentionRowsFiltered.map((r) => attentionRowView(r, prefs.sortField, prefs.attentionColumns));
+      rawViews = attentionRowsFiltered.map((r) => attentionRowView(r, prefs.sortField, prefs.attentionColumns));
+    } else {
+      rawViews = activeRowsFiltered.map((r) => activeRowView(r, prefs.sortField, prefs.activeColumns));
     }
-    return activeRowsFiltered.map((r) => activeRowView(r, prefs.sortField, prefs.activeColumns));
-  }, [source, attentionRowsFiltered, activeRowsFiltered, prefs.sortField, prefs.attentionColumns, prefs.activeColumns]);
+
+    const isDesc = prefs.sortDirection === "desc";
+    const key = prefs.sortField;
+    return [...rawViews].sort((a, b) => {
+      let valA = a.primaryValue;
+      let valB = b.primaryValue;
+
+      if (key === "githubStars") {
+        valA = a.githubStars;
+        valB = b.githubStars;
+      } else {
+        const chipA = a.chips.find((c) => c.key === key);
+        const chipB = b.chips.find((c) => c.key === key);
+        if (chipA && chipB) {
+          valA = chipA.value;
+          valB = chipB.value;
+        }
+      }
+
+      if (valA === valB) return 0;
+      return isDesc ? (valB > valA ? 1 : -1) : (valA > valB ? 1 : -1);
+    });
+  }, [source, attentionRowsFiltered, activeRowsFiltered, prefs.sortField, prefs.sortDirection, prefs.attentionColumns, prefs.activeColumns]);
 
   const filteredRows = useMemo(() => {
     const needle = query.trim().toLowerCase();
     return rows.filter((v) => {
       if (needle && !v.searchText.includes(needle)) return false;
-      if (prefs.minStars > 0 && v.githubStars < prefs.minStars) return false;
+      if (source === "attention" && prefs.minStars > 0 && v.githubStars < prefs.minStars) return false;
       if (prefs.hideBotOnly && v.botOnly) return false;
       return true;
     });
-  }, [rows, query, prefs.minStars, prefs.hideBotOnly]);
+  }, [rows, query, prefs.minStars, prefs.hideBotOnly, source]);
 
   const summary = useMemo(() => {
     const totals = rows.reduce(
@@ -218,25 +286,6 @@ export function RepoRankings({ windows }: { windows: Record<RepoWindow, RepoWind
       primaryTotal: totals.primary,
     };
   }, [rows, filteredRows.length]);
-
-  function handleSelectMode(mode: RankingMode) {
-    setPage(0);
-    setPrefs((prev) => ({ ...prev, mode, sortField: modeConfig(mode).querySort, sortDirection: "desc" }));
-  }
-
-  function handleSelectWindow(win: RepoWindow) {
-    setPage(0);
-    setActiveWindowTab(win);
-  }
-
-  function handleSort(field: string) {
-    setPage(0);
-    setPrefs((prev) => ({
-      ...prev,
-      sortField: field,
-      sortDirection: nextSortDirection(prev.sortField, prev.sortDirection, field),
-    }));
-  }
 
   function handleToggleAttentionColumn(key: AttentionColumnKey) {
     setPrefs((prev) => ({
