@@ -12,9 +12,16 @@ Closes #N (if applicable).
 
 Preview/evidence link: [live preview URL or committed artifact]
 
+For visual work, embed the committed screenshot directly in this section
+using a commit-pinned raw URL, not only a local filesystem path:
+
+`![Preview](https://raw.githubusercontent.com/victoremnm/attention-terminal/<commit>/docs/pr-evidence/<pr-number>/preview.png)`
+
 Agent identity: `[agent-id]` · `[model]` · `[agent-type]` · session `[session-id]`
 
 Review status: independent reviewer adds `lgtm` only after the merge gate; otherwise use `blocked` with an explanatory comment.
+
+PR label: agent-authored PRs must carry the `codex` label.
 
 ### Before / after proof
 

@@ -83,8 +83,11 @@ short `Review at a glance` section with:
 1. **Preview** — for user-visible work, a current Vercel preview URL plus an
    attached screenshot or committed HTML/image artifact. Store committed
    evidence under `docs/pr-evidence/<pr-number>/` and embed or link it from
-   the PR body. A local-only screenshot is not an attachment and must be
-   labeled as local-only.
+   the PR body. Prefer an image embed pinned to the evidence commit, for
+   example:
+   `![Preview](https://raw.githubusercontent.com/victoremnm/attention-terminal/<commit>/docs/pr-evidence/<pr-number>/preview.png)`.
+   A local-only screenshot is not an attachment and must be labeled as
+   local-only.
 2. **Before/after proof** — one or two concrete observations showing what
    changed and how the reviewer can reproduce it.
 3. **Verification status** — exact commands and CI/deployment results, with
@@ -108,6 +111,16 @@ review comment with:
 - `Agent type`: explorer, reviewer, coder, or other role
 - `Session`: telemetry session ID
 - `Scope`: files, issue, or PR reviewed
+
+Every PR authored by Codex or an agent must also carry the repository's
+`codex` label. Apply it after creating or locating the PR:
+
+```bash
+gh pr edit <PR_NUM> --repo victoremnm/attention-terminal --add-label codex
+```
+
+If the label is unavailable, report that explicitly in the PR notes instead
+of silently omitting the attribution.
 
 An independent reviewer may add the `lgtm` label only when the PR has current
 evidence, green CI, and no unresolved actionable review comments. The
