@@ -37,11 +37,25 @@ export const LIST_TABLES_SQL = `
 const knownTables = new Set<string>();
 const knownSchemas = new Map<string, string[]>();
 const knownEngines = new Map<string, string>();
+// Keyed by bare table name (no database prefix) -> every engine seen for
+// that name across all databases. A view (e.g. raw.hackernews) and its
+// underlying table (default.hackernews) share a bare name but report
+// different engines from system.tables ("View" vs "ReplacingMergeTree") --
+// this lets isReplacingMergeTree see through the view to the real engine
+// regardless of which qualified name a query actually uses, and regardless
+// of catalog registration order.
+const knownEnginesByBareName = new Map<string, Set<string>>();
 
 export function resetCatalogState() {
   knownTables.clear();
   knownSchemas.clear();
   knownEngines.clear();
+  knownEnginesByBareName.clear();
+}
+
+function bareName(name: string): string {
+  const idx = name.lastIndexOf(".");
+  return idx === -1 ? name : name.slice(idx + 1);
 }
 
 export function registerCatalogTables(tables: CatalogTableRef[]) {
@@ -51,11 +65,19 @@ export function registerCatalogTables(tables: CatalogTableRef[]) {
     if (table.engine) {
       knownEngines.set(`${table.database}.${table.name}`, table.engine);
       knownEngines.set(table.name, table.engine);
+      if (!knownEnginesByBareName.has(table.name)) knownEnginesByBareName.set(table.name, new Set());
+      knownEnginesByBareName.get(table.name)!.add(table.engine);
     }
   }
 }
 
 export function isReplacingMergeTree(name: string): boolean {
+  const engines = knownEnginesByBareName.get(bareName(name));
+  if (engines) {
+    for (const engine of engines) {
+      if (REPLACING_ENGINE_PATTERN.test(engine)) return true;
+    }
+  }
   const engine = knownEngines.get(name);
   return Boolean(engine && REPLACING_ENGINE_PATTERN.test(engine));
 }
@@ -80,11 +102,16 @@ export function normalizeTableName(table: string): string {
   return table.trim().replace(/`/g, "").replace(/"/g, "");
 }
 
-export function extractTableCandidates(query: string): string[] {
+function getCteNames(query: string): Set<string> {
   const cteNames = new Set<string>();
   for (const match of query.matchAll(/\b([A-Za-z_][\w$]*)\s+AS\s*\(/gi)) {
     cteNames.add(match[1]);
   }
+  return cteNames;
+}
+
+export function extractTableCandidates(query: string): string[] {
+  const cteNames = getCteNames(query);
 
   const refs = new Set<string>();
   for (const match of query.matchAll(/\b(?:from|join)\s+([`"]?)([A-Za-z_][\w$]*)\1(?:\.([`"]?)([A-Za-z_][\w$]*)\3)?/gi)) {
@@ -111,13 +138,20 @@ export function requireDescribedTables(query: string): string[] {
  * means every ReplacingMergeTree reference is correctly deduplicated.
  * Requires the catalog to be loaded (registerCatalogTables) with engine
  * info -- tables of unknown engine are assumed safe rather than flagged, so
- * this only fires on a confirmed ReplacingMergeTree.
+ * this only fires on a confirmed ReplacingMergeTree. Sees through views
+ * (isReplacingMergeTree checks every engine registered under the same bare
+ * table name, so `raw.hackernews` -- a View over `default.hackernews`, a
+ * ReplacingMergeTree -- still requires FINAL). CTE references are excluded:
+ * a CTE that already reads its source table with FINAL doesn't need the
+ * outer query to repeat it.
  */
 export function requireFinalOnReplacingTables(query: string): string[] {
+  const cteNames = getCteNames(query);
   const missing = new Set<string>();
   for (const match of query.matchAll(
     /\b(?:from|join)\s+([`"]?)([A-Za-z_][\w$]*)\1(?:\.([`"]?)([A-Za-z_][\w$]*)\3)?(\s+FINAL\b)?/gi
   )) {
+    if (cteNames.has(match[2])) continue; // a CTE reference, not a real table -- already deduped inside its own definition
     const table = match[4] ? `${match[2]}.${match[4]}` : match[2];
     const normalized = normalizeTableName(table);
     const hasFinal = Boolean(match[5]);

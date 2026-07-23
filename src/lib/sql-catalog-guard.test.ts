@@ -64,6 +64,39 @@ describe("sql-catalog-guard", () => {
       );
       expect(missing.sort()).toEqual(["gh_repo_metadata", "raw.hackernews"]);
     });
+
+    it("sees through a View to the underlying ReplacingMergeTree (raw.* wraps default.*)", () => {
+      // Mirrors the live catalog: raw.hackernews is a View (its own reported
+      // engine is "View"), default.hackernews is the real ReplacingMergeTree
+      // it wraps. Reading raw.hackernews without FINAL still returns
+      // duplicate/stale rows -- the guard must flag it even though the View
+      // itself isn't a ReplacingMergeTree.
+      registerCatalogTables([
+        { database: "raw", name: "hackernews", engine: "View" },
+        { database: "default", name: "hackernews", engine: "ReplacingMergeTree" },
+      ]);
+      expect(requireFinalOnReplacingTables("SELECT * FROM raw.hackernews")).toEqual(["raw.hackernews"]);
+      expect(requireFinalOnReplacingTables("SELECT * FROM raw.hackernews FINAL")).toEqual([]);
+    });
+
+    it("is not order-dependent when a View and its underlying table share a bare name", () => {
+      // Same fixture as above, but the View is registered *before* the real
+      // table -- registration order must not affect the result.
+      registerCatalogTables([
+        { database: "raw", name: "hackernews", engine: "View" },
+        { database: "default", name: "hackernews", engine: "ReplacingMergeTree" },
+      ]);
+      expect(requireFinalOnReplacingTables("SELECT * FROM hackernews")).toEqual(["hackernews"]);
+    });
+
+    it("does not flag an outer reference to a CTE named after a ReplacingMergeTree table", () => {
+      registerCatalogTables([{ database: "default", name: "gh_repo_metadata", engine: "ReplacingMergeTree" }]);
+      // The CTE already reads the real table with FINAL; the outer SELECT
+      // reads the CTE's result set, not the table itself.
+      const query =
+        "WITH gh_repo_metadata AS (SELECT * FROM default.gh_repo_metadata FINAL) SELECT * FROM gh_repo_metadata";
+      expect(requireFinalOnReplacingTables(query)).toEqual([]);
+    });
   });
 
   describe("extractTableCandidates", () => {
