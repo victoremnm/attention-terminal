@@ -5,28 +5,28 @@ function formatCount(value: number) {
 }
 
 function ActorLeaderboardTable({
-  title,
   rows,
   scoreHint,
 }: {
-  title: string;
-  rows: ActorLeaderboardRow[];
+  rows: Array<ActorLeaderboardRow & { group: "Human" | "Bot" }>;
   scoreHint: string;
 }) {
   return (
     <section className="actor-leaderboard-table">
       <div className="mb-3 flex items-baseline justify-between gap-4">
-        <h2 className="text-xs font-semibold uppercase tracking-[0.24em] text-zinc-400">{title}</h2>
+        <h2 className="text-xs font-semibold uppercase tracking-[0.24em] text-zinc-400">Prolific actors</h2>
         <span className="mono text-[11px] text-zinc-500" title={scoreHint}>
           {rows.length ? `showing ${rows.length}` : "no rows"}
         </span>
       </div>
       <p className="mb-3 mono text-[11px] text-zinc-500">{scoreHint}</p>
       <div className="table-responsive">
-        <table className="telemetry-table">
+        <table className="telemetry-table actor-leaderboard-grid">
           <thead>
             <tr>
+              <th>Rank</th>
               <th>Actor</th>
+              <th>Group</th>
               <th className="text-right" title={scoreHint}>
                 Score
               </th>
@@ -39,20 +39,21 @@ function ActorLeaderboardTable({
           </thead>
           <tbody>
             {rows.map((row, index) => (
-              <tr key={row.actor_login}>
+              <tr key={`${row.group}:${row.actor_login}`}>
+                <td className="mono text-zinc-500">{index + 1}</td>
                 <td>
-                  <div className="flex min-w-0 items-center gap-3">
-                    <span className="mono text-[11px] text-zinc-500">{index + 1}</span>
-                    <a
-                      href={`https://github.com/${encodeURIComponent(row.actor_login)}`}
-                      target="_blank"
-                      rel="noreferrer"
-                      title={`Open ${row.actor_login} on GitHub`}
-                      className="truncate text-sm font-medium text-zinc-100 hover:text-cyan-300 hover:underline"
-                    >
-                      {row.actor_login}
-                    </a>
-                  </div>
+                  <a
+                    href={`https://github.com/${encodeURIComponent(row.actor_login)}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    title={`Open ${row.actor_login} on GitHub`}
+                    className="actor-leaderboard-link"
+                  >
+                    {row.actor_login}
+                  </a>
+                </td>
+                <td>
+                  <span className={`actor-leaderboard-pill actor-leaderboard-pill-${row.group.toLowerCase()}`}>{row.group}</span>
                 </td>
                 <td className="mono text-right text-amber-300" title={scoreHint}>
                   {row.score.toFixed(1)}
@@ -89,18 +90,12 @@ export function ActorLeaderboardCard({
       </div>
 
       <ActorLeaderboardTable
-        title="Prolific humans"
-        rows={humans}
-        scoreHint="Human score is weighted from events, repos, pushes, and PRs."
+        rows={[
+          ...humans.map((row) => ({ ...row, group: "Human" as const })),
+          ...bots.map((row) => ({ ...row, group: "Bot" as const })),
+        ]}
+        scoreHint="Human score is weighted from events, repos, pushes, and PRs. Bot score equals raw events."
       />
-
-      {bots.length > 0 && (
-        <ActorLeaderboardTable
-          title="Automation / bots"
-          rows={bots}
-          scoreHint="Bot score equals raw events, so score and events are the same here."
-        />
-      )}
     </div>
   );
 }

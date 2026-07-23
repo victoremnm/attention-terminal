@@ -57,9 +57,11 @@ describe("TickerRail", () => {
 
     expect(screen.getByText("PROLIFIC ACTORS · 24H")).toBeInTheDocument();
     expect(screen.getByText("Prolific actors over the last 24h")).toBeInTheDocument();
-    expect(screen.getByText("Prolific humans")).toBeInTheDocument();
-    expect(screen.getByText("Automation / bots")).toBeInTheDocument();
+    expect(screen.getByText("Rank")).toBeInTheDocument();
+    expect(screen.getByText("Group")).toBeInTheDocument();
     expect(screen.getByText("alice")).toBeInTheDocument();
     expect(screen.getByText("dependabot[bot]")).toBeInTheDocument();
+    expect(screen.getByText("Human")).toBeInTheDocument();
+    expect(screen.getByText("Bot")).toBeInTheDocument();
   });
 });
