@@ -143,16 +143,18 @@ export function RepoRankings({ windows }: { windows: Record<RepoWindow, RepoWind
     if (isFirstRun && isSeededDefault) {
       return;
     }
+    const serverSortSupported = isServerSortSupported(source, prefs.sortField);
+    if (!serverSortSupported) {
+      // Client-only sort: nothing to fetch, the rows useMemo below already
+      // re-sorts the already-loaded page via clientSort.
+      return;
+    }
+
     const requestId = ++dataRequestId.current;
     const controller = new AbortController();
     setRowsLoading(true);
     setRowsError(undefined);
 
-    const serverSortSupported = isServerSortSupported(source, prefs.sortField);
-    if (!serverSortSupported) {
-      // Don't fetch when sorting by an unsupported field - just apply client-side sort to existing data
-      return;
-    }
     const serverSort = prefs.sortField;
     const serverDirection = prefs.sortDirection;
 

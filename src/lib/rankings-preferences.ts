@@ -83,8 +83,8 @@ export type AttentionColumnKey =
 export type ActiveColumnKey =
   | "distinctCommits"
   | "substantivePushBuckets"
-  | "pushes"
-  | "commits"
+  | "rawPushes"
+  | "rawCommits"
   | "humanPushers"
   | "botPushers"
   | "prsOpened"
@@ -110,8 +110,8 @@ export const ATTENTION_COLUMNS: readonly ColumnDef<AttentionColumnKey>[] = [
 export const ACTIVE_COLUMNS: readonly ColumnDef<ActiveColumnKey>[] = [
   { key: "distinctCommits", label: "distinct commits", hint: "Distinct commits, zero-commit pushes excluded" },
   { key: "substantivePushBuckets", label: "substantive pushes", hint: "Actor/repo/hour buckets with a push AND a commit" },
-  { key: "pushes", label: "raw pushes", hint: "Raw push count, including zero-commit noise" },
-  { key: "commits", label: "raw commits", hint: "Raw commit count" },
+  { key: "rawPushes", label: "raw pushes", hint: "Raw push count, including zero-commit noise" },
+  { key: "rawCommits", label: "raw commits", hint: "Raw commit count" },
   { key: "humanPushers", label: "human pushers", hint: "Distinct non-bot actors who pushed" },
   { key: "botPushers", label: "bot pushers", hint: "Distinct [bot]-suffixed actors who pushed" },
   { key: "prsOpened", label: "PRs opened", hint: "Pull requests opened in this window" },
@@ -355,14 +355,30 @@ export function attentionRowView(
     topics: row.topics,
     githubStars: row.github_stars,
     spark: row.spark,
-    primaryLabel: ATTENTION_FIELD_LABEL[sortField] ?? "events",
+    primaryLabel: ATTENTION_FIELD_LABEL[sortField] ?? ATTENTION_COLUMNS.find((c) => c.key === sortField)?.label ?? "events",
     primaryValue: attentionMeasureValue(row, sortField),
     chips: columns.map((key) => ({
       key,
       label: ATTENTION_COLUMNS.find((c) => c.key === key)?.label ?? key,
       value: attentionColumnValue(row, key),
     })),
-    searchText: [row.repo_name, row.owner, row.description, row.language, ...row.topics].join(" ").toLowerCase(),
+    searchText: [
+      row.repo_name,
+      row.owner,
+      row.description,
+      row.language,
+      ...row.topics,
+      String(row.github_stars),
+      String(row.events),
+      String(row.pushes),
+      String(row.commits),
+      String(row.stars),
+      String(row.forks),
+      String(row.prsOpened),
+      String(row.prsMerged),
+    ]
+      .join(" ")
+      .toLowerCase(),
     botOnly: false,
   };
 }
@@ -373,9 +389,9 @@ export function activeColumnValue(row: ActiveContributionRow, key: ActiveColumnK
       return row.distinctCommits;
     case "substantivePushBuckets":
       return row.substantivePushBuckets;
-    case "pushes":
+    case "rawPushes":
       return row.pushes;
-    case "commits":
+    case "rawCommits":
       return row.commits;
     case "humanPushers":
       return row.humanPushers;
@@ -416,14 +432,26 @@ export function activeRowView(
     topics: [],
     githubStars: 0,
     spark: undefined,
-    primaryLabel: ACTIVE_FIELD_LABEL[sortField] ?? "distinct commits",
+    primaryLabel: ACTIVE_FIELD_LABEL[sortField] ?? ACTIVE_COLUMNS.find((c) => c.key === sortField)?.label ?? "distinct commits",
     primaryValue: activeMeasureValue(row, sortField),
     chips: columns.map((key) => ({
       key,
       label: ACTIVE_COLUMNS.find((c) => c.key === key)?.label ?? key,
       value: activeColumnValue(row, key),
     })),
-    searchText: row.repoName.toLowerCase(),
+    searchText: [
+      row.repoName,
+      String(row.distinctCommits),
+      String(row.substantivePushBuckets),
+      String(row.pushes),
+      String(row.commits),
+      String(row.humanPushers),
+      String(row.botPushers),
+      String(row.prsOpened),
+      String(row.prsMerged),
+    ]
+      .join(" ")
+      .toLowerCase(),
     botOnly: row.botPushers > 0 && row.humanPushers === 0,
   };
 }
