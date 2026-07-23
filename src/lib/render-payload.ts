@@ -375,6 +375,15 @@ export const RepoDrilldownSchema = z.object({
       })),
     })
     .optional(),
+  // Weekly code frequency (additions/deletions) from GitHub REST API.
+  // Optional — omitted when the REST fetch fails or returns empty data.
+  codeFrequency: z
+    .array(z.object({
+      week: z.string(),
+      additions: z.number().int().nonnegative(),
+      deletions: z.number().int().nonnegative(),
+    }))
+    .optional(),
   query: CardQuerySchema,
 });
 

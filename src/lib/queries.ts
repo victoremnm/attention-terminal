@@ -2,7 +2,7 @@
 // handlers. ClickHouse credentials never reach the client bundle.
 import { unstable_cache } from "next/cache";
 import { clickhouse, clickhouseInsert, ensureTablesExist, missingTables } from "./clickhouse";
-import { fetchRepoRow } from "./github-repo";
+import { fetchRepoRow, fetchCodeFrequency, type CodeFrequencyRow } from "./github-repo";
 import { analyzeAndStoreRepo } from "./repo-analysis";
 import type { DevPoint, RepoDrilldownPayload } from "./render-payload";
 import {
@@ -1194,6 +1194,14 @@ export async function repoDrilldown(repoName: string): Promise<RepoDrilldownPayl
     }
   }
 
+  // Fetch weekly code frequency data (optional enrichment, issue #130).
+  let codeFrequency: CodeFrequencyRow[] = [];
+  try {
+    codeFrequency = await fetchCodeFrequency(repoName, { fast: true });
+  } catch (codeFreqError) {
+    console.error("[repoDrilldown] code frequency fetch failed", { repoName, error: codeFreqError });
+  }
+
   const analysisPayload = analysisRow
     ? {
         overview: analysisRow.overview,
@@ -1332,6 +1340,9 @@ export async function repoDrilldown(repoName: string): Promise<RepoDrilldownPayl
           };
         })()
       : undefined,
+    // Weekly code frequency (additions/deletions) from GitHub REST API (issue #130).
+    // Omitted when the fetch fails or returns no data.
+    codeFrequency: codeFrequency.length > 0 ? codeFrequency : undefined,
     query: {
       sql: repoQuerySql(...provenances),
       rowsRead: provenances.reduce((sum, provenance) => sum + (provenance.rowsRead ?? 0), 0),

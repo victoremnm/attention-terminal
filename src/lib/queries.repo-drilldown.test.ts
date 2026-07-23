@@ -14,7 +14,7 @@ vi.mock("./clickhouse", () => ({
   ensureTablesExist: mocks.ensureTablesExist,
 }));
 
-vi.mock("./github-repo", () => ({ fetchRepoRow: vi.fn() }));
+vi.mock("./github-repo", () => ({ fetchRepoRow: vi.fn(), fetchCodeFrequency: vi.fn().mockResolvedValue([]) }));
 vi.mock("./repo-analysis", () => ({ analyzeAndStoreRepo: vi.fn() }));
 
 import { repoDrilldown } from "./queries";
