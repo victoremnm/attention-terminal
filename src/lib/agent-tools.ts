@@ -14,6 +14,20 @@ import {
   runVisualizationMappingDef,
 } from "./agent-tool-schemas";
 import { ensureTablesExist } from "./clickhouse";
+import {
+  extractTableCandidates,
+  FALLBACK_TABLES,
+  hasKnownTable,
+  LIST_TABLES_SQL,
+  normalizeTableName,
+  registerCatalogTables,
+  registerTableSchema,
+  requireCatalogedTables,
+  requireDescribedTables,
+  TABLE_LIST_LIMIT,
+} from "./sql-catalog-guard";
+
+export { FALLBACK_TABLES, LIST_TABLES_SQL, TABLE_LIST_LIMIT };
 import { dailyDigest } from "./digest";
 import { realBuildersDeck } from "./real-builders";
 import { RenderPayloadSchema } from "./render-payload";
@@ -53,27 +67,11 @@ function getTableListClickHouse(): ClickHouseClient {
 
 const READ_ONLY_STATEMENTS = /^\s*(select|with|show|describe|desc|explain|exists)\b/i;
 const MAX_OUTPUT_CHARS = 50_000;
-const knownTables = new Set<string>();
-const knownSchemas = new Map<string, string[]>();
 
-export function resetCatalogState() {
-  knownTables.clear();
-  knownSchemas.clear();
-}
+export { resetCatalogState } from "./sql-catalog-guard";
 
 function hasMultipleStatements(query: string) {
   return query.replace(/;+\s*$/, "").includes(";");
-}
-
-function normalizeTableName(table: string) {
-  return table.trim().replace(/`/g, "").replace(/"/g, "");
-}
-
-function registerCatalogTables(tables: Array<{ database: string; name: string }>) {
-  for (const table of tables) {
-    knownTables.add(`${table.database}.${table.name}`);
-    knownTables.add(table.name);
-  }
 }
 
 function capOutput(rows: unknown[]) {
@@ -84,49 +82,6 @@ function capOutput(rows: unknown[]) {
   return { rows: out, truncated: out.length < rows.length };
 }
 
-function extractTableCandidates(query: string) {
-  const cteNames = new Set<string>();
-  for (const match of query.matchAll(/\b([A-Za-z_][\w$]*)\s+AS\s*\(/gi)) {
-    cteNames.add(match[1]);
-  }
-
-  const refs = new Set<string>();
-  for (const match of query.matchAll(/\b(?:from|join)\s+([`"]?)([A-Za-z_][\w$]*)\1(?:\.([`"]?)([A-Za-z_][\w$]*)\3)?/gi)) {
-    const table = match[4] ? `${match[2]}.${match[4]}` : match[2];
-    if (!cteNames.has(match[2])) refs.add(normalizeTableName(table));
-  }
-
-  return [...refs];
-}
-
-function requireCatalogedTables(query: string) {
-  return extractTableCandidates(query).filter((table) => !knownTables.has(table));
-}
-
-function requireDescribedTables(query: string) {
-  return extractTableCandidates(query).filter((table) => !knownSchemas.has(table));
-}
-
-export const FALLBACK_TABLES = [
-  { database: "raw", name: "github_events", engine: "MergeTree", total_rows: "estimated", size: "N/A" },
-  { database: "default", name: "gh_repo_metadata", engine: "ReplacingMergeTree", total_rows: "estimated", size: "N/A" },
-  { database: "default", name: "gh_repo_daily", engine: "SummingMergeTree", total_rows: "estimated", size: "N/A" },
-  { database: "default", name: "gh_repo_hourly", engine: "SummingMergeTree", total_rows: "estimated", size: "N/A" },
-  { database: "default", name: "gh_actor_daily", engine: "SummingMergeTree", total_rows: "estimated", size: "N/A" },
-  { database: "default", name: "gh_repo_activity_feed", engine: "MergeTree", total_rows: "estimated", size: "N/A" },
-  { database: "default", name: "gh_repo_analysis", engine: "ReplacingMergeTree", total_rows: "estimated", size: "N/A" },
-  { database: "default", name: "subagent_runs", engine: "MergeTree", total_rows: "estimated", size: "N/A" },
-];
-
-const TABLE_LIST_LIMIT = 50;
-
-export const LIST_TABLES_SQL = `
-  SELECT database, name, engine, total_rows, formatReadableSize(total_bytes) AS size
-  FROM system.tables
-  WHERE database NOT IN ('system', 'information_schema', 'INFORMATION_SCHEMA')
-  ORDER BY database, name
-  LIMIT {limit: UInt32}
-`.trim();
 
 export const listTables = tool({
   ...listTablesDef,
@@ -185,7 +140,7 @@ export const describeTable = tool({
     const normalized = normalizeTableName(table);
     const [database, name] = normalized.includes(".") ? normalized.split(".", 2) : [undefined, normalized];
     const catalogKey = database ? `${database}.${name}` : name;
-    if (!knownTables.has(catalogKey) && !knownTables.has(name)) {
+    if (!hasKnownTable(catalogKey) && !hasKnownTable(name)) {
       return {
         error: `Unknown table ${normalized}. Call listTables first, then describe a table that listTables returned.`,
       };
@@ -208,8 +163,8 @@ export const describeTable = tool({
       default_expression?: string;
       comment?: string;
     }>;
-    knownSchemas.set(catalogKey, columns.map((column) => `${column.name}:${column.type}`));
-    knownSchemas.set(name, columns.map((column) => `${column.name}:${column.type}`));
+    registerTableSchema(catalogKey, columns.map((column) => `${column.name}:${column.type}`));
+    registerTableSchema(name, columns.map((column) => `${column.name}:${column.type}`));
     return { columns };
   },
 });

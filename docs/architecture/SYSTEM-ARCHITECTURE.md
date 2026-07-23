@@ -155,34 +155,88 @@ erDiagram
 
 ---
 
-## 3. Backend Agent Routing & Query Architecture
+## 3. Chat Agent — Trigger Flow & Query Paths
 
-When a user submits a query to `/api/chat` or requests a repo drilldown, the backend orchestrates data retrieval through specialized AI prompt agents and executes optimized ClickHouse queries.
+Chat is not a Next.js API route — there is no `/api/chat` handler in this repo. The entire agent lives inside Trigger.dev's realtime chat runtime as `chat.agent()`, defined in `src/trigger/attention-agent.ts`.
+
+### 3.1 Chat agent lifecycle
 
 ```mermaid
-flowchart LR
-    subgraph Client
-        REQ["User Question / Prompt"]
-    end
+sequenceDiagram
+    autonumber
+    participant Client as Chat Client
+    participant Agent as attentionAgent (chat.agent)
+    participant Catalog as catalogPromptSection() / sql-catalog-guard
+    participant Model as streamText (attentionTools)
 
-    subgraph NextJS["Next.js Server Runtime"]
-        API["/api/chat Handler"]
-        AGENT["Data Retrieval Agent"]
-        TEMPLATE["Query Selector & SQL Generator"]
-    end
+    Client->>Agent: onBoot (worker cold start)
+    Agent->>Catalog: resetCatalogState()
+    Note over Agent: init per-worker conversation memory (recentAnswers)
 
-    subgraph ClickHouse["ClickHouse Database"]
-        INDEX["Skipping Index Scan\n(idx_github_events_actor_login)"]
-        EXEC["Query Execution Engine"]
-    end
+    Client->>Agent: onChatStart (turn 0)
+    Agent->>Catalog: catalogPromptSection() — live system.tables snapshot
+    Agent->>Agent: resolve system prompt (catalog + answer reference)
 
-    REQ --> API
-    API --> AGENT
-    AGENT --> TEMPLATE
-    TEMPLATE --> INDEX
-    INDEX --> EXEC
-    EXEC --> API
+    Client->>Agent: onTurnStart (turn >= 1)
+    Agent->>Catalog: re-fetch catalog, re-resolve prompt w/ prior-turn memory
+
+    Client->>Model: run({ messages, tools })
+    Model->>Model: stopWhen 15 steps; prepareStep forces renderAnswer near budget
+    Model-->>Client: streamed tool calls + final answer
+
+    Client->>Agent: onTurnComplete
+    Agent->>Agent: record rendered answer type/subject for next turn's memory
 ```
+
+### 3.2 Tool registry and query-execution paths
+
+`attentionTools` (`src/lib/agent-tools.ts`) is the full tool surface exposed to the model. Each tool falls into one of three categories:
+
+| Category | Tools | SQL origin | Guarded? |
+| :--- | :--- | :--- | :--- |
+| Catalog introspection | `listTables`, `describeTable` | Fixed (`system.tables`, `DESCRIBE TABLE`) | Populates the shared catalog cache |
+| **LLM-generated SQL** | `runReadOnlyQuery`, `runDataRetrieval` → `runDataRetrievalAgent` | Written by an LLM from the user's intent | **Yes — see 3.3** |
+| Hardcoded queries | `getDailyDigest`, `getRealBuilders`, `getRepoDrilldown` | Fixed, developer-authored SQL (`digest.ts`, `real-builders.ts`, `queries.ts`) | Not applicable — no LLM in the SQL path |
+| Payload shaping / no SQL | `renderAnswer`, `buildMorphingCard`, `buildTablePayload`, `runVisualizationMapping` | None — shapes rows already fetched by one of the above | Not applicable |
+
+There are **two independent LLM-generated-SQL paths**, and both must be guarded — this is the lesson from the July 23 hallucination incident (a query against fabricated `repos`/`pushes`/`commits`/`pull_requests`/`issues` tables, and a `hn_hourly.time` column that doesn't exist, both reached ClickHouse directly):
+
+1. **`runReadOnlyQuery`** — the primary "custom SQL" path documented in the system prompt (`agent-prompt.ts`): the model must call `listTables`, then `describeTable` on every referenced table, before this tool will run anything. If it skips ahead, the tool returns an actionable `{ error }` telling it to call `listTables`/`describeTable` first — it never reaches ClickHouse with an unvalidated query.
+2. **`runDataRetrieval` → `runDataRetrievalAgent`** (`src/lib/agents/data-retrieval-agent.ts`) — a second, sanctioned shortcut for ad-hoc questions, with its own independent `generateObject` call. This path had **no catalog grounding and no validation** until this fix — it generated SQL from a schema-less prompt and executed it directly. It cannot call `listTables`/`describeTable` itself (no tool-calling loop, just one structured-output call), so it now self-grounds instead.
+
+### 3.3 The catalog guard (`src/lib/sql-catalog-guard.ts`)
+
+Both paths validate against the **same** shared module — extracted specifically so the two paths can't drift apart again the way they did before this fix:
+
+- `extractTableCandidates(query)` — regexes out every `FROM`/`JOIN` table reference, excluding CTE names.
+- `requireCatalogedTables(query)` — returns any referenced table not present in the live `system.tables` snapshot.
+- `requireDescribedTables(query)` — (used by `runReadOnlyQuery` only) returns any referenced table whose columns haven't been fetched via `describeTable` yet.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Model as generateObject (SQL)
+    participant Guard as sql-catalog-guard
+    participant CH as ClickHouse
+
+    Note over Model,Guard: runDataRetrievalAgent — up to 3 attempts
+    Guard->>CH: loadCatalog() — system.tables snapshot (own query, no listTables dependency)
+    Guard-->>Model: inject table list into system prompt
+    Model->>Guard: generated query (attempt 1)
+    Guard->>Guard: requireCatalogedTables(query)
+    alt unknown table referenced
+        Guard-->>Model: rejected — "Unknown table reference(s): repos, pushes"
+        Model->>Guard: corrected query (attempt 2)
+        Guard->>CH: execute (validated)
+        CH-->>Model: rows
+    else all tables known
+        Guard->>CH: execute (validated)
+        CH-->>Model: rows
+    end
+    Note over Model: after 3 failed attempts, returns { error } — never throws, never executes unvalidated SQL
+```
+
+Neither path throws on failure — both return a structured `{ error }` result, matching the codebase-wide convention (see `runReadOnlyQuery`'s catch block) so a rejected query becomes a normal tool result the top-level agent can react to (retry with a different tool, ask a clarifying question) rather than a crash.
 
 ---
 
