@@ -52,6 +52,12 @@ describe.skipIf(!hasCH)("query layer (integration)", () => {
     expect(result.sql).toContain("repo_name ASC");
   }, 120_000);
 
+  it("returns deterministic ties across repeated reads", async () => {
+    const first = await repoActivityWindow("7d", { limit: 10, sort: "events" });
+    const second = await repoActivityWindow("7d", { limit: 10, sort: "events" });
+    expect(first.data.map((row) => row.repo_name)).toEqual(second.data.map((row) => row.repo_name));
+  }, 120_000);
+
   it("tickerLanes executes all lanes", async () => {
     const lanes = await tickerLanes();
     for (const key of ["newRepos", "topForked", "shippingVelocity", "starBreakouts", "risingStories"] as const) {

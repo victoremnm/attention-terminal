@@ -14,6 +14,18 @@ const TABS: Array<{ key: RepoWindow; label: string }> = [
 ];
 
 const NUMBER = new Intl.NumberFormat("en-US");
+const PAGE_SIZE = 100;
+
+type PageData = Record<RepoWindow, Record<number, RepoWindowRow[]>>;
+
+function initialPageData(windows: Record<RepoWindow, RepoWindowRow[]>): PageData {
+  return {
+    "1d": { 0: windows["1d"] ?? [] },
+    "7d": { 0: windows["7d"] ?? [] },
+    "30d": { 0: windows["30d"] ?? [] },
+    td: { 0: windows.td ?? [] },
+  };
+}
 
 function RankRow({
   row,
@@ -58,6 +70,15 @@ function RankRow({
 export function RepoRankings({ windows }: { windows: Record<RepoWindow, RepoWindowRow[]> }) {
   const [active, setActive] = useState<RepoWindow>("1d");
   const [query, setQuery] = useState("");
+  const [pageData, setPageData] = useState(() => initialPageData(windows));
+  const [pageByWindow, setPageByWindow] = useState<Record<RepoWindow, number>>({
+    "1d": 0,
+    "7d": 0,
+    "30d": 0,
+    td: 0,
+  });
+  const [pageLoading, setPageLoading] = useState(false);
+  const [pageError, setPageError] = useState<string | undefined>();
 
   const [selectedRepo, setSelectedRepo] = useState<string | undefined>();
   const [drilldown, setDrilldown] = useState<RepoDrilldownPayload | undefined>();
@@ -68,7 +89,8 @@ export function RepoRankings({ windows }: { windows: Record<RepoWindow, RepoWind
 
   useEffect(() => () => drilldownAbort.current?.abort(), []);
 
-  const source = windows[active] ?? [];
+  const page = pageByWindow[active];
+  const source = pageData[active]?.[page] ?? [];
   const rows = useMemo(() => {
     const needle = query.trim().toLowerCase();
     if (!needle) return source;
@@ -115,6 +137,38 @@ export function RepoRankings({ windows }: { windows: Record<RepoWindow, RepoWind
       ...totals,
     };
   }, [rows.length, source]);
+
+  async function loadPage(nextPage: number) {
+    if (nextPage < 0 || pageLoading) return;
+    const cached = pageData[active]?.[nextPage];
+    if (cached) {
+      setPageByWindow((current) => ({ ...current, [active]: nextPage }));
+      return;
+    }
+
+    setPageLoading(true);
+    setPageError(undefined);
+    try {
+      const params = new URLSearchParams({
+        window: active,
+        limit: String(PAGE_SIZE),
+        offset: String(nextPage * PAGE_SIZE),
+      });
+      const response = await fetch(`/api/trending?${params.toString()}`);
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error ?? "trending page failed");
+      const nextRows = Array.isArray(body.data) ? (body.data as RepoWindowRow[]) : [];
+      setPageData((current) => ({
+        ...current,
+        [active]: { ...current[active], [nextPage]: nextRows },
+      }));
+      setPageByWindow((current) => ({ ...current, [active]: nextPage }));
+    } catch (error) {
+      setPageError(error instanceof Error ? error.message : "trending page failed");
+    } finally {
+      setPageLoading(false);
+    }
+  }
 
   // Mirrors TickerRail.openRepo: abort-safe, last-click-wins drill-down fetch.
   async function openRepo(repoName: string) {
@@ -216,7 +270,7 @@ export function RepoRankings({ windows }: { windows: Record<RepoWindow, RepoWind
           <RankRow
             key={row.repo_name}
             row={row}
-            rank={i + 1}
+            rank={page * PAGE_SIZE + i + 1}
             state={
               loadingRepo === row.repo_name
                 ? "loading"
@@ -228,6 +282,29 @@ export function RepoRankings({ windows }: { windows: Record<RepoWindow, RepoWind
           />
         ))
       )}
+
+      <div className="rankings-pagination mono" aria-label="Trending pagination">
+        <button
+          type="button"
+          className="rankings-pagination-button"
+          disabled={page === 0 || pageLoading}
+          onClick={() => void loadPage(page - 1)}
+        >
+          Previous
+        </button>
+        <span aria-live="polite">
+          Page {page + 1} · {pageLoading ? "loading..." : `up to ${PAGE_SIZE} repos`}
+        </span>
+        <button
+          type="button"
+          className="rankings-pagination-button"
+          disabled={pageLoading || source.length < PAGE_SIZE}
+          onClick={() => void loadPage(page + 1)}
+        >
+          Next
+        </button>
+      </div>
+      {pageError ? <div className="repo-empty mono" role="alert">! {pageError}</div> : null}
 
       {(loadingRepo || drilldownError || drilldown) && (
         <div className="ticker-drilldown" aria-live="polite">

@@ -45,7 +45,7 @@ const SORTS = new Set<RepoActivitySort>([
 
 const DEFAULT_LIMIT = 100;
 const MAX_LIMIT = 100;
-const MAX_OFFSET = 1_000_000;
+const MAX_OFFSET = 10_000;
 const MAX_SEARCH_LENGTH = 100;
 
 function invalid(message: string): never {
