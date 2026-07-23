@@ -8,6 +8,7 @@ import { ATTENTION_AGENT_MODEL, attentionRegistry, resolveAgentModel } from "../
 import { attentionTools, resetCatalogState } from "../lib/agent-tools";
 import { catalogPromptSection } from "../lib/catalog";
 import { logAgentRun } from "../lib/agent-telemetry";
+import { shouldForceRenderAnswer } from "../lib/agent-render-enforcement";
 
 ensureAiSdkTelemetry("trigger");
 
@@ -136,6 +137,15 @@ export const attentionAgent = chat.agent({
       tools,
       stopWhen: stepCountIs(15),
       abortSignal: signal,
+      prepareStep: ({ steps, stepNumber }) => {
+        const toolNamesCalledSoFar = steps.flatMap((step) =>
+          step.toolCalls.map((call) => call.toolName)
+        );
+        if (shouldForceRenderAnswer(toolNamesCalledSoFar, stepNumber)) {
+          return { toolChoice: { type: "tool", toolName: "renderAnswer" } };
+        }
+        return {};
+      },
     });
 
     // Log the run to subagent_experiments (via subagent_runs) for cross-model
