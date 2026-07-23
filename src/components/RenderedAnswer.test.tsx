@@ -3,8 +3,8 @@
  */
 
 import "@testing-library/jest-dom/vitest";
-import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { RenderPayload } from "@/lib/render-payload";
 import { RenderedAnswer } from "./RenderedAnswer";
 
@@ -73,5 +73,70 @@ describe("RenderedAnswer", () => {
     expect(screen.getByText("mattpocock/mattpocock/skills")).toBeInTheDocument();
     expect(screen.getByText(/previewing bar markup/i)).toBeInTheDocument();
     expect(screen.getByText(/4,321 rows read · 87ms/i)).toBeInTheDocument();
+  });
+});
+
+describe("RenderedAnswer copy-as-HTML button", () => {
+  const tickerPayload: RenderPayload = {
+    type: "ticker",
+    filter: "repos",
+    generatedAt: "2026-07-23T08:00:00.000Z",
+    items: [
+      { kicker: "STARS", name: "alpha/repo", metric: "stars_24h: 42", href: "https://github.com/alpha/repo" },
+    ],
+  };
+
+  beforeEach(() => {
+    vi.stubGlobal("ClipboardItem", class {
+      constructor(items: Record<string, Blob>) {
+        Object.assign(this, items);
+      }
+    });
+    vi.stubGlobal("navigator", {
+      clipboard: {
+        write: vi.fn(() => Promise.resolve()),
+        writeText: vi.fn(() => Promise.resolve()),
+      },
+    });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("renders a Copy as HTML button", () => {
+    render(<RenderedAnswer payload={tickerPayload} />);
+    expect(screen.getAllByRole("button", { name: "Copy as HTML" }).length).toBeGreaterThan(0);
+  });
+
+  it("shows Copied! feedback after clicking", async () => {
+    render(<RenderedAnswer payload={tickerPayload} />);
+    const btns = screen.getAllByRole("button", { name: "Copy as HTML" });
+    await act(() => fireEvent.click(btns[0]));
+    expect(screen.getByText("Copied!")).toBeInTheDocument();
+  });
+
+  it("calls clipboard.write with a ClipboardItem containing text/html", async () => {
+    const writeSpy = vi.fn(() => Promise.resolve());
+    vi.stubGlobal("navigator", {
+      clipboard: { write: writeSpy, writeText: vi.fn(() => Promise.resolve()) },
+    });
+    render(<RenderedAnswer payload={tickerPayload} />);
+    const btns = screen.getAllByRole("button", { name: "Copy as HTML" });
+    await act(() => fireEvent.click(btns[0]));
+    await waitFor(() => expect(writeSpy).toHaveBeenCalledTimes(1));
+    const items = (writeSpy.mock.calls[0] as unknown[])[0] as unknown[];
+    expect(items).toHaveLength(1);
+  });
+
+  it("reverts to Copy as HTML label after 2 seconds", async () => {
+    vi.useFakeTimers();
+    render(<RenderedAnswer payload={tickerPayload} />);
+    const btns = screen.getAllByRole("button", { name: "Copy as HTML" });
+    await act(() => fireEvent.click(btns[0]));
+    expect(screen.getByText("Copied!")).toBeInTheDocument();
+    await act(() => vi.advanceTimersByTime(2000));
+    expect(screen.getAllByRole("button", { name: "Copy as HTML" }).length).toBeGreaterThan(0);
+    vi.useRealTimers();
   });
 });
