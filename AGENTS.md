@@ -74,6 +74,49 @@ Every PR must follow `.github/PULL_REQUEST_TEMPLATE.md`. The key sections:
 7. **Notes for review** — merge conflicts resolved, pre-existing bugs
    fixed, env vars added, anything surprising.
 
+## Review evidence (mandatory)
+
+Every implementation PR must be reviewable from the PR page without asking a
+human to reconstruct the work from raw commits. The PR body must include a
+short `Review at a glance` section with:
+
+1. **Preview** — for user-visible work, a current Vercel preview URL plus an
+   attached screenshot or committed HTML/image artifact. Store committed
+   evidence under `docs/pr-evidence/<pr-number>/` and embed or link it from
+   the PR body. A local-only screenshot is not an attachment and must be
+   labeled as local-only.
+2. **Before/after proof** — one or two concrete observations showing what
+   changed and how the reviewer can reproduce it.
+3. **Verification status** — exact commands and CI/deployment results, with
+   unverified items explicitly called out.
+4. **Human checklist** — no more than the specific interactions that still
+   require a human; do not make the reviewer infer these from the diff.
+
+For non-visual SQL, schema, documentation, or dependency PRs, provide a
+rendered query result, generated documentation preview, dependency/build
+proof, or another directly inspectable artifact instead of inventing a UI
+screenshot. Agents must update the PR body after capturing evidence and must
+not claim an artifact is attached unless the link works from the PR page.
+
+## Agent identity and review status (mandatory)
+
+Every implementation or review agent must identify itself in the PR body or
+review comment with:
+
+- `Agent ID`: orchestrator/subagent ID
+- `Model`: model identifier used for the run
+- `Agent type`: explorer, reviewer, coder, or other role
+- `Session`: telemetry session ID
+- `Scope`: files, issue, or PR reviewed
+
+An independent reviewer may add the `lgtm` label only when the PR has current
+evidence, green CI, and no unresolved actionable review comments. The
+implementation agent must never apply `lgtm` to its own PR. If any blocking
+correctness, security, performance, evidence, or verification issue remains,
+the reviewer must add the `blocked` label and explain the blocker in a PR
+comment. These labels are review signals, not merge approval; the human merge
+gate still applies.
+
 ### Commit message convention (mandatory)
 
 Every commit authored by an agent must include a `Co-authored-by:` trailer
