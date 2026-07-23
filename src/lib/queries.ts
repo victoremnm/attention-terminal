@@ -141,7 +141,7 @@ export async function actorLeaderboard(window: "24h" | "7d" = "24h"): Promise<Ac
   const humanQuery =
     window === "24h"
       ? `
-    WITH (SELECT max(created_at) FROM github_events) AS high_water
+    WITH (SELECT max(created_at) FROM raw.github_events) AS high_water
     SELECT
       actor_login,
       toString(count()) AS events,
@@ -159,7 +159,7 @@ export async function actorLeaderboard(window: "24h" | "7d" = "24h"): Promise<Ac
           1
         )
       ) AS score
-    FROM github_events
+    FROM raw.github_events
     WHERE created_at > high_water - INTERVAL 24 HOUR
       AND lower(actor_login) NOT LIKE '%[bot]%'
     GROUP BY actor_login
@@ -195,7 +195,7 @@ export async function actorLeaderboard(window: "24h" | "7d" = "24h"): Promise<Ac
   const botQuery =
     window === "24h"
       ? `
-    WITH (SELECT max(created_at) FROM github_events) AS high_water
+    WITH (SELECT max(created_at) FROM raw.github_events) AS high_water
     SELECT
       actor_login,
       toString(count()) AS events,
@@ -204,7 +204,7 @@ export async function actorLeaderboard(window: "24h" | "7d" = "24h"): Promise<Ac
       toString(countIf(event_type = 'PullRequestEvent' AND action = 'opened')) AS prs_opened,
       toString(countIf(event_type = 'PullRequestEvent' AND pr_merged = 1)) AS prs_merged,
       toString(round(count(), 1)) AS score
-    FROM github_events
+    FROM raw.github_events
     WHERE created_at > high_water - INTERVAL 24 HOUR
       AND lower(actor_login) LIKE '%[bot]%'
     GROUP BY actor_login
@@ -229,8 +229,8 @@ export async function actorLeaderboard(window: "24h" | "7d" = "24h"): Promise<Ac
   `;
 
   const [humans, bots] = await Promise.all([
-    q<ActorLeaderboardSqlRow>(humanQuery, window === "24h" ? ["github_events"] : ["gh_actor_daily"]),
-    q<ActorLeaderboardSqlRow>(botQuery, window === "24h" ? ["github_events"] : ["gh_actor_daily"]),
+    q<ActorLeaderboardSqlRow>(humanQuery, window === "24h" ? ["raw.github_events"] : ["gh_actor_daily"]),
+    q<ActorLeaderboardSqlRow>(botQuery, window === "24h" ? ["raw.github_events"] : ["gh_actor_daily"]),
   ]);
 
   const mapRow = (row: ActorLeaderboardSqlRow): ActorLeaderboardRow => ({
