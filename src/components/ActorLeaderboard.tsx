@@ -79,6 +79,9 @@ export function ActorLeaderboardCard({
   humans: ActorLeaderboardRow[];
   bots: ActorLeaderboardRow[];
 }) {
+  const rows = [...humans.map((row) => ({ ...row, group: "Human" as const })), ...bots.map((row) => ({ ...row, group: "Bot" as const }))].sort(
+    (a, b) => b.score - a.score
+  );
   return (
     <div className="tk-card actor-leaderboard-card">
       <div className="actor-leaderboard-head">
@@ -90,10 +93,7 @@ export function ActorLeaderboardCard({
       </div>
 
       <ActorLeaderboardTable
-        rows={[
-          ...humans.map((row) => ({ ...row, group: "Human" as const })),
-          ...bots.map((row) => ({ ...row, group: "Bot" as const })),
-        ]}
+        rows={rows}
         scoreHint="Human score is weighted from events, repos, pushes, and PRs. Bot score equals raw events."
       />
     </div>

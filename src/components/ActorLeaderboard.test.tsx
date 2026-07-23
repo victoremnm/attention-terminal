@@ -40,10 +40,15 @@ describe("ActorLeaderboardSurface", () => {
     expect(screen.getByText(/prolific actors over the last 24h/i)).toBeInTheDocument();
     expect(screen.getByText("alice")).toBeInTheDocument();
     expect(screen.getByText("robot[bot]")).toBeInTheDocument();
+    expect(screen.getAllByText("Bot")[0]).toBeInTheDocument();
+    expect(screen.getAllByText("Human")[0]).toBeInTheDocument();
     expect(screen.getByText("37.5")).toBeInTheDocument();
     expect(screen.getByText("40.0")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "alice" })).toHaveAttribute("href", "https://github.com/alice");
     expect(screen.getByText(/human score is weighted/i)).toBeInTheDocument();
     expect(screen.getByText(/bot score equals raw events/i)).toBeInTheDocument();
+    const rows = screen.getAllByRole("row");
+    expect(rows[1]).toHaveTextContent("robot[bot]");
+    expect(rows[2]).toHaveTextContent("alice");
   });
 });
