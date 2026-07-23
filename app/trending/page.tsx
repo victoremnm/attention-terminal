@@ -1,10 +1,13 @@
+import type { Metadata } from "next";
 import { RepoRankingsSurface } from "@/components/RepoRankingsSurface";
-import type { RankingMode } from "@/lib/queries";
 
 export const dynamic = "force-dynamic";
 
-export default async function TrendingPage(props: { searchParams: Promise<{ mode?: string }> }) {
-  const searchParams = await props.searchParams;
-  const mode = (searchParams.mode as RankingMode) ?? "events";
-  return <RepoRankingsSurface mode={mode} />;
+export const metadata: Metadata = {
+  title: "Attention Terminal - Repo Rankings",
+  description: "GitHub repositories ranked by attention volume across 1-day, 7-day, and 30-day windows.",
+};
+
+export default async function TrendingPage(props: { searchParams: Promise<{ sort?: string }> }) {
+  return <RepoRankingsSurface searchParams={props.searchParams} />;
 }

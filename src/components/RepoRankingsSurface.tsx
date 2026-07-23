@@ -1,15 +1,16 @@
 import { ChatCtaBanner } from "@/components/ChatCtaBanner";
 import { RepoRankings } from "@/components/RepoRankings";
 import { SurfaceNav } from "@/components/SurfaceNav";
-import { repoActivityWindow, type RankingMode, type RepoWindow, type RepoWindowRow } from "@/lib/queries";
+import { repoActivityWindow, type RepoActivitySort, type RepoWindow, type RepoWindowRow } from "@/lib/queries";
 
-const RANKING_LIMIT = 50;
+export async function RepoRankingsSurface({ searchParams }: { searchParams?: Promise<{ sort?: string }> }) {
+  const sort = (await searchParams)?.sort as RepoActivitySort | undefined;
+  const options = { limit: 100, sort: sort ?? "events" };
 
-export async function RepoRankingsSurface({ mode = "events" }: { mode?: RankingMode }) {
   const [d1, d7, d30] = await Promise.all([
-    repoActivityWindow("1d", RANKING_LIMIT, mode),
-    repoActivityWindow("7d", RANKING_LIMIT, mode),
-    repoActivityWindow("30d", RANKING_LIMIT, mode),
+    repoActivityWindow("1d", options),
+    repoActivityWindow("7d", options),
+    repoActivityWindow("30d", options),
   ]);
 
   const windows: Record<RepoWindow, RepoWindowRow[]> = {
@@ -24,14 +25,13 @@ export async function RepoRankingsSurface({ mode = "events" }: { mode?: RankingM
       <SurfaceNav active="trending" />
       <main className="trending-shell">
         <header className="trending-head">
-          <p className="skinny-kicker mono">LIVE_GITHUB</p>
-          <h1>Trending</h1>
+          <p className="skinny-kicker mono">REPO_RANKINGS</p>
+          <h1>Repo Rankings</h1>
           <p className="trending-copy">
-            Repos ranked by attention volume across the latest feed windows. Tap any repo to
-            render its live data.
+            GitHub repositories ranked by attention volume across 1-day, 7-day, and 30-day windows. Tap any repo to explore drilldown telemetry.
           </p>
         </header>
-        <RepoRankings windows={windows} />
+        <RepoRankings windows={windows} mode={sort ?? "events"} />
         <ChatCtaBanner />
       </main>
     </>

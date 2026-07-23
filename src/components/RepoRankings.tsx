@@ -2,7 +2,7 @@
 
 import { useMemo, useRef, useState, useEffect } from "react";
 import { useRouter, usePathname } from "next/navigation";
-import type { RepoWindow, RepoWindowRow, RankingMode } from "@/lib/queries";
+import type { RepoWindow, RepoWindowRow, RepoActivitySort } from "@/lib/queries";
 import type { RepoDrilldownPayload } from "@/lib/render-payload";
 import { RenderedAnswer } from "./RenderedAnswer";
 import { Sparkline } from "./charts";
@@ -15,20 +15,32 @@ const TABS: Array<{ key: RepoWindow; label: string }> = [
 ];
 
 const NUMBER = new Intl.NumberFormat("en-US");
+const PAGE_SIZE = 100;
 
-const RANKING_MODES: Array<{ key: RankingMode; label: string }> = [
+type PageData = Record<RepoWindow, Record<number, RepoWindowRow[]>>;
+
+function initialPageData(windows: Record<RepoWindow, RepoWindowRow[]>): PageData {
+  return {
+    "1d": { 0: windows["1d"] ?? [] },
+    "7d": { 0: windows["7d"] ?? [] },
+    "30d": { 0: windows["30d"] ?? [] },
+    td: { 0: windows.td ?? [] },
+  };
+}
+
+const RANKING_MODES: Array<{ key: RepoActivitySort; label: string }> = [
   { key: "events", label: "Events" },
   { key: "pushes", label: "Pushes" },
   { key: "commits", label: "Commits" },
 ];
 
-const RANK_COLUMNS: Record<RankingMode, string> = {
+const RANK_COLUMNS: Partial<Record<RepoActivitySort, string>> = {
   events: "EVENTS",
   pushes: "PUSHES",
   commits: "COMMITS",
 };
 
-const RANK_VALUES: Record<RankingMode, (row: RepoWindowRow) => string> = {
+const RANK_VALUES: Partial<Record<RepoActivitySort, (row: RepoWindowRow) => string>> = {
   events: (r) => NUMBER.format(r.events),
   pushes: (r) => NUMBER.format(r.pushes),
   commits: (r) => NUMBER.format(r.commits),
@@ -45,9 +57,11 @@ function RankRow({
   rank: number;
   state: "idle" | "selected" | "loading";
   onOpen: (repo: string) => void;
-  mode?: RankingMode;
+  mode?: RepoActivitySort;
 }) {
   const subline = [row.language, row.description].filter(Boolean).join(" · ");
+  const spark = row.spark;
+  const trend = spark.length >= 2 ? (spark[spark.length - 1] > spark[0] ? "trending up" : spark[spark.length - 1] < spark[0] ? "trending down" : "stable") : "";
   return (
     <button
       type="button"
@@ -55,7 +69,7 @@ function RankRow({
       data-state={state}
       onClick={() => onOpen(row.repo_name)}
       aria-pressed={state === "selected"}
-      aria-label={`${row.repo_name}. ${NUMBER.format(row.events)} events, ${NUMBER.format(row.pushes)} pushes, ${NUMBER.format(row.commits)} commits, ${NUMBER.format(row.actors)} actors.`}
+      aria-label={`${row.repo_name}. ${NUMBER.format(row.events)} events, ${trend}. ${NUMBER.format(row.pushes)} pushes, ${NUMBER.format(row.commits)} commits, ${NUMBER.format(row.actors)} actors, ${NUMBER.format(row.stars)} stars, ${NUMBER.format(row.forks)} forks.`}
     >
       <span className="rank-num">{rank}</span>
       <span className="rank-repo">
@@ -63,23 +77,32 @@ function RankRow({
         {subline ? <em>{subline}</em> : null}
       </span>
       <span className="rank-spark">
-        <Sparkline data={row.spark} color="var(--cyan)" w={148} h={24} />
+        <Sparkline data={spark} color="var(--cyan)" w={148} h={24} />
       </span>
       <span className="rank-stats">
         <span><b>{NUMBER.format(row.pushes)}</b> pushes</span>
         <span><b>{NUMBER.format(row.commits)}</b> commits</span>
         <span><b>{NUMBER.format(row.actors)}</b> actors</span>
       </span>
-      <span className="rank-events">{RANK_VALUES[mode](row)}</span>
+      <span className="rank-events">{RANK_VALUES[mode]?.(row) ?? NUMBER.format(row.events)}</span>
     </button>
   );
 }
 
-export function RepoRankings({ windows, mode = "events" }: { windows: Record<RepoWindow, RepoWindowRow[]>; mode?: RankingMode }) {
+export function RepoRankings({ windows, mode = "events" }: { windows: Record<RepoWindow, RepoWindowRow[]>; mode?: RepoActivitySort }) {
   const router = useRouter();
   const pathname = usePathname();
   const [active, setActive] = useState<RepoWindow>("1d");
   const [query, setQuery] = useState("");
+  const [pageData, setPageData] = useState(() => initialPageData(windows));
+  const [pageByWindow, setPageByWindow] = useState<Record<RepoWindow, number>>({
+    "1d": 0,
+    "7d": 0,
+    "30d": 0,
+    td: 0,
+  });
+  const [pageLoading, setPageLoading] = useState(false);
+  const [pageError, setPageError] = useState<string | undefined>();
 
   const [selectedRepo, setSelectedRepo] = useState<string | undefined>();
   const [drilldown, setDrilldown] = useState<RepoDrilldownPayload | undefined>();
@@ -90,7 +113,8 @@ export function RepoRankings({ windows, mode = "events" }: { windows: Record<Rep
 
   useEffect(() => () => drilldownAbort.current?.abort(), []);
 
-  const source = windows[active] ?? [];
+  const page = pageByWindow[active];
+  const source = pageData[active]?.[page] ?? [];
   const rows = useMemo(() => {
     const needle = query.trim().toLowerCase();
     if (!needle) return source;
@@ -137,6 +161,38 @@ export function RepoRankings({ windows, mode = "events" }: { windows: Record<Rep
       ...totals,
     };
   }, [rows.length, source]);
+
+  async function loadPage(nextPage: number) {
+    if (nextPage < 0 || pageLoading) return;
+    const cached = pageData[active]?.[nextPage];
+    if (cached) {
+      setPageByWindow((current) => ({ ...current, [active]: nextPage }));
+      return;
+    }
+
+    setPageLoading(true);
+    setPageError(undefined);
+    try {
+      const params = new URLSearchParams({
+        window: active,
+        limit: String(PAGE_SIZE),
+        offset: String(nextPage * PAGE_SIZE),
+      });
+      const response = await fetch(`/api/trending?${params.toString()}`);
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error ?? "trending page failed");
+      const nextRows = Array.isArray(body.data) ? (body.data as RepoWindowRow[]) : [];
+      setPageData((current) => ({
+        ...current,
+        [active]: { ...current[active], [nextPage]: nextRows },
+      }));
+      setPageByWindow((current) => ({ ...current, [active]: nextPage }));
+    } catch (error) {
+      setPageError(error instanceof Error ? error.message : "trending page failed");
+    } finally {
+      setPageLoading(false);
+    }
+  }
 
   // Mirrors TickerRail.openRepo: abort-safe, last-click-wins drill-down fetch.
   async function openRepo(repoName: string) {
@@ -225,29 +281,37 @@ export function RepoRankings({ windows, mode = "events" }: { windows: Record<Rep
             role="tab"
             aria-selected={mode === m.key}
             className="rankings-tab"
-            onClick={() => router.push(`${pathname}?mode=${m.key}`)}
+            onClick={() => router.push(`${pathname}?sort=${m.key}`)}
           >
             {m.label}
           </button>
         ))}
       </div>
 
+      <p className="rankings-context mono" aria-live="polite">
+        <b>{active}</b> window · {NUMBER.format(summary.visible)} of {NUMBER.format(summary.total)} repos
+        {query.trim() ? <> · filtered by &ldquo;{query.trim()}&rdquo;</> : <> · ranked by {mode}</>}
+      </p>
       <div className="rank-head mono">
         <span className="rank-num">#</span>
         <span className="rank-repo">REPO</span>
         <span className="rank-spark">ACTIVITY</span>
         <span className="rank-stats">DETAILS</span>
-        <span className="rank-events">{RANK_COLUMNS[mode]}</span>
+        <span className="rank-events">{RANK_COLUMNS[mode] ?? "EVENTS"}</span>
       </div>
 
-      {rows.length === 0 ? (
-        <div className="repo-empty mono">No repos match &ldquo;{query}&rdquo;.</div>
+      {source.length === 0 && !query ? (
+        <div className="rankings-loading mono" role="status">
+          No ranking data available for the <b>{active}</b> window. Data appears after the first ingestion run populates per-day aggregates.
+        </div>
+      ) : rows.length === 0 ? (
+        <div className="repo-empty mono" role="status">No repos match &ldquo;{query}&rdquo; in the <b>{active}</b> window.</div>
       ) : (
         rows.map((row, i) => (
           <RankRow
             key={row.repo_name}
             row={row}
-            rank={i + 1}
+            rank={page * PAGE_SIZE + i + 1}
             state={
               loadingRepo === row.repo_name
                 ? "loading"
@@ -260,6 +324,29 @@ export function RepoRankings({ windows, mode = "events" }: { windows: Record<Rep
           />
         ))
       )}
+
+      <div className="rankings-pagination mono" aria-label="Trending pagination">
+        <button
+          type="button"
+          className="rankings-pagination-button"
+          disabled={page === 0 || pageLoading}
+          onClick={() => void loadPage(page - 1)}
+        >
+          Previous
+        </button>
+        <span aria-live="polite">
+          Page {page + 1} · {pageLoading ? "loading..." : `up to ${PAGE_SIZE} repos`}
+        </span>
+        <button
+          type="button"
+          className="rankings-pagination-button"
+          disabled={pageLoading || source.length < PAGE_SIZE}
+          onClick={() => void loadPage(page + 1)}
+        >
+          Next
+        </button>
+      </div>
+      {pageError ? <div className="repo-empty mono" role="alert">! {pageError}</div> : null}
 
       {(loadingRepo || drilldownError || drilldown) && (
         <div className="ticker-drilldown" aria-live="polite">
