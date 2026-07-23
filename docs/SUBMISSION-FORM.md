@@ -16,22 +16,22 @@ Attention Terminal — Real-Time Developer Telemetry & Visual Analytics Engine
 
 ### 2. Project Tagline
 ```text
-Beyond the Wall of Text: Real-time open-source developer telemetry and interactive SVG cards powered by ClickHouse OLAP and Trigger.dev background orchestration.
+Beyond the Wall of Text: Real-time developer telemetry & interactive SVG cards powered by ClickHouse OLAP and Trigger.dev background orchestration.
 ```
-*(Length: 157 characters / Max 160 characters)*
+*(Length: 152 characters / Max 160 characters)*
 
 ---
 
-### 3. Solution Summary (Exact 490 Words / Max 500 Words)
+### 3. Solution Summary (Exact 486 Words / Max 500 Words)
 
 ```text
 Traditional AI chat interfaces fail users by delivering a "wall of text"—dense paragraphs, repetitive bullet points, or raw unreadable log dumps. Attention Terminal fundamentally rejects this paradigm for open-source developer analytics. Built for the "Beyond the Wall of Text" theme, Attention Terminal transforms millions of raw event streams from GitHub Archive and Hacker News into interactive, Tufte-maximized SVG cards and real-time developer momentum signals. The response itself is the product: visual, interactive, and explorable.
 
-Attention Terminal is powered by a high-performance ClickHouse + Trigger.dev v3 dual engine:
+Attention Terminal is powered by a high-performance ClickHouse + Trigger.dev dual engine:
 
-1. ClickHouse Real-Time Data Layer: ClickHouse serves as our ultra-fast columnar database, executing sub-second analytical queries across tens of millions of raw developer events. Rather than implementing traditional Kimball star schemas with heavy join penalties, we designed a Pseudo-Medallion Architecture. Raw event streams ingest into Bronze append-only tables (`github_events`). The Silver layer applies bot-filtering (`lower(actor_login) NOT LIKE '%[bot]%'`) and token bloom filter skipping indexes (`idx_github_events_actor_login`). The Gold layer computes continuous rollups via `_hourly`, `_daily`, and `_weekly` `AggregatingMergeTree` tables and Materialized Views (`gh_repo_activity_feed_mv`, `gh_repo_period_rollups`), reducing query scan sizes by over 95%. Single-pass velocity queries calculate 24-hour push, commit, fork, and issue metrics in a single SQL execution. All DDL transformations are version-controlled via Goose DDL migrations integrated into automated CD pipelines.
+1. ClickHouse Real-Time Data Layer: ClickHouse serves as our ultra-fast columnar database, executing sub-second analytical queries across tens of millions of raw developer events. Rather than implementing traditional Kimball star schemas with heavy join penalties, we designed a Pseudo-Medallion Architecture. Raw event streams ingest into Bronze append-only tables (`github_events`). The Silver layer applies bot-filtering (`lower(actor_login) NOT LIKE '%[bot]%'`) and token bloom filter skipping indexes (`idx_github_events_actor_login`). The Gold layer computes continuous rollups via `_hourly`, `_daily`, and `_monthly` `AggregatingMergeTree` tables and Materialized Views (`gh_repo_activity_feed_mv`, `gh_repo_daily_mv`, `gh_repo_monthly_mv`), reducing query scan sizes by over 95%. Single-pass velocity queries calculate 24-hour push, commit, fork, and issue metrics in a single SQL execution. All DDL transformations are version-controlled via Goose DDL migrations integrated into automated CD pipelines.
 
-2. Trigger.dev v3 Orchestration: Trigger.dev handles high-frequency background ingestion workers, dbt continuous transformations, and async agent execution loops. It guarantees continuous streaming ingestion while managing scheduled rollup jobs without blocking user chat interactions.
+2. Trigger.dev Orchestration: Trigger.dev handles high-frequency background ingestion workers, dbt continuous transformations, and async agent execution loops. It guarantees continuous streaming ingestion while managing scheduled rollup jobs without blocking user chat interactions.
 
 3. Frontend Morphing Canvas, Storytelling with Data & Persistent Gemini Chatbox: The frontend features a persistent floating chatbox drawer (`FloatingChat.tsx`) allowing users to introspect datasets, ask natural language questions ("Why is repository X accelerating?"), and trigger visual cards without losing dashboard context. Answers render through custom SVG chart primitives (`PieChart`, `StackedBarChart`, `WaterfallChart`, `TreemapChart`, `DevScatterChart`, `HorizontalBarChart`). Following Cole Nussbaumer Knaflic’s *Storytelling with Data* principles, prompt engineering selects chart types by cognitive intent and generates an instant intuition verdict header before each figure. Charts enforce Edward Tufte’s data-ink maximization: zero chartjunk gridlines, direct labels, `Other` slice capping, global color indexing, and monospaced tabular numerics (`tabular-nums`).
 

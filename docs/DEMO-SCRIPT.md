@@ -3,7 +3,7 @@
 > **Target Duration**: 3:00 - 3:30 (Max 5:00)  
 > **Format**: Screen recording of working product + live narration (No slides / zero intro logos).  
 > **Theme**: *Beyond the Wall of Text*  
-> **Core Stack**: ClickHouse (Real-Time OLAP) + Trigger.dev v3 (Orchestration & Background Jobs)
+> **Core Stack**: ClickHouse (Real-Time OLAP) + Trigger.dev (Orchestration & Background Jobs)
 
 ---
 
@@ -52,7 +52,7 @@ gantt
 **Screen**: Switch to ClickHouse Console / Terminal showing query execution times (<150ms) and Trigger.dev dashboard showing active background ingestion tasks.
 
 **Voiceover Narration**:
-> *"Under the hood, Attention Terminal is powered by a high-throughput **ClickHouse + Trigger.dev v3** dual engine:*
+> *"Under the hood, Attention Terminal is powered by a high-throughput **ClickHouse + Trigger.dev** dual engine:*
 > - *Trigger.dev orchestrates high-frequency background ingestion workers, dbt continuous transformations, and async agent tasks.*
 > - *ClickHouse serves as our real-time columnar analytical database, processing millions of GitHub Archive events.*
 >
