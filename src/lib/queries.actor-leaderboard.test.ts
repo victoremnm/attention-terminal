@@ -49,7 +49,7 @@ describe("actorLeaderboard", () => {
   it("queries gh_actor_daily for humans and bots and coerces numeric values", async () => {
     const result = await actorLeaderboard();
 
-    expect(mocks.ensureTablesExist).toHaveBeenCalledWith(["github_events"]);
+    expect(mocks.ensureTablesExist).toHaveBeenCalledWith(["raw.github_events"]);
     expect(result.humans).toEqual([
       {
         actor_login: "alice",
@@ -75,7 +75,7 @@ describe("actorLeaderboard", () => {
     expect(result.provenance).toHaveLength(2);
 
     const [humanCall, botCall] = mocks.query.mock.calls.map((call) => call[0]);
-    expect(String(humanCall.query)).toContain("FROM github_events");
+    expect(String(humanCall.query)).toContain("FROM raw.github_events");
     expect(String(humanCall.query)).toContain("lower(actor_login) NOT LIKE '%[bot]%'");
     expect(String(botCall.query)).toContain("lower(actor_login) LIKE '%[bot]%'");
     expect(String(botCall.query)).toContain("LIMIT 10");
