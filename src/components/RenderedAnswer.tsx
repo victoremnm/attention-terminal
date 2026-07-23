@@ -116,7 +116,7 @@ function humanizeKey(key: string) {
     .replace(/\b([a-z])/g, (match) => match.toUpperCase());
 }
 
-function formatTableCell(value: unknown) {
+function formatTableCell(value: unknown): string {
   if (value === null || value === undefined || value === "") return "—";
   if (typeof value === "number") return Number.isFinite(value) ? value.toLocaleString() : "—";
   if (typeof value === "boolean") return value ? "true" : "false";

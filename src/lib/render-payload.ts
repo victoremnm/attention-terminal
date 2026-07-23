@@ -137,6 +137,13 @@ export const MatrixSchema = z.object({
   })),
 });
 
+// view-SQL: the exact query behind the card + real read stats. Not a reconstruction.
+export const CardQuerySchema = z.object({
+  sql: z.string(),
+  rowsRead: z.number().int().nonnegative(),
+  elapsedMs: z.number().nonnegative(),
+});
+
 export const MorphingCardSchema = z.object({
   type: z.literal("morphing-card"),
   visualizationType: VisualizationTypeSchema,
@@ -183,13 +190,6 @@ export const SkinnyVisualSchema = z.discriminatedUnion("kind", [
   DivergenceVisualSchema,
   CandlesVisualSchema,
 ]);
-
-// view-SQL: the exact query behind the card + real read stats. Not a reconstruction.
-export const CardQuerySchema = z.object({
-  sql: z.string(),
-  rowsRead: z.number().int().nonnegative(),
-  elapsedMs: z.number().nonnegative(),
-});
 
 export const SkinnyCommentSchema = z.object({
   author: z.string().max(120),
