@@ -26,7 +26,7 @@ The current design centers on three ideas:
 | **[ADR 0004](adr/0004-pseudo-medallion-clickhouse-data-modeling.md)** | **Rollup-Based Data Modeling** | Organizes data into hourly, daily, and monthly rollups with Goose migrations. | **Accepted** |
 | **[ADR 0005](adr/0005-double-click-repo-drilldown-card.md)** | **"Double-Click" Repo Drill-Down Card & Single-Pass Velocity Queries** | Defines the repo drill-down layout and query strategy. | **Accepted** |
 | **[ADR 0006](adr/0006-database-family-query-isolation.md)** | **`raw` Database Family for Firehose Query Isolation** | Adds thin `raw.*` views for the firehose tables while keeping storage in `default`. | **Accepted** |
-| **[ADR 0007](adr/0007-storytelling-with-data-and-council-of-agents.md)** | **Chart Selection & Model Benchmarking** | Describes chart-selection rules and model comparisons. | **Accepted** |
+| **[ADR 0007](adr/0007-storytelling-with-data-and-council-of-agents.md)** | **Storytelling with Data & Council of Agents** | Chart-selection rules (Tufte-disciplined SVG primitives mapped to data shape) and multi-model subagent benchmarking logged to ClickHouse. | **Accepted** |
 
 ---
 
