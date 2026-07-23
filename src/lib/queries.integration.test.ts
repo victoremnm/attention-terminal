@@ -91,6 +91,9 @@ describe.skipIf(!hasCH)("query layer (integration)", () => {
     for (const key of ["newRepos", "topForked", "shippingVelocity", "starBreakouts", "risingStories"] as const) {
       expect(Array.isArray(lanes[key])).toBe(true);
     }
+    expect(lanes.actors).toBeDefined();
+    expect(Array.isArray(lanes.actors?.humans)).toBe(true);
+    expect(Array.isArray(lanes.actors?.bots)).toBe(true);
     expect(Array.isArray(lanes.provenance)).toBe(true);
   }, 120_000);
 

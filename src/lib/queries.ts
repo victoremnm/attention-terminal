@@ -84,12 +84,29 @@ export interface TickerCard {
   repoName?: string;
 }
 
+export interface ActorLeaderboardRow {
+  actor_login: string;
+  events: number;
+  repos: number;
+  pushes: number;
+  prs_opened: number;
+  prs_merged: number;
+  score: number;
+}
+
+export interface ActorLeaderboard {
+  humans: ActorLeaderboardRow[];
+  bots: ActorLeaderboardRow[];
+  provenance: Provenance[];
+}
+
 export interface TickerLanes {
   newRepos: TickerCard[];
   topForked: TickerCard[];
   shippingVelocity: TickerCard[];
   starBreakouts: TickerCard[];
   risingStories: TickerCard[];
+  actors?: ActorLeaderboard;
   provenance: Provenance[];
   fetchedAt: string;
 }
@@ -109,8 +126,86 @@ function activityDelta(parts: Array<[string, string | number]>) {
   return visible.length ? visible.join(" · ") : undefined;
 }
 
+type ActorLeaderboardSqlRow = {
+  actor_login: string;
+  events: string;
+  repos: string;
+  pushes: string;
+  prs_opened: string;
+  prs_merged: string;
+  score: string;
+};
+
+export async function actorLeaderboard(window: "24h" | "7d" = "24h"): Promise<ActorLeaderboard> {
+  const dayWindow = window === "24h" ? "today() - 1" : "today() - 7";
+
+  const humanSql = `
+    SELECT
+      actor_login,
+      toString(countMerge(events)) AS events,
+      toString(uniqMerge(repos)) AS repos,
+      toString(sum(pushes)) AS pushes,
+      toString(sum(prs_opened)) AS prs_opened,
+      toString(sum(prs_merged)) AS prs_merged,
+      toString(
+        round(
+          sum(prs_merged) * 5 +
+          sum(prs_opened) * 3 +
+          sum(pushes) * 2 +
+          countMerge(events) * 1 +
+          uniqMerge(repos) * 2,
+          1
+        )
+      ) AS score
+    FROM gh_actor_daily
+    WHERE day >= ${dayWindow}
+      AND NOT actor_login ILIKE '%[bot]%'
+    GROUP BY actor_login
+    ORDER BY toFloat64(score) DESC
+    LIMIT 10
+  `;
+
+  const botSql = `
+    SELECT
+      actor_login,
+      toString(countMerge(events)) AS events,
+      toString(uniqMerge(repos)) AS repos,
+      toString(sum(pushes)) AS pushes,
+      toString(sum(prs_opened)) AS prs_opened,
+      toString(sum(prs_merged)) AS prs_merged,
+      toString(round(countMerge(events), 1)) AS score
+    FROM gh_actor_daily
+    WHERE day >= ${dayWindow}
+      AND actor_login ILIKE '%[bot]%'
+    GROUP BY actor_login
+    ORDER BY toFloat64(score) DESC
+    LIMIT 10
+  `;
+
+  const [humans, bots] = await Promise.all([
+    q<ActorLeaderboardSqlRow>(humanSql, ["gh_actor_daily"]),
+    q<ActorLeaderboardSqlRow>(botSql, ["gh_actor_daily"]),
+  ]);
+
+  const mapRow = (row: ActorLeaderboardSqlRow): ActorLeaderboardRow => ({
+    actor_login: row.actor_login,
+    events: Number(row.events),
+    repos: Number(row.repos),
+    pushes: Number(row.pushes),
+    prs_opened: Number(row.prs_opened),
+    prs_merged: Number(row.prs_merged),
+    score: Number(row.score),
+  });
+
+  return {
+    humans: humans.rows.map(mapRow),
+    bots: bots.rows.map(mapRow),
+    provenance: [humans.provenance, bots.provenance],
+  };
+}
+
 async function assembleTickerLanes(): Promise<TickerLanes> {
-  const [repos, forks, shipping, stars, stories] = await Promise.all([
+  const [repos, forks, shipping, stars, stories, actors] = await Promise.all([
     q<{ name: string; at: string; spark: number[] }>(
       // Window anchored to the feed's own high-water mark, not wall clock -
       // GH Archive is hourly and may lag during catch-up; the freshness strip
@@ -266,6 +361,7 @@ async function assembleTickerLanes(): Promise<TickerLanes> {
        ORDER BY velocity DESC LIMIT 20`,
       ["hackernews"]
     ),
+    actorLeaderboard("24h").catch(() => undefined),
   ]);
 
   return {
@@ -346,6 +442,7 @@ async function assembleTickerLanes(): Promise<TickerLanes> {
       // we don't collect. The lane's velocity (pts/hr) is the temporal signal.
       href: `https://news.ycombinator.com/item?id=${r.id}`,
     })),
+    actors,
     provenance: [repos.provenance, forks.provenance, shipping.provenance, stars.provenance, stories.provenance],
     fetchedAt: new Date().toISOString(),
   };
