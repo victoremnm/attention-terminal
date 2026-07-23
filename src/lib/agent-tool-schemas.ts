@@ -70,7 +70,7 @@ export const renderAnswerDef = {
 
 export const runDataRetrievalDef = {
   description:
-    "Data Retrieval Agent: Translates semantic intent into ClickHouse SQL, executes the query, persists the raw result set to temporary storage, and returns schema metadata, summary statistics (variance, cardinality, data types), and a retrieval key.",
+    "Data Retrieval Agent: Translates semantic intent into ClickHouse SQL, executes the query, persists the full raw result set to temporary storage, and returns schema metadata, summary statistics (variance, cardinality, data types), a retrieval key, and a bounded `sampleRows` array (<=50 rows) — pass sampleRows straight into a morphing-card payload's `data` field so the answer renders as a table immediately instead of a placeholder.",
   inputSchema: z.object({
     intent: z.string().min(1).max(12_000),
   }),
@@ -78,7 +78,7 @@ export const runDataRetrievalDef = {
 
 export const runVisualizationMappingDef = {
   description:
-    "Visualization Mapping Agent: Maps data metadata and semantic intent against the data storytelling taxonomy to return a UI configuration payload (chart type, axes mapping, stylistic overrides).",
+    "Visualization Mapping Agent: Maps data metadata and semantic intent against the data storytelling taxonomy to return a UI configuration payload (chart type, axes mapping, stylistic overrides). The client only renders chart types Line Graph, Area Chart, and Bar Chart from this taxonomy — for any other chartType still populate the morphing-card payload's `data` field so the answer shows a table instead of nothing.",
   inputSchema: z.object({
     intent: z.string(),
     metadata: z.record(z.string(), z.unknown()),

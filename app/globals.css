@@ -751,6 +751,70 @@ a { color: inherit; }
   color: rgba(255, 255, 255, .76);
   font-size: 12px;
 }
+.agent-freshness {
+  display: block;
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 10px;
+  letter-spacing: .04em;
+}
+.agent-answer-head .agent-freshness {
+  margin-top: 0;
+}
+.agent-data-table-wrap {
+  margin: 10px 0;
+  max-height: 360px;
+  overflow: auto;
+  border: 1px solid var(--line-soft);
+  border-radius: 5px;
+}
+.agent-data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+}
+.agent-data-table th,
+.agent-data-table td {
+  padding: 5px 8px;
+  border-bottom: 1px solid var(--line-soft);
+  text-align: left;
+  white-space: nowrap;
+}
+.agent-data-table th {
+  position: sticky;
+  top: 0;
+  background: var(--panel);
+  color: var(--muted);
+  font-weight: 600;
+  z-index: 1;
+}
+.agent-data-table tr:nth-child(even) td {
+  background: rgba(255, 255, 255, .02);
+}
+.agent-data-table-note {
+  margin: 0;
+  padding: 4px 8px;
+  color: var(--muted);
+  font-size: 10px;
+}
+.agent-viz-lazy {
+  margin-top: 10px;
+}
+.agent-viz-skeleton {
+  height: 160px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+  font-size: 10px;
+  border: 1px dashed var(--line-soft);
+  border-radius: 5px;
+  animation: agent-viz-pulse 1.6s ease-in-out infinite;
+}
+@keyframes agent-viz-pulse {
+  0%, 100% { opacity: .55; }
+  50% { opacity: 1; }
+}
 .agent-digest-list {
   display: flex;
   flex-direction: column;

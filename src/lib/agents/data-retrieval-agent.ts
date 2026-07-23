@@ -28,6 +28,11 @@ function getClickHouse() {
 }
 
 const READ_ONLY_STATEMENTS = /^\s*(select|with|show|describe|desc|explain|exists)\b/i;
+// Bounded row sample returned to the calling model so it can populate a
+// morphing-card payload's `data` field directly — previously this tool only
+// returned column metadata, leaving the model with no rows to render and no
+// path except a placeholder chart (issue #143/#144).
+const MAX_SAMPLE_ROWS = 50;
 
 function hasMultipleStatements(query: string) {
   return query.replace(/;+\s*$/, "").includes(";");
@@ -96,5 +101,8 @@ export async function runDataRetrievalAgent(intent: string) {
     rowCount: rows.length,
     metadata,
     queryExecuted: query,
+    // Bounded sample the model can pass straight into a morphing-card
+    // payload's `data` field (see runVisualizationMappingDef / MorphingCardSchema).
+    sampleRows: rows.slice(0, MAX_SAMPLE_ROWS),
   };
 }

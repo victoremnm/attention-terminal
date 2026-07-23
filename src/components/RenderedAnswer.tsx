@@ -1,9 +1,16 @@
 "use client";
 
-import type { CandlesPayload, DigestPayload, DivergencePayload, MatrixPayload, MorphingCardPayload, RenderPayload, RepoDrilldownPayload, RepoDrilldownActivity, RepoDrilldownPulse, RepoDrilldownTrend, TickerPayload, VerdictTile } from "@/lib/render-payload";
+import { useEffect, useRef, useState } from "react";
+import type { CandlesPayload, DigestPayload, DivergencePayload, MatrixPayload, MorphingCardDataRow, MorphingCardPayload, MorphingCardVisualization, RenderPayload, RepoDrilldownPayload, RepoDrilldownActivity, RepoDrilldownPulse, RepoDrilldownTrend, TickerPayload, VerdictTile, VisualizationType } from "@/lib/render-payload";
 import { VERDICT_COLOR } from "@/lib/verdict-color";
 import { AreaChart, DualLine, HorizontalBarChart, Sparkline, VerticalBarChart } from "./charts";
+import { MarkdownText } from "./MarkdownText";
 import { SkinnyDeck } from "./SkinnyDeck";
+
+function FreshnessBadge({ freshness }: { freshness?: string }) {
+  if (!freshness) return null;
+  return <span className="agent-freshness mono">{freshness}</span>;
+}
 
 function VerdictBadge({ verdict }: { verdict: VerdictTile }) {
   return (
@@ -108,6 +115,7 @@ function DivergenceAnswer({ payload }: { payload: DivergencePayload }) {
       <VerdictBadge verdict={payload.verdict} />
       <DualLine days={payload.days} a={payload.talk} b={payload.code} aLabel="talk · HN" bLabel="code · GH" />
       <p className="agent-caption">{payload.caption}</p>
+      <FreshnessBadge freshness={payload.freshness} />
     </div>
   );
 }
@@ -118,6 +126,7 @@ function CandlesAnswer({ payload }: { payload: CandlesPayload }) {
       <div className="agent-answer-head mono">{payload.subject}</div>
       <VerdictBadge verdict={payload.verdict} />
       <AreaChart days={payload.days} values={payload.values} label={payload.caption} />
+      <FreshnessBadge freshness={payload.freshness} />
     </div>
   );
 }
@@ -517,16 +526,143 @@ function RepoDrilldownAnswer({ payload }: { payload: RepoDrilldownPayload }) {
   );
 }
 
+// Chart types RenderedAnswer actually implements for the generic morphing-card
+// path. Every other entry in VisualizationTypeSchema's taxonomy degrades to
+// the data table instead of a placeholder — see the answer grammar in
+// src/lib/agent-prompt.ts, which documents this exact list to the model.
+const SUPPORTED_MORPHING_CHARTS = new Set<VisualizationType>(["Line Graph", "Area Chart", "Bar Chart"]);
+
+function formatCell(value: string | number | boolean | null | undefined): string {
+  if (value === null || value === undefined) return "—";
+  if (typeof value === "boolean") return value ? "true" : "false";
+  if (typeof value === "number") return Number.isInteger(value) ? value.toLocaleString() : value.toFixed(2);
+  return value;
+}
+
+function MorphingDataTable({ rows }: { rows: MorphingCardDataRow[] }) {
+  if (!rows.length) return null;
+  const columns = Array.from(
+    rows.reduce((set, row) => {
+      Object.keys(row).forEach((key) => set.add(key));
+      return set;
+    }, new Set<string>())
+  );
+  const MAX_ROWS = 100;
+  const shown = rows.slice(0, MAX_ROWS);
+
+  return (
+    <div className="agent-data-table-wrap">
+      <table className="agent-data-table mono">
+        <thead>
+          <tr>{columns.map((col) => <th key={col}>{col}</th>)}</tr>
+        </thead>
+        <tbody>
+          {shown.map((row, idx) => (
+            <tr key={idx}>
+              {columns.map((col) => <td key={col}>{formatCell(row[col])}</td>)}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {rows.length > shown.length && (
+        <p className="agent-data-table-note mono">showing {shown.length} of {rows.length} rows</p>
+      )}
+    </div>
+  );
+}
+
+// IntersectionObserver-backed lazy mount: renders a lightweight skeleton until
+// the node scrolls into view, then mounts `children()` once. Falls back to
+// rendering eagerly if IntersectionObserver isn't available (never hides
+// content forever).
+function useInView<T extends Element>(rootMargin = "200px") {
+  const ref = useRef<T | null>(null);
+  const [inView, setInView] = useState(false);
+
+  useEffect(() => {
+    const node = ref.current;
+    if (!node) return;
+    if (typeof IntersectionObserver === "undefined") {
+      setInView(true);
+      return;
+    }
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          setInView(true);
+          observer.disconnect();
+        }
+      },
+      { rootMargin }
+    );
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, []);
+
+  return [ref, inView] as const;
+}
+
+function LazyVisualization({ label, children }: { label: string; children: () => React.ReactNode }) {
+  const [ref, inView] = useInView<HTMLDivElement>();
+  return (
+    <div ref={ref} className="agent-viz-lazy">
+      {inView ? children() : (
+        <div className="agent-viz-skeleton mono" role="status" aria-label={`${label} chart loading`}>
+          rendering {label.toLowerCase()}…
+        </div>
+      )}
+    </div>
+  );
+}
+
+function MorphingChart({ visualization, data }: { visualization: MorphingCardVisualization; data: MorphingCardDataRow[] }) {
+  const { visualizationType, chartConfig } = visualization;
+  if (data.length < 2) return null;
+
+  const axes = (chartConfig?.axesMapping ?? {}) as Record<string, string>;
+  const columns = Object.keys(data[0]);
+  const xKey = axes.x && columns.includes(axes.x) ? axes.x : columns[0];
+  const yKey = axes.y && columns.includes(axes.y)
+    ? axes.y
+    : columns.find((col) => col !== xKey && typeof data[0][col] === "number");
+  if (!yKey) return null;
+
+  const labels = data.map((row) => String(row[xKey] ?? ""));
+  const values = data.map((row) => Number(row[yKey]) || 0);
+
+  if (visualizationType === "Line Graph" || visualizationType === "Area Chart") {
+    return <AreaChart days={labels} values={values} label={`${yKey} by ${xKey}`} />;
+  }
+  if (visualizationType === "Bar Chart") {
+    const items = data.slice(0, 10).map((row) => ({ label: String(row[xKey] ?? ""), value: Number(row[yKey]) || 0 }));
+    return <HorizontalBarChart items={items} title={`${yKey} by ${xKey}`} />;
+  }
+  return null;
+}
+
 function MorphingCardAnswer({ payload }: { payload: MorphingCardPayload }) {
+  const data = payload.data ?? [];
+  const visualization: MorphingCardVisualization | undefined =
+    payload.visualization ?? (payload.visualizationType && payload.chartConfig
+      ? { visualizationType: payload.visualizationType, chartConfig: payload.chartConfig }
+      : undefined);
+  const canLazyChart = Boolean(visualization && SUPPORTED_MORPHING_CHARTS.has(visualization.visualizationType) && data.length > 1);
+  const isEmpty = !payload.summary && data.length === 0 && !visualization;
+
   return (
     <div className="agent-answer morphing-card">
       <div className="agent-answer-head mono">
-        {payload.visualizationType.toUpperCase()}
+        {(visualization?.visualizationType ?? "ANSWER").toUpperCase()}
+        <FreshnessBadge freshness={payload.freshness} />
       </div>
-      <div className="agent-chart-placeholder" style={{ padding: '1rem', background: '#f5f5f5', color: '#000', margin: '1rem 0' }}>
-        {payload.summary && <p style={{ marginBottom: '0.5rem' }}>{payload.summary}</p>}
-        <i>[Morphing Canvas for {payload.visualizationType}]</i>
-      </div>
+      {payload.summary && <MarkdownText text={payload.summary} />}
+      <MorphingDataTable rows={data} />
+      {canLazyChart && (
+        <LazyVisualization label={visualization!.visualizationType}>
+          {() => <MorphingChart visualization={visualization!} data={data} />}
+        </LazyVisualization>
+      )}
+      {isEmpty && <p className="agent-caption">no structured data returned for this answer.</p>}
     </div>
   );
 }
