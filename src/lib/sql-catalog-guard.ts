@@ -198,3 +198,32 @@ export function requireFinalOnReplacingTables(query: string): string[] {
 
   return [...missing];
 }
+
+const ROLLUP_TABLE_PATTERN = /\b(gh_repo_daily|gh_actor_daily|gh_repo_hourly|hn_hourly|gh_actor_daily_rollup)\b/i;
+
+/**
+ * Detects periodic rollup tables (gh_repo_daily, gh_actor_daily, gh_repo_hourly, hn_hourly)
+ * referenced in `query` without a GROUP BY clause.
+ * Rollup tables store periodic snapshot rows (1 per day/hour). Querying them
+ * over a time range without GROUP BY returns duplicate rows for the same entity.
+ */
+export function requireGroupedRollupTables(query: string): string[] {
+  const cteNames = getCteNames(query);
+  const unGrouped = new Set<string>();
+
+  const hasGroupBy = /\bGROUP\s+BY\b/i.test(query);
+  if (hasGroupBy) return [];
+
+  for (const match of query.matchAll(
+    /\b(?:from|join)\s+([`"]?)([A-Za-z_][\w$]*)\1(?:\.([`"]?)([A-Za-z_][\w$]*)\3)?/gi
+  )) {
+    if (cteNames.has(match[2])) continue;
+    const table = match[4] ? `${match[2]}.${match[4]}` : match[2];
+    const normalized = normalizeTableName(table);
+    if (ROLLUP_TABLE_PATTERN.test(normalized)) {
+      unGrouped.add(normalized);
+    }
+  }
+
+  return [...unGrouped];
+}

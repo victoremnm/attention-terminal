@@ -35,6 +35,7 @@ const generateObjectMock = vi.mocked(generateObject);
 const CATALOG_ROWS = [
   { database: "raw", name: "hackernews", engine: "MergeTree" },
   { database: "raw", name: "github_events", engine: "MergeTree" },
+  { database: "default", name: "gh_repo_daily", engine: "SummingMergeTree" },
 ];
 
 function mockCatalogFetch() {
@@ -241,6 +242,26 @@ describe("runDataRetrievalAgent", () => {
     const secondCallPrompt = generateObjectMock.mock.calls[1][0] as any;
     const retryUserMsg = [...secondCallPrompt.messages].reverse().find((m: any) => m.role === "user");
     expect(retryUserMsg.content).toContain("HINT: Verify column names against table schemas");
+    expect(result).toMatchObject({ rowCount: 1 });
+  });
+
+  it("rejects non-grouped reads on gh_repo_daily without executing them, then succeeds on retry with GROUP BY", async () => {
+    mockCatalogFetch();
+    mocks.query.mockResolvedValueOnce({ json: async () => [{ repo_name: "htmx/htmx", total_stars: 50 }] });
+
+    generateObjectMock
+      .mockResolvedValueOnce({
+        object: { query: "SELECT repo_name, stars FROM default.gh_repo_daily WHERE day >= today() - 7" },
+      } as any)
+      .mockResolvedValueOnce({
+        object: { query: "SELECT repo_name, SUM(stars) AS total_stars FROM default.gh_repo_daily WHERE day >= today() - 7 GROUP BY repo_name" },
+      } as any);
+
+    const result = await runDataRetrievalAgent("trending repos");
+
+    const secondCallPrompt = generateObjectMock.mock.calls[1][0] as any;
+    const retryUserMsg = [...secondCallPrompt.messages].reverse().find((m: any) => m.role === "user");
+    expect(retryUserMsg.content).toContain("Rollup table(s) missing GROUP BY: default.gh_repo_daily");
     expect(result).toMatchObject({ rowCount: 1 });
   });
 });
