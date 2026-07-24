@@ -1,12 +1,11 @@
 "use client";
 
-import { createContext, useCallback, useContext, useRef, useState } from "react";
-
-type ChatState = "closed" | "minimized" | "open";
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
+import { getSafeLocalStorage, loadChatVisibility, saveChatVisibility, type ChatVisibilityState } from "./chat-persistence";
 
 type ChatContextValue = {
-  state: ChatState;
-  setState: (state: ChatState) => void;
+  state: ChatVisibilityState;
+  setState: (state: ChatVisibilityState) => void;
   toggle: () => void;
   open: () => void;
   minimize: () => void;
@@ -20,12 +19,22 @@ type ChatContextValue = {
 const ChatContext = createContext<ChatContextValue | null>(null);
 
 export function ChatProvider({ children }: { children: React.ReactNode }) {
-  const [state, setState] = useState<ChatState>("closed");
+  const [state, setState] = useState<ChatVisibilityState>("closed");
   const [pendingInput, setPendingInput] = useState("");
   const sendMessageRef = useRef<((text: string) => void) | null>(null);
 
+  useEffect(() => {
+    const storage = getSafeLocalStorage();
+    setState(loadChatVisibility(storage));
+  }, []);
+
+  useEffect(() => {
+    const storage = getSafeLocalStorage();
+    saveChatVisibility(storage, state);
+  }, [state]);
+
   const toggle = useCallback(() => {
-    setState((s) => (s === "closed" ? "open" : "closed"));
+    setState((s) => (s === "open" ? "closed" : "open"));
   }, []);
 
   const open = useCallback(() => setState("open"), []);

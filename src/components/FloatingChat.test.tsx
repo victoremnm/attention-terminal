@@ -40,6 +40,7 @@ function renderWithControls() {
 
 describe("FloatingChat", () => {
   beforeEach(() => {
+    window.localStorage.clear();
     // jsdom doesn't implement getBoundingClientRect well; mock it
     Element.prototype.getBoundingClientRect = vi.fn(() => ({
       left: 1000,
@@ -61,9 +62,10 @@ describe("FloatingChat", () => {
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
-  it("renders a drawer dialog when open", () => {
+  it("renders a drawer dialog when open", async () => {
     renderWithControls();
     act(() => screen.getByTestId("btn-open").click());
+    await waitFor(() => expect(screen.getByRole("dialog")).toBeInTheDocument());
     expect(screen.getByRole("dialog")).toBeInTheDocument();
     expect(screen.getByText("CHAT.AGENT")).toBeInTheDocument();
   });
@@ -76,13 +78,13 @@ describe("FloatingChat", () => {
     expect(screen.getByText("what type of visualizations can you make?")).toBeInTheDocument();
   });
 
-  it("shows a backdrop that closes the drawer on click", () => {
+  it("keeps the drawer open when the backdrop is clicked", async () => {
     renderWithControls();
     act(() => screen.getByTestId("btn-open").click());
     const backdrop = document.querySelector(".floating-chat-backdrop");
     expect(backdrop).toBeInTheDocument();
     act(() => fireEvent.click(backdrop!));
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole("dialog")).toBeInTheDocument());
   });
 
   it("shows minimized pill when minimized", () => {
@@ -96,7 +98,7 @@ describe("FloatingChat", () => {
     expect(drawer?.className).toContain("minimized-hidden");
   });
 
-  it("reopens from minimized pill", () => {
+  it("reopens from minimized pill", async () => {
     renderWithControls();
     act(() => screen.getByTestId("btn-open").click());
     act(() => screen.getByTestId("btn-minimize").click());
@@ -104,15 +106,16 @@ describe("FloatingChat", () => {
     expect(pill).toBeInTheDocument();
     act(() => fireEvent.click(pill!));
     // drawer should be visible again
-    const drawer = document.querySelector(".floating-chat-drawer");
-    expect(drawer?.className).not.toContain("minimized-hidden");
+    await waitFor(() => {
+      const drawer = document.querySelector(".floating-chat-drawer");
+      expect(drawer?.className).not.toContain("minimized-hidden");
+    });
   });
 
-  it("renders minimize and close buttons in the drawer header", () => {
+  it("renders the minimize button in the drawer header", () => {
     renderWithControls();
     act(() => screen.getByTestId("btn-open").click());
     expect(screen.getByRole("button", { name: "Minimize chat" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Close chat" })).toBeInTheDocument();
   });
 
   it("minimizes when the minimize button is clicked", () => {
@@ -122,9 +125,10 @@ describe("FloatingChat", () => {
     expect(document.querySelector(".floating-chat-minimized")).toBeInTheDocument();
   });
 
-  it("closes when the close button is clicked", () => {
+  it("dismisses the minimized pill when its close button is clicked", () => {
     renderWithControls();
     act(() => screen.getByTestId("btn-open").click());
+    act(() => screen.getByRole("button", { name: "Minimize chat" }).click());
     act(() => screen.getByRole("button", { name: "Close chat" }).click());
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
