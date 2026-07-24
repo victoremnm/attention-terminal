@@ -103,6 +103,26 @@ export async function runDataRetrievalAgent(intent: string): Promise<
 Only reference tables from this catalog — never invent a table or column name:
 ${referenceText}
 
+CORE TABLE COLUMNS (Use EXACT column names):
+- raw.github_events & default.github_events:
+  Columns: created_at (DateTime), event_type (String), repo_name (String), actor_login (String), action (String), ref_type (String), commit_count (UInt16), distinct_commit_count (UInt16), pr_merged (UInt8).
+  NOTE: Time column is created_at (NOT event_time or event_date). Use commit_count or distinct_commit_count (NOT commits) for commit counts on github_events. There is NO repo_description column on github_events.
+
+- default.gh_repo_activity_feed:
+  Columns: created_at (DateTime), repo_name (String), actor_login (String), event_type (String), action (String), commits (UInt32), title (String).
+  NOTE: Time column is created_at (NOT event_time or event_date).
+
+- default.gh_repo_metadata (ReplacingMergeTree -- requires FINAL):
+  Columns: repo_name (String), owner (String), description (String), language (String), topics (Array(String)), github_stars (UInt64), fetched_at (DateTime).
+  NOTE: To search repo descriptions or topics, query or JOIN default.gh_repo_metadata FINAL on repo_name.
+
+- default.gh_repo_daily:
+  Columns: day (Date), repo_name (String), pushes (UInt32), commits (UInt32), stars (UInt32), forks (UInt32), prs_opened (UInt32), prs_merged (UInt32).
+
+- raw.hackernews & default.hackernews (ReplacingMergeTree -- requires FINAL):
+  Columns: id (UInt64), by (String), time (DateTime), title (String), url (String), score (UInt32), type (String).
+  NOTE: Time column is time (DateTime).
+
 Any table marked "(ReplacingMergeTree -- requires FINAL)" can hold duplicate/stale-version rows until a background merge runs -- always add FINAL after the table name (and after any alias, e.g. FROM hackernews FINAL or FROM gh_repo_metadata AS m FINAL) or the result will contain the same logical row more than once.
 
 If you are unsure whether a column exists on a table, prefer a simpler query over guessing a column name.`;
@@ -199,7 +219,12 @@ If you are unsure whether a column exists on a table, prefer a simpler query ove
         sampleRows: rows.slice(0, MAX_SAMPLE_ROWS),
       };
     } catch (error) {
-      lastError = error instanceof Error ? error.message : String(error);
+      const rawErr = error instanceof Error ? error.message : String(error);
+      if (/unknown (expression|function identifier|identifier)/i.test(rawErr) || rawErr.includes("47")) {
+        lastError = `${rawErr}\nHINT: Verify column names against table schemas above: on github_events, commit count is 'commit_count' or 'distinct_commit_count' (NOT 'commits'); time column is 'created_at' on github_events and gh_repo_activity_feed (NOT 'event_time' or 'event_date'), 'time' on hackernews, and 'day' on gh_repo_daily. Repo descriptions are in 'gh_repo_metadata.description' (JOIN default.gh_repo_metadata FINAL ON repo_name).`;
+      } else {
+        lastError = rawErr;
+      }
     }
   }
 

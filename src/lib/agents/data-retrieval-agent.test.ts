@@ -217,4 +217,30 @@ describe("runDataRetrievalAgent", () => {
     expect(mocks.query).toHaveBeenCalledTimes(1); // only the catalog fetch
     expect(result).toMatchObject({ error: expect.stringContaining("read-only") });
   });
+
+  it("includes core table column schemas in system prompt and adds hints on UNKNOWN_IDENTIFIER errors", async () => {
+    mockCatalogFetch();
+    mocks.query
+      .mockRejectedValueOnce(new Error("ClickHouseError: Unknown expression or function identifier `event_date`"))
+      .mockResolvedValueOnce({ json: async () => [{ repo_name: "htmx/htmx" }] });
+
+    generateObjectMock
+      .mockResolvedValueOnce({
+        object: { query: "SELECT repo_name FROM raw.github_events WHERE event_date >= today()" },
+      } as any)
+      .mockResolvedValueOnce({
+        object: { query: "SELECT repo_name FROM raw.github_events WHERE created_at >= today()" },
+      } as any);
+
+    const result = await runDataRetrievalAgent("repos active today");
+
+    const firstCallPrompt = generateObjectMock.mock.calls[0][0] as any;
+    expect(firstCallPrompt.instructions).toContain("Time column is created_at");
+    expect(firstCallPrompt.instructions).toContain("gh_repo_metadata");
+
+    const secondCallPrompt = generateObjectMock.mock.calls[1][0] as any;
+    const retryUserMsg = [...secondCallPrompt.messages].reverse().find((m: any) => m.role === "user");
+    expect(retryUserMsg.content).toContain("HINT: Verify column names against table schemas");
+    expect(result).toMatchObject({ rowCount: 1 });
+  });
 });
