@@ -2,9 +2,12 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // digest.ts imports `q` via a relative "./queries" specifier (not the "@/lib/queries"
 // alias), so the mock specifier here must match exactly for vi.mock to intercept it.
-const { q } = vi.hoisted(() => ({ q: vi.fn() }));
+const { q, coreQ } = vi.hoisted(() => ({ q: vi.fn(), coreQ: vi.fn() }));
 
 vi.mock("./queries", () => ({ q }));
+vi.mock("./queries/core", () => ({ q: coreQ }));
+
+import { HnThreadInsightsSchema } from "./render-payload";
 
 const taxonomyRows = [
   {
@@ -33,6 +36,7 @@ describe("dailyDigest", () => {
   beforeEach(() => {
     vi.resetModules();
     q.mockReset();
+    coreQ.mockReset();
   });
 
   it("drops subjects with no matching taxonomy entry (e.g. self-referential 'Attention Terminal') while keeping taxonomy-backed subjects", async () => {
@@ -98,5 +102,46 @@ describe("dailyDigest", () => {
     expect(second.clusters.map((cluster) => cluster.subject)).toContain("ClickHouse");
 
     expect(taxonomyCalls).toBe(2);
+  });
+
+  it("selects one recent FINAL story and derives themes from bounded evidence without changing numeric IDs", async () => {
+    q.mockImplementation(async (_sql: string, tables: string[]) => {
+      if (tables[0] === "daily_skinny_taxonomy") return { rows: taxonomyRows, provenance: {} };
+      return { rows: [{ id: "900", title: "ClickHouse discussion" }], provenance: {} };
+    });
+    coreQ.mockResolvedValue({
+      rows: [{
+        id: 900, title: "ClickHouse discussion", url: "", by: "author", time: 1_700_000_000,
+        score: "42", descendants: "4", kids: [901, 902, 903],
+      },
+      ],
+    });
+
+    const { threadInsights, DIGEST_THREAD_STORY_SQL } = await import("./digest");
+    const result = await threadInsights("clickhouse");
+
+    expect(DIGEST_THREAD_STORY_SQL).toContain("FROM raw.hackernews FINAL");
+    expect(result?.evidence.story.id).toBe(900);
+    expect(typeof result?.evidence.story.id).toBe("number");
+    expect(coreQ).toHaveBeenCalledWith(expect.stringContaining("WHERE id = {storyId:UInt64}"), ["raw.hackernews"], expect.anything());
+  });
+
+  it("returns null for unknown topics or when no representative story exists", async () => {
+    q.mockImplementation(async (_sql: string, tables: string[]) => {
+      if (tables[0] === "daily_skinny_taxonomy") return { rows: taxonomyRows, provenance: {} };
+      return { rows: [], provenance: {} };
+    });
+    const { threadInsights } = await import("./digest");
+    await expect(threadInsights("does-not-exist")).resolves.toBeNull();
+    await expect(threadInsights("clickhouse")).resolves.toBeNull();
+    expect(coreQ).not.toHaveBeenCalled();
+  });
+
+  it("keeps insights optional and rejects malformed or over-bounded theme payloads", () => {
+    expect(HnThreadInsightsSchema.safeParse({ evidence: {}, themes: [] }).success).toBe(false);
+    const result = HnThreadInsightsSchema.safeParse({ evidence: {}, themes: Array.from({ length: 6 }, () => ({
+      label: "theme", count: 2, coverage: 0.5, representativeCommentIds: [1], confidence: 0.8,
+    })) });
+    expect(result.success).toBe(false);
   });
 });

@@ -97,6 +97,19 @@ export const HnThreadEvidenceSchema = z.object({
   })),
 });
 
+export const HnThemeSchema = z.object({
+  label: z.string().min(1).max(120),
+  count: z.number().int().positive(),
+  coverage: z.number().min(0).max(1),
+  representativeCommentIds: z.array(z.number().int().nonnegative()).min(1).max(3),
+  confidence: z.number().min(0).max(1),
+});
+
+export const HnThreadInsightsSchema = z.object({
+  evidence: HnThreadEvidenceSchema,
+  themes: z.array(HnThemeSchema).max(5),
+});
+
 export const DigestClusterSchema = z.object({
   id: z.string(),
   subject: z.string(),
@@ -115,6 +128,7 @@ export const DigestClusterSchema = z.object({
     hn: z.string().url(),
     github: z.string().url(),
   }),
+  threadInsights: HnThreadInsightsSchema.optional(),
   takes: z
     .object({
       agree: z.array(EvidenceLinkSchema),
@@ -456,6 +470,8 @@ export type Verdict = z.infer<typeof VerdictSchema>;
 export type VerdictTile = z.infer<typeof VerdictTileSchema>;
 export type EvidenceLink = z.infer<typeof EvidenceLinkSchema>;
 export type HnThreadEvidence = z.infer<typeof HnThreadEvidenceSchema>;
+export type HnTheme = z.infer<typeof HnThemeSchema>;
+export type HnThreadInsights = z.infer<typeof HnThreadInsightsSchema>;
 export type DigestCluster = z.infer<typeof DigestClusterSchema>;
 export type DigestPayload = z.infer<typeof DigestSchema>;
 export type TickerPayload = z.infer<typeof TickerSchema>;
