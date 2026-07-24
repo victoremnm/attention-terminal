@@ -5,15 +5,20 @@ Hacker News and GitHub inserts to use `daily_skinny_taxonomy`. It deliberately
 does not truncate or backfill `daily_skinny_subject_hourly` while ingestion is
 live. Existing rows remain available as a legacy-compatible transitional state.
 
-Run this procedure only during a maintenance window:
+Run this procedure only during a maintenance window. The migration itself
+drops the old materialized views before creating the taxonomy-driven views, so
+source inserts can be missed if either writer runs during that interval.
 
-1. Pause both the Hacker News and GitHub ingestion jobs. Do not continue until
-   both writers are stopped.
-2. Run the following statements as one controlled maintenance operation. The
-   30-day bounds follow the original Daily Skinny backfill window, and the
-   aggregate expressions match `daily_skinny_subject_hourly`.
-3. Confirm both ingestion jobs are still paused until the statements finish.
-4. Resume both ingestion jobs. The recreated materialized views will process
+1. Pause both the Hacker News and GitHub ingestion jobs before applying
+   migration `20260724000002_daily_skinny_taxonomy_mv.sql`. Do not continue
+   until both writers are stopped.
+2. Apply migration `20260724000002_daily_skinny_taxonomy_mv.sql`.
+3. Keep both writers paused while the migration completes, then run the
+   following statements as one controlled maintenance operation. The 30-day
+   bounds follow the original Daily Skinny backfill window, and the aggregate
+   expressions match `daily_skinny_subject_hourly`.
+4. Confirm the migration and manual truncate/backfill have both finished.
+5. Resume both ingestion jobs. The recreated materialized views will process
    new source inserts using the current taxonomy.
 
 Do not run these statements while either source writer is live. The target is

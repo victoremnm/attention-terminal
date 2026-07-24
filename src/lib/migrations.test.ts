@@ -34,6 +34,14 @@ describe("Goose Migrations & Skipping Index Verification", () => {
     expect(migration).toContain("docs/data/daily-skinny-taxonomy-backfill.md");
     expect(migration).toContain("daily_skinny_hn_hourly_mv");
     expect(migration).toContain("daily_skinny_gh_hourly_mv");
+
+    const runbook = await fs.readFile(
+      path.join(process.cwd(), "docs/data/daily-skinny-taxonomy-backfill.md"),
+      "utf-8"
+    );
+    expect(runbook).toContain("before applying\n   migration `20260724000002_daily_skinny_taxonomy_mv.sql`");
+    expect(runbook).toContain("Keep both writers paused while the migration completes");
+    expect(runbook).toContain("Resume both ingestion jobs");
   });
 
   it("verifies goose migration status via scripts/migrate.sh status", () => {
