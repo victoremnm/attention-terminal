@@ -1,4 +1,4 @@
-import { clickhouse } from "../src/lib/clickhouse";
+import { clickhouse } from "../../src/lib/clickhouse";
 
 async function runBackfill() {
   const daysArg = process.argv[2];

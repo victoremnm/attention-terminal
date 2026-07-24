@@ -6,4 +6,4 @@ cd "$(dirname "$0")/.."
 
 DAYS="${1:-30}"
 echo "Running daily skinny taxonomy backfill for ${DAYS} days..."
-npx tsx scripts/backfill-daily-skinny-taxonomy.ts "${DAYS}"
+npx tsx scripts/backfills/backfill-daily-skinny-taxonomy.ts "${DAYS}"
