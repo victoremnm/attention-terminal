@@ -21,6 +21,14 @@ describe("chat stream guard", () => {
     expect(isClosedReadableStreamError(new Error("network failed"))).toBe(false);
   });
 
+  it("recognizes the errored-stream close error variant", () => {
+    expect(
+      isClosedReadableStreamError(
+        new Error("Failed to execute 'close' on 'ReadableStreamDefaultController': Cannot close an errored readable stream"),
+      ),
+    ).toBe(true);
+  });
+
   it("turns a closed-controller source failure into completion", async () => {
     const source = new ReadableStream<number>({
       start(controller) {
@@ -40,6 +48,16 @@ describe("chat stream guard", () => {
     });
 
     await expect(readAll(guardReadableStream(source))).rejects.toThrow("upstream failed");
+  });
+
+  it("swallows a close-on-errored-stream error and settles cleanly", async () => {
+    const source = new ReadableStream<number>({
+      start(controller) {
+        controller.error(new Error("Cannot close an errored readable stream"));
+      },
+    });
+
+    await expect(readAll(guardReadableStream(source))).resolves.toEqual([]);
   });
 
   it("guards the transport response without mutating the transport", async () => {

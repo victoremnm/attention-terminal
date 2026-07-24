@@ -1,7 +1,10 @@
-const CLOSED_READABLE_STREAM_MESSAGE = "Cannot enqueue a chunk into a closed readable stream";
+const CLOSED_STREAM_MESSAGES = [
+  "Cannot enqueue a chunk into a closed readable stream",
+  "Cannot close an errored readable stream",
+];
 
 export function isClosedReadableStreamError(error: unknown): boolean {
-  return error instanceof Error && error.message.includes(CLOSED_READABLE_STREAM_MESSAGE);
+  return error instanceof Error && CLOSED_STREAM_MESSAGES.some((m) => error.message.includes(m));
 }
 
 /**
@@ -21,14 +24,14 @@ export function guardReadableStream<T>(source: ReadableStream<T>): ReadableStrea
           while (true) {
             const { done, value } = await reader.read();
             if (done || cancelled) {
-              if (!cancelled) controller.close();
+              if (!cancelled) try { controller.close(); } catch { /* already errored */ }
               return;
             }
             controller.enqueue(value);
           }
         } catch (error) {
           if (cancelled || isClosedReadableStreamError(error) || (error instanceof Error && error.name === "AbortError")) {
-            if (!cancelled) controller.close();
+            if (!cancelled) try { controller.close(); } catch { /* already errored */ }
             return;
           }
           controller.error(error);
