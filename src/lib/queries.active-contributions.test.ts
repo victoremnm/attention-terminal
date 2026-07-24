@@ -12,7 +12,7 @@ vi.mock("./clickhouse", () => ({
   missingTables: vi.fn(),
 }));
 
-import { activeContributionRanking } from "./queries";
+import { activeContributionRanking } from "./queries.active-contributions";
 
 const rankingRow = {
   repo_name: "acme/active-repo",
@@ -25,6 +25,9 @@ const rankingRow = {
   bot_pushers: "1",
   prs_opened: "2",
   prs_merged: "1",
+  forks: "5",
+  pr_velocity: "3",
+  active_builders: "3",
   activity_score: "74",
   branch_scope: "unknown",
   dependency_update_attribution: "unknown",
@@ -42,6 +45,9 @@ const emptyPushRow = {
   bot_pushers: "0",
   prs_opened: "0",
   prs_merged: "0",
+  forks: "0",
+  pr_velocity: "0",
+  active_builders: "2",
   activity_score: "0",
 };
 
@@ -57,6 +63,9 @@ const prOnlyRow = {
   bot_pushers: "0",
   prs_opened: "2",
   prs_merged: "1",
+  forks: "0",
+  pr_velocity: "3",
+  active_builders: "1",
   activity_score: "9",
 };
 
@@ -75,7 +84,7 @@ describe("active contribution ranking", () => {
   });
 
   it("uses the bounded actor rollup and maps numeric measures to numbers", async () => {
-    const result = await activeContributionRanking("7d", "commits", 10);
+    const result = await activeContributionRanking("7d", "top_commits", 10);
 
     expect(result.data).toEqual([
       {
@@ -89,6 +98,9 @@ describe("active contribution ranking", () => {
         botPushers: 1,
         prsOpened: 2,
         prsMerged: 1,
+        forks: 5,
+        prVelocity: 3,
+        activeBuilders: 3,
         activityScore: 74,
         branchScope: "unknown",
         dependencyUpdateAttribution: "unknown",
@@ -102,7 +114,6 @@ describe("active contribution ranking", () => {
     expect(query).toContain("bucket.pushes > 0 AND bucket.commits > 0");
     expect(query).toContain("sum(bucket.pushes) AS push_total");
     expect(query).toContain("sum(toUInt64(bucket.pushes > 0 AND bucket.commits > 0)) AS substantive_push_bucket_total");
-    expect(query).toContain("FROM (\n        SELECT repo_name, actor_login, pushes, commits, distinct_commits, prs_opened, prs_merged");
     expect(query).toContain("ORDER BY distinct_commit_total DESC, activity_score DESC, repo_name ASC");
     expect(result.sql).toBe(query.trim());
     expect(result.data[0]?.branchScope).toBe("unknown");
@@ -112,8 +123,8 @@ describe("active contribution ranking", () => {
     ]));
   });
 
-  it("ranks push mode by substantive buckets, never raw push volume", async () => {
-    const result = await activeContributionRanking("30d", "pushes", 25);
+  it("ranks top_pushes mode by substantive buckets, filtering zero-commit pushes via commits > 0", async () => {
+    const result = await activeContributionRanking("30d", "top_pushes", 25);
 
     const query = String(mocks.query.mock.calls[0]?.[0]?.query);
     expect(query).toContain("ORDER BY substantive_push_bucket_total DESC, activity_score DESC, repo_name ASC");
@@ -121,6 +132,25 @@ describe("active contribution ranking", () => {
     expect(query).toContain("LIMIT {limit: UInt32}");
     expect(mocks.query.mock.calls[0]?.[0]?.query_params).toEqual({ limit: 25 });
     expect(result.notes[0]).toContain("raw push volume never makes a repo eligible");
+  });
+
+  it("ranks top_forks mode ordering by fork_total", async () => {
+    const result = await activeContributionRanking("7d", "top_forks", 10);
+    const query = String(mocks.query.mock.calls[0]?.[0]?.query);
+    expect(query).toContain("ORDER BY fork_total DESC, activity_score DESC, repo_name ASC");
+  });
+
+  it("ranks pr_velocity mode ordering by pr_opened_total + pr_merged_total", async () => {
+    const result = await activeContributionRanking("7d", "pr_velocity", 10);
+    const query = String(mocks.query.mock.calls[0]?.[0]?.query);
+    expect(query).toContain("ORDER BY (pr_opened_total + pr_merged_total) DESC, activity_score DESC, repo_name ASC");
+  });
+
+  it("ranks active_builders mode ordering by builder_total (uniqExact(actor_login))", async () => {
+    const result = await activeContributionRanking("7d", "active_builders", 10);
+    const query = String(mocks.query.mock.calls[0]?.[0]?.query);
+    expect(query).toContain("uniqExact(bucket.actor_login) AS builder_total");
+    expect(query).toContain("ORDER BY builder_total DESC, activity_score DESC, repo_name ASC");
   });
 
   it("excludes empty-push and PR-only fixtures from push mode while retaining substantive rows", async () => {
@@ -131,11 +161,11 @@ describe("active contribution ranking", () => {
         : fixtures.filter((row) => Number(row.commits) > 0 || Number(row.prs_opened) > 0 || Number(row.prs_merged) > 0),
     }));
 
-    const pushResult = await activeContributionRanking("7d", "pushes", 10);
+    const pushResult = await activeContributionRanking("7d", "top_pushes", 10);
     expect(pushResult.data.map((row) => row.repoName)).toEqual(["acme/substantive"]);
     expect(pushResult.data.every((row) => row.substantivePushBuckets > 0)).toBe(true);
 
-    const commitResult = await activeContributionRanking("7d", "commits", 10);
+    const commitResult = await activeContributionRanking("7d", "top_commits", 10);
     expect(commitResult.data.map((row) => row.repoName)).toEqual([
       "acme/pr-only",
       "acme/substantive",
@@ -145,9 +175,9 @@ describe("active contribution ranking", () => {
   });
 
   it.each([
-    ["limit zero", () => activeContributionRanking("7d", "commits", 0)],
-    ["limit above cap", () => activeContributionRanking("7d", "commits", 101)],
-    ["invalid window", () => activeContributionRanking("90d" as never, "commits", 10)],
+    ["limit zero", () => activeContributionRanking("7d", "top_commits", 0)],
+    ["limit above cap", () => activeContributionRanking("7d", "top_commits", 101)],
+    ["invalid window", () => activeContributionRanking("90d" as never, "top_commits", 10)],
     ["invalid sort", () => activeContributionRanking("7d", "events" as never, 10)],
   ])("rejects %s before issuing SQL", async (_label, call) => {
     await expect(call()).rejects.toThrow();

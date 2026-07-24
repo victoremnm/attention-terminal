@@ -8,7 +8,17 @@
 // without pulling the server-only ClickHouse client into the browser bundle.
 import type { ActiveContributionRow, RepoWindowRow } from "./queries";
 
-export type RankingMode = "attention" | "stars" | "forks" | "active-commits" | "active-pushes";
+export type RankingMode =
+  | "attention"
+  | "stars"
+  | "forks"
+  | "top_forks"
+  | "top_pushes"
+  | "top_commits"
+  | "pr_velocity"
+  | "active_builders"
+  | "active-commits"
+  | "active-pushes";
 
 // Which backend serves a mode: "attention" reads /api/trending (issue #137's
 // paginated top-100 query, sorted by any of its whitelisted measures);
@@ -42,6 +52,41 @@ export const RANKING_MODES: readonly RankingModeConfig[] = [
     description: "New star events in the selected window.",
   },
   {
+    key: "top_forks",
+    label: "Top Forks",
+    source: "active",
+    querySort: "top_forks",
+    description: "Fork activity in the selected window.",
+  },
+  {
+    key: "top_pushes",
+    label: "Top Pushes",
+    source: "active",
+    querySort: "top_pushes",
+    description: "Substantive push activity only — zero-commit pushes excluded.",
+  },
+  {
+    key: "top_commits",
+    label: "Top Commits",
+    source: "active",
+    querySort: "top_commits",
+    description: "Distinct commits, excluding zero-commit pushes and idle repos.",
+  },
+  {
+    key: "pr_velocity",
+    label: "PR Velocity",
+    source: "active",
+    querySort: "pr_velocity",
+    description: "Pull request velocity combining PRs opened and PRs merged.",
+  },
+  {
+    key: "active_builders",
+    label: "Active Builders",
+    source: "active",
+    querySort: "active_builders",
+    description: "Unique active contributors (uniqExact(actor_login)) per repository.",
+  },
+  {
     key: "forks",
     label: "Forks",
     source: "attention",
@@ -60,7 +105,7 @@ export const RANKING_MODES: readonly RankingModeConfig[] = [
     label: "Active (pushes)",
     source: "active",
     querySort: "pushes",
-    description: "Substantive push activity only — zero-commit pushes excluded (branch scope isn't tracked by this data source).",
+    description: "Substantive push activity only — zero-commit pushes excluded.",
   },
 ] as const;
 
@@ -407,14 +452,21 @@ export function activeColumnValue(row: ActiveContributionRow, key: ActiveColumnK
 }
 
 const ACTIVE_FIELD_LABEL: Record<string, string> = {
-  commits: "distinct commits",
+  top_forks: "forks",
+  top_pushes: "substantive pushes",
   pushes: "substantive pushes",
+  top_commits: "distinct commits",
+  commits: "distinct commits",
+  pr_velocity: "PR velocity",
+  active_builders: "active builders",
 };
 
-/** "commits"/"pushes" map to their anti-noise measures; anything else is a chip column. */
 export function activeMeasureValue(row: ActiveContributionRow, field: string): number {
-  if (field === "commits") return row.distinctCommits;
-  if (field === "pushes") return row.substantivePushBuckets;
+  if (field === "top_forks") return row.forks ?? 0;
+  if (field === "top_pushes" || field === "pushes") return row.substantivePushBuckets;
+  if (field === "top_commits" || field === "commits") return row.distinctCommits;
+  if (field === "pr_velocity") return row.prVelocity ?? (row.prsOpened + row.prsMerged);
+  if (field === "active_builders") return row.activeBuilders ?? row.pushers;
   return activeColumnValue(row, field as ActiveColumnKey);
 }
 

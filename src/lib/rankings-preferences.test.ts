@@ -49,6 +49,9 @@ const activeRow: ActiveContributionRow = {
   botPushers: 1,
   prsOpened: 5,
   prsMerged: 2,
+  forks: 3,
+  prVelocity: 7,
+  activeBuilders: 4,
   activityScore: 500,
   branchScope: "unknown",
   dependencyUpdateAttribution: "unknown",
@@ -234,6 +237,14 @@ describe("activeMeasureValue / activeRowView", () => {
   it("maps 'commits'/'pushes' sort fields to the anti-noise measures, not raw counts", () => {
     expect(activeMeasureValue(activeRow, "commits")).toBe(60); // distinctCommits, not raw commits (70)
     expect(activeMeasureValue(activeRow, "pushes")).toBe(25); // substantivePushBuckets, not raw pushes (40)
+  });
+
+  it("maps top_forks, top_pushes, top_commits, pr_velocity, and active_builders to correct measures", () => {
+    expect(activeMeasureValue({ ...activeRow, forks: 15 }, "top_forks")).toBe(15);
+    expect(activeMeasureValue(activeRow, "top_pushes")).toBe(25);
+    expect(activeMeasureValue(activeRow, "top_commits")).toBe(60);
+    expect(activeMeasureValue({ ...activeRow, prVelocity: 7 }, "pr_velocity")).toBe(7);
+    expect(activeMeasureValue({ ...activeRow, activeBuilders: 4 }, "active_builders")).toBe(4);
   });
 
   it("falls back to a direct column lookup for non-primary fields", () => {

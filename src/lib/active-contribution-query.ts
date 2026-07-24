@@ -10,7 +10,15 @@ export interface ActiveContributionRequest {
 }
 
 const WINDOWS = new Set<ActiveContributionWindow>(["1d", "7d", "30d"]);
-const SORTS = new Set<ActiveContributionSort>(["commits", "pushes"]);
+const SORTS = new Set<ActiveContributionSort>([
+  "top_forks",
+  "top_pushes",
+  "top_commits",
+  "pr_velocity",
+  "active_builders",
+  "commits",
+  "pushes",
+]);
 
 const DEFAULT_LIMIT = 40;
 const MAX_LIMIT = 100;

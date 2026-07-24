@@ -33,6 +33,8 @@ import {
   normalizeUnionQuery,
 } from "./query-execution";
 
+import { getDataPolicyTier } from "./catalog";
+
 export { FALLBACK_TABLES, LIST_TABLES_SQL, TABLE_LIST_LIMIT };
 import { dailyDigest } from "./digest";
 import { realBuildersDeck } from "./real-builders";
@@ -94,7 +96,7 @@ export const listTables = tool({
   execute: async () => {
     const t0 = Date.now();
     try {
-      const { rows: tables } = await executeTaggedJsonEachRowQuery<{
+      const { rows: tablesRaw } = await executeTaggedJsonEachRowQuery<{
         database: string;
         name: string;
         engine: string;
@@ -107,7 +109,11 @@ export const listTables = tool({
         logComment: { toolName: "listTables", surface: "catalog" },
       });
       const elapsedMs = Date.now() - t0;
-      registerCatalogTables(tables);
+      registerCatalogTables(tablesRaw);
+      const tables = tablesRaw.map((t) => ({
+        ...t,
+        data_policy: getDataPolicyTier(t.database),
+      }));
       return {
         tables,
         provenance: {
@@ -120,8 +126,12 @@ export const listTables = tool({
     } catch {
       const elapsedMs = Date.now() - t0;
       registerCatalogTables(FALLBACK_TABLES);
+      const tables = FALLBACK_TABLES.map((t) => ({
+        ...t,
+        data_policy: getDataPolicyTier(t.database),
+      }));
       return {
-        tables: FALLBACK_TABLES,
+        tables,
         isFallback: true,
         note: "ClickHouse system.tables query failed or timed out. Defaulting to safe catalog fallback.",
         provenance: {
@@ -165,7 +175,10 @@ export const describeTable = tool({
     );
     registerTableSchema(catalogKey, columns.map((column) => `${column.name}:${column.type}`));
     registerTableSchema(name, columns.map((column) => `${column.name}:${column.type}`));
-    return { columns };
+    return {
+      columns,
+      data_policy: getDataPolicyTier(database ?? "default"),
+    };
   },
 });
 
