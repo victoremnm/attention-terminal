@@ -852,7 +852,12 @@ function buildMorphingChart(
     : Object.keys(firstRow).find((key) => key !== xField && isFiniteNumeric(firstRow[key]));
   const labelField = Object.keys(firstRow).find((key) => typeof firstRow[key] === "string" && key !== xField && key !== yField) ?? xField;
   const allNumericFields = Object.keys(firstRow).filter((key) => isFiniteNumeric(firstRow[key]) && key !== labelField);
-  const numericFields = Object.keys(firstRow).filter((key) => isFiniteNumeric(firstRow[key]) && key !== xField && key !== yField);
+  // Deliberately keeps yField in the list (only xField is excluded): branches
+  // that need one measure (Dot Plot/Unit Chart/Waffle) read numericFields[0],
+  // which must resolve to yField for a plain {label, metric} row, while
+  // multi-measure branches (Bullet/Slopegraph/Boxplot) still get every
+  // numeric column in row order, yField included, to fill later slots.
+  const numericFields = Object.keys(firstRow).filter((key) => isFiniteNumeric(firstRow[key]) && key !== xField);
   const dateFields = Object.keys(firstRow).filter((key) => parseDateLike(firstRow[key]) !== null && key !== xField && key !== yField);
   const title = typeof config.title === "string" && config.title.trim().length > 0 ? config.title : undefined;
   const yTitle = typeof yEncoding?.title === "string" && yEncoding.title.trim().length > 0 ? yEncoding.title : yField || title || "value";

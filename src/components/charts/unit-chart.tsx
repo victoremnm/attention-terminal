@@ -19,9 +19,10 @@ export function UnitChart({
 }) {
   if (!items.length) return null;
 
+  const MAX_RENDERED_UNITS = 1000;
   const unitSize = 14;
   const gap = 4;
-  const maxUnits = Math.max(...items.map((item) => Math.max(0, Math.round(item.value))), 1);
+  const maxUnits = clamp(Math.max(...items.map((item) => Math.max(0, Math.round(item.value))), 1), 1, MAX_RENDERED_UNITS);
   const rows = Math.max(1, Math.ceil(maxUnits / unitsPerRow));
   const W = 640;
   const H = Math.max(180, 36 + items.length * (rows * (unitSize + gap) + 16));
@@ -37,7 +38,7 @@ export function UnitChart({
           </text>
         )}
         {items.map((item, rowIndex) => {
-          const units = clamp(Math.round(item.value), 0, 1000);
+          const units = clamp(Math.round(item.value), 0, MAX_RENDERED_UNITS);
           const color = item.color || CHART_PALETTE[rowIndex % CHART_PALETTE.length];
           const yOffset = startY + rowIndex * (rows * (unitSize + gap) + 16);
           return (

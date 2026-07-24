@@ -27,13 +27,17 @@ export function SpiderChart({
   const layers = 4;
   const maxValue = Math.max(1, ...series.flatMap((item) => item.values.map((value) => Math.max(0, value))));
 
-  const pointFor = (index: number, value: number) => {
+  const pointAtDistance = (index: number, distance: number) => {
     const angle = (index / axes.length) * Math.PI * 2 - Math.PI / 2;
-    const distance = (clamp(value, 0, maxValue) / maxValue) * radius;
     return {
       x: cx + Math.cos(angle) * distance,
       y: cy + Math.sin(angle) * distance,
     };
+  };
+
+  const pointFor = (index: number, value: number) => {
+    const distance = (clamp(value, 0, maxValue) / maxValue) * radius;
+    return pointAtDistance(index, distance);
   };
 
   return (
@@ -48,7 +52,7 @@ export function SpiderChart({
         {Array.from({ length: layers }, (_, layerIndex) => {
           const ring = ((layerIndex + 1) / layers) * radius;
           const points = axes
-            .map((_, axisIndex) => pointFor(axisIndex, ring))
+            .map((_, axisIndex) => pointAtDistance(axisIndex, ring))
             .map((point) => `${point.x.toFixed(1)},${point.y.toFixed(1)}`)
             .join(" ");
           return <polygon key={`ring-${layerIndex}`} points={points} fill="none" stroke="var(--grid-line)" strokeWidth="1" opacity="0.9" />;
