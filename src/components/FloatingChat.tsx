@@ -270,7 +270,7 @@ export function FloatingChat() {
           </button>
         </div>
       )}
-      {!detached && !isMinimized && <div className="floating-chat-backdrop" onClick={() => ctx.close()} />}
+      {!detached && !isMinimized && <div className="floating-chat-backdrop" aria-hidden="true" />}
       <div
         className={`floating-chat-drawer${detached ? " detached" : ""}${isMinimized ? " minimized-hidden" : ""}`}
         role="dialog"
