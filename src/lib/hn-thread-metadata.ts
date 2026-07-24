@@ -66,7 +66,8 @@ export const HN_THREAD_EVIDENCE_SQL = {
         FROM (
           SELECT id, parent, by, time, score, text, kids
           FROM raw.hackernews FINAL
-          WHERE type = 'comment' AND deleted = 0 AND dead = 0
+          WHERE id IN (SELECT id FROM level1_ids)
+            AND type = 'comment' AND deleted = 0 AND dead = 0
             AND time >= (SELECT time FROM story) AND time <= now()
         ) AS c
         INNER ANY JOIN level1_ids AS ids ON c.id = ids.id
@@ -80,7 +81,8 @@ export const HN_THREAD_EVIDENCE_SQL = {
         FROM (
           SELECT id, parent, by, time, score, text, kids
           FROM raw.hackernews FINAL
-          WHERE type = 'comment' AND deleted = 0 AND dead = 0
+          WHERE id IN (SELECT id FROM level2_ids)
+            AND type = 'comment' AND deleted = 0 AND dead = 0
             AND time >= (SELECT time FROM story) AND time <= now()
         ) AS c
         INNER ANY JOIN level2_ids AS ids ON c.id = ids.id
@@ -94,7 +96,8 @@ export const HN_THREAD_EVIDENCE_SQL = {
         FROM (
           SELECT id, parent, by, time, score, text, kids
           FROM raw.hackernews FINAL
-          WHERE type = 'comment' AND deleted = 0 AND dead = 0
+          WHERE id IN (SELECT id FROM level3_ids)
+            AND type = 'comment' AND deleted = 0 AND dead = 0
             AND time >= (SELECT time FROM story) AND time <= now()
         ) AS c
         INNER ANY JOIN level3_ids AS ids ON c.id = ids.id

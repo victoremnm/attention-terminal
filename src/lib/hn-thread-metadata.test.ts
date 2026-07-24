@@ -130,6 +130,12 @@ describe("HN thread metadata", () => {
     expect(HN_THREAD_EVIDENCE_SQL.replies).toContain("{maxDepth:UInt8}");
   });
 
+  it("pushes each bounded child-ID set into its FINAL reply read", () => {
+    for (const level of [1, 2, 3]) {
+      expect(HN_THREAD_EVIDENCE_SQL.replies).toContain(`WHERE id IN (SELECT id FROM level${level}_ids)`);
+    }
+  });
+
   it("returns null for a missing/deleted story and does not query replies", async () => {
     query.mockResolvedValue({ rows: [], provenance: {} });
 
