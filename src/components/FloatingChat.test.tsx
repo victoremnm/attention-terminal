@@ -76,13 +76,13 @@ describe("FloatingChat", () => {
     expect(screen.getByText("what type of visualizations can you make?")).toBeInTheDocument();
   });
 
-  it("shows a backdrop that closes the drawer on click", () => {
+  it("keeps the chat open when the backdrop is clicked", () => {
     renderWithControls();
     act(() => screen.getByTestId("btn-open").click());
     const backdrop = document.querySelector(".floating-chat-backdrop");
     expect(backdrop).toBeInTheDocument();
     act(() => fireEvent.click(backdrop!));
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
   });
 
   it("shows minimized pill when minimized", () => {
@@ -108,6 +108,22 @@ describe("FloatingChat", () => {
     expect(drawer?.className).not.toContain("minimized-hidden");
   });
 
+  it("keeps a detached drawer detached when minimized and reopened", () => {
+    renderWithControls();
+    act(() => screen.getByTestId("btn-open").click());
+    const header = screen.getByText("CHAT.AGENT").closest("header");
+    expect(header).toBeInTheDocument();
+
+    act(() => fireEvent.pointerDown(header!, { button: 0, clientX: 1000, clientY: 10 }));
+    expect(document.querySelector(".floating-chat-drawer")?.className).toContain("detached");
+
+    act(() => screen.getByTestId("btn-minimize").click());
+    act(() => fireEvent.click(document.querySelector(".floating-chat-minimized")!));
+
+    expect(document.querySelector(".floating-chat-drawer")?.className).toContain("detached");
+    expect(document.querySelector(".floating-chat-drawer")?.className).not.toContain("minimized-hidden");
+  });
+
   it("renders minimize and close buttons in the drawer header", () => {
     renderWithControls();
     act(() => screen.getByTestId("btn-open").click());
@@ -120,6 +136,18 @@ describe("FloatingChat", () => {
     act(() => screen.getByTestId("btn-open").click());
     act(() => screen.getByRole("button", { name: "Minimize chat" }).click());
     expect(document.querySelector(".floating-chat-minimized")).toBeInTheDocument();
+  });
+
+  it("moves focus to the minimized pill and makes the hidden drawer inert", () => {
+    renderWithControls();
+    act(() => screen.getByTestId("btn-open").click());
+    screen.getByPlaceholderText("ask about tech attention...").focus();
+
+    act(() => screen.getByRole("button", { name: "Minimize chat" }).click());
+
+    expect(document.activeElement).toBe(document.querySelector(".floating-chat-minimized"));
+    expect(document.querySelector(".floating-chat-drawer")).toHaveAttribute("aria-hidden", "true");
+    expect((document.querySelector(".floating-chat-drawer") as HTMLElement).inert).toBe(true);
   });
 
   it("closes when the close button is clicked", () => {

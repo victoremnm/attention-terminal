@@ -3,8 +3,10 @@
 import { useChat } from "@ai-sdk/react";
 import { useTriggerChatTransport } from "@trigger.dev/sdk/chat/react";
 import type { UIMessage } from "ai";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { mintChatAccessToken, startChatSession } from "@/lib/chat-actions";
+import { chatErrorMessage, guardChatTransport, isClosedReadableStreamError } from "@/lib/chat-stream";
+import { getLastUserMessage } from "@/lib/chat-validation";
 import { RenderPayloadSchema } from "@/lib/render-payload";
 import type { attentionAgent } from "@/trigger/attention-agent";
 import { MarkdownText } from "./MarkdownText";
@@ -60,20 +62,25 @@ export function AttentionChat() {
           break;
         case "message-send-failed":
           disarmWatchdog();
-          setFault(`send failed: ${event.error.message}`);
+          setFault(`send failed: ${chatErrorMessage(event.error)}`);
           break;
         case "stream-error":
           disarmWatchdog();
-          setFault(`stream error: ${event.error.message}`);
+          if (isClosedReadableStreamError(event.error)) break;
+          setFault(`stream error: ${chatErrorMessage(event.error)}`);
           break;
       }
     },
   });
 
-  const { messages, sendMessage, stop, status, error, regenerate } = useChat({ transport });
+  const safeTransport = useMemo(() => guardChatTransport(transport), [transport]);
+
+  const { messages, sendMessage, stop, status, error } = useChat({ transport: safeTransport });
   const [input, setInput] = useState("");
+  const [retrying, setRetrying] = useState(false);
+  const retryingRef = useRef(false);
   const busy = status === "submitted" || status === "streaming";
-  const faultText = fault ?? (status === "error" ? (error?.message ?? "chat request failed") : null);
+  const faultText = fault ?? (status === "error" ? chatErrorMessage(error) : null);
 
   function submit(text: string) {
     const trimmed = text.trim();
@@ -84,9 +91,24 @@ export function AttentionChat() {
   }
 
   async function retry() {
+    if (retryingRef.current || busy) return;
+    const lastUserMessage = getLastUserMessage(messages);
+    if (!lastUserMessage) {
+      setFault("there is no user message to retry");
+      return;
+    }
+
+    retryingRef.current = true;
+    setRetrying(true);
     setFault(null);
-    await stop();
-    await regenerate();
+    try {
+      await sendMessage({ text: lastUserMessage.text, messageId: lastUserMessage.id });
+    } catch (retryError) {
+      setFault(`retry failed: ${chatErrorMessage(retryError, "unknown error")}`);
+    } finally {
+      retryingRef.current = false;
+      setRetrying(false);
+    }
   }
 
   return (
@@ -115,7 +137,7 @@ export function AttentionChat() {
       {faultText && (
         <div className="agent-fault mono" role="alert">
           <span>! {faultText}</span>
-          <button type="button" className="chip" onClick={() => void retry()}>retry</button>
+          <button type="button" className="chip" disabled={retrying || busy} onClick={() => void retry()}>retry</button>
         </div>
       )}
 

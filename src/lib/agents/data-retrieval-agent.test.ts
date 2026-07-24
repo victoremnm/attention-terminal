@@ -86,6 +86,7 @@ describe("runDataRetrievalAgent", () => {
     mockCatalogFetch();
     mocks.query.mockResolvedValueOnce({
       json: async () => [{ day: "2026-07-23" }],
+      response_headers: { "x-clickhouse-summary": JSON.stringify({ read_rows: "123" }) },
     });
     generateObjectMock.mockResolvedValueOnce({
       object: { query: "SELECT day FROM raw.hackernews UNION SELECT day FROM raw.github_events" },
@@ -131,6 +132,11 @@ describe("runDataRetrievalAgent", () => {
       retrievalKey: "retrieval-key",
       rowCount: 1,
       queryExecuted: "SELECT day FROM raw.hackernews UNION ALL SELECT day FROM raw.github_events",
+      query: {
+        sql: "SELECT day FROM raw.hackernews UNION ALL SELECT day FROM raw.github_events",
+        rowsRead: 123,
+        elapsedMs: expect.any(Number),
+      },
     });
   });
 

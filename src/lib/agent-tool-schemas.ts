@@ -26,7 +26,7 @@ export const describeTableDef = {
 
 export const runReadOnlyQueryDef = {
   description:
-    "Run a bounded read-only ClickHouse SQL query. Only SELECT-style statements are allowed. Call listTables first, then describeTable on every referenced table, before using this tool.",
+    "Run a bounded read-only ClickHouse SQL query. Only SELECT-style statements are allowed. Call listTables first, then describeTable on every referenced table, before using this tool. The result includes real query analytics `{ sql, rowsRead, elapsedMs }`; pass that object unchanged into buildMorphingCard/buildTablePayload.",
   inputSchema: z.object({
     query: z.string().min(1).max(12_000),
   }),
@@ -70,7 +70,7 @@ export const renderAnswerDef = {
 
 export const runDataRetrievalDef = {
   description:
-    "Data Retrieval Agent: Translates semantic intent into ClickHouse SQL, executes the query, persists the full raw result set to temporary storage, and returns schema metadata, summary statistics (variance, cardinality, data types), a retrieval key, and a bounded `sampleRows` array (<=50 rows) — pass sampleRows straight into buildMorphingCard's `rows` argument (or directly into a morphing-card payload's `chartConfig.data.values`, unmodified) so the answer renders as a table immediately instead of a placeholder.",
+    "Data Retrieval Agent: Translates semantic intent into ClickHouse SQL, executes the query, persists the full raw result set to temporary storage, and returns schema metadata, summary statistics (variance, cardinality, data types), a retrieval key, a bounded `sampleRows` array (<=50 rows), and real query analytics `{ sql, rowsRead, elapsedMs }`. Pass sampleRows straight into buildMorphingCard's `rows` argument and pass the returned query analytics object through unchanged — never invent zero-valued query stats — so the answer renders both its data and its view-SQL analytics.",
   inputSchema: z.object({
     intent: z.string().min(1).max(12_000),
   }),

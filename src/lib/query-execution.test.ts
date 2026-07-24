@@ -21,6 +21,7 @@ describe("query-execution", () => {
   it("tags queries with a stable query_id and log_comment", async () => {
     const query = vi.fn().mockResolvedValue({
       json: async () => [{ ok: 1 }],
+      response_headers: { "x-clickhouse-summary": JSON.stringify({ read_rows: "17" }) },
     });
     const client = { query };
 
@@ -34,6 +35,8 @@ describe("query-execution", () => {
 
     expect(result.queryId).toBe("query-123");
     expect(result.rows).toEqual([{ ok: 1 }]);
+    expect(result.rowsRead).toBe(17);
+    expect(result.elapsedMs).toEqual(expect.any(Number));
     expect(query).toHaveBeenCalledWith(
       expect.objectContaining({
         query: "SELECT 1",
