@@ -48,6 +48,7 @@ describe("HN thread metadata", () => {
     expect(result.depth).toEqual({ maxObserved: 2, limit: 3, bounded: true });
     expect(result.representativeReplies.map((item) => item.id)).toEqual([103, 101, 102]);
     expect(result.representativeReplies[0].excerpt).toBe("Nested");
+    expect(result.depthProfile).toEqual([{ depth: 1, count: 2 }, { depth: 2, count: 1 }]);
     expect(result.descendantsReported).toBe(57);
   });
 

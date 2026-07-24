@@ -1,5 +1,7 @@
 import { q } from "./queries";
-import { DigestSchema, type DigestCluster, type DigestPayload, type EvidenceLink, type Verdict } from "./render-payload";
+import { hnThreadEvidenceDetails } from "./hn-thread-metadata";
+import { extractDiscussionThemes } from "./hn-themes";
+import { DigestSchema, HnThreadInsightsSchema, type DigestCluster, type DigestPayload, type EvidenceLink, type HnThreadInsights, type Verdict } from "./render-payload";
 
 interface Topic {
   key: string;
@@ -69,6 +71,11 @@ interface TakeRow {
   comments: number;
 }
 
+interface RepresentativeStoryRow {
+  id: number | string;
+  title: string;
+}
+
 const clamp01 = (n: number) => Math.max(0, Math.min(1, n));
 const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
 const sum = (xs: number[]) => xs.reduce((a, b) => a + b, 0);
@@ -80,8 +87,21 @@ const githubSearchUrl = (topic: Topic) =>
 const hnItemUrl = (id: number) => `https://news.ycombinator.com/item?id=${id}`;
 
 function tokenWhere(topic: Topic) {
-  return topic.tokens.map((token) => `hasToken(lower(title), ${sqlString(token)})`).join(" OR ");
+  return topic.tokens.length
+    ? topic.tokens.map((token) => `hasToken(lower(title), ${sqlString(token)})`).join(" OR ")
+    : "1 = 0";
 }
+
+export const DIGEST_THREAD_STORY_SQL = `
+  SELECT id, title
+  FROM raw.hackernews FINAL
+  WHERE type = 'story'
+    AND deleted = 0
+    AND dead = 0
+    AND time >= now() - INTERVAL 30 DAY
+    AND ({topicWhere})
+  ORDER BY time DESC, id DESC
+  LIMIT 1`;
 
 function verdictFor(talkZ: number, codeZ: number, spark: number[]): Verdict {
   const spread = talkZ / Math.max(codeZ, 0.01);
@@ -218,6 +238,38 @@ export async function dailyDigest(noiseFloor = 0): Promise<DigestPayload> {
 async function topicForId(id: string) {
   const topics = await getTaxonomy();
   return topics.find((topic) => slug(topic.subject) === id || topic.key === id);
+}
+
+function numericId(value: number | string) {
+  const id = Number(value);
+  return Number.isSafeInteger(id) && id >= 0 ? id : 0;
+}
+
+/** Fetch one recent HN story and derive themes only from its bounded sample. */
+export async function threadInsights(subjectId: string): Promise<HnThreadInsights | null> {
+  const topic = await topicForId(subjectId);
+  if (!topic) return null;
+
+  const sql = DIGEST_THREAD_STORY_SQL.replace("{topicWhere}", tokenWhere(topic));
+  const { rows } = await q<RepresentativeStoryRow>(sql, ["raw.hackernews"]);
+  const story = rows[0];
+  const storyId = story ? numericId(story.id) : 0;
+  if (!story || !storyId) return null;
+
+  const details = await hnThreadEvidenceDetails(storyId, {
+    maxComments: 100,
+    maxDepth: 3,
+    maxBranching: 20,
+    representativeLimit: 8,
+  });
+  if (!details) return null;
+
+  const themes = extractDiscussionThemes(
+    details.observedReplies.map((reply) => ({ id: reply.id, text: reply.text })),
+    details.evidence.story.title,
+    5,
+  );
+  return HnThreadInsightsSchema.parse({ evidence: details.evidence, themes });
 }
 
 export async function debateTakes(subjectId: string) {

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import type { DigestCluster, DigestPayload, EvidenceLink } from "@/lib/render-payload";
+import { HnThreadInsightsSchema, type DigestCluster, type DigestPayload, type EvidenceLink, type HnThreadInsights } from "@/lib/render-payload";
 import { Sparkline } from "./charts";
 import { useIngestPulse } from "./useIngestPulse";
 import { copyToClipboard, exportAssetAsMarkdown } from "@/lib/asset-export";
@@ -28,6 +28,18 @@ function ageLabel(freshAt: string | Date | number) {
   return `data ${minutes}m old`;
 }
 
+function hnAgeLabel(unixSeconds: number) {
+  if (!Number.isFinite(unixSeconds) || unixSeconds <= 0) return "age unavailable";
+
+  const seconds = Math.max(0, Math.round(Date.now() / 1000 - unixSeconds));
+  if (seconds < 90) return `${seconds}s ago`;
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 90) return `${minutes}m ago`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 48) return `${hours}h ago`;
+  return `${Math.round(hours / 24)}d ago`;
+}
+
 function TakeLink({ take }: { take: EvidenceLink }) {
   return (
     <p>
@@ -41,10 +53,97 @@ function TakeLink({ take }: { take: EvidenceLink }) {
   );
 }
 
+function HnThreadPanel({ insights }: { insights: HnThreadInsights }) {
+  const { evidence, themes } = insights;
+  const depthRows = evidence.depthProfile?.map(({ depth, count }) => [depth, count] as const)
+    ?? [...evidence.representativeReplies.reduce((counts, reply) => {
+      counts.set(reply.depth, (counts.get(reply.depth) ?? 0) + 1);
+      return counts;
+    }, new Map<number, number>())].sort(([a], [b]) => a - b);
+  const maxDepthCount = Math.max(1, ...depthRows.map(([, count]) => count));
+  const partialLabel = evidence.completeness.state === "partial"
+    ? `sampled · ${evidence.completeness.reason?.replaceAll("_", " ") ?? "partial"}`
+    : "bounded sample";
+
+  return (
+    <section className="hn-thread-panel" aria-label="HN thread intelligence">
+      <div className="hn-thread-head">
+        <div>
+          <div className="debate-label mono">HN THREAD INTELLIGENCE</div>
+          <a href={evidence.story.url} target="_blank" rel="noreferrer" className="hn-thread-story">
+            {evidence.story.title || "HN story"}
+          </a>
+        </div>
+        <a href={evidence.story.url} target="_blank" rel="noreferrer" className="evidence-link mono">STORY</a>
+      </div>
+      <div className="hn-thread-meta mono" aria-label="HN thread metadata">
+        <span>{evidence.story.score} story points</span>
+        <span>{evidence.descendantsReported} reported descendants</span>
+        <span>{evidence.commentsObserved} observed comments</span>
+        <span>{evidence.topLevelRepliesObserved} top-level replies</span>
+        <span>{hnAgeLabel(evidence.story.time)}</span>
+        <span>max depth {evidence.depth.maxObserved}/{evidence.depth.limit}</span>
+        <span className="hn-thread-partial">{partialLabel}</span>
+      </div>
+      <div className="hn-thread-grid">
+        <div>
+          <div className="debate-label mono">DEPTH PROFILE · OBSERVED</div>
+          {depthRows.length ? (
+            <ol className="hn-depth-list" aria-label="Observed replies by depth">
+              {depthRows.map(([depth, count]) => (
+                <li key={depth}>
+                  <span>depth {depth}</span>
+                  <span className="hn-depth-bar" aria-hidden="true"><i style={{ width: `${Math.max(8, Math.round((count / maxDepthCount) * 100))}%` }} /></span>
+                  <b>{count}</b>
+                </li>
+              ))}
+            </ol>
+          ) : <p className="hn-thread-empty">No observed replies in the bounded sample.</p>}
+        </div>
+        <div>
+          <div className="debate-label mono">COMMON THEMES · {themes.length}/5</div>
+          {themes.length ? (
+            <ul className="hn-theme-list" aria-label="Common HN discussion themes">
+              {themes.map((theme) => (
+                <li key={theme.label}>
+                  <span className="hn-theme-label">{theme.label}</span>
+                  <span className="mono hn-theme-stats">{theme.count} comments · {Math.round(theme.coverage * 100)}% · {Math.round(theme.confidence * 100)}% confidence</span>
+                  <span className="hn-theme-links">
+                    {theme.representativeCommentIds.map((id) => (
+                      <a key={id} href={`https://news.ycombinator.com/item?id=${id}`} target="_blank" rel="noreferrer" aria-label={`Open HN evidence comment ${id}`}>#{id}</a>
+                    ))}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          ) : <p className="hn-thread-empty">Not enough observed comments to explain themes.</p>}
+        </div>
+      </div>
+      <div className="hn-replies">
+        <div className="debate-label mono">REPRESENTATIVE REPLIES · {evidence.representativeReplies.length}</div>
+        {evidence.representativeReplies.length ? (
+          <ul aria-label="Representative HN replies">
+            {evidence.representativeReplies.map((reply) => (
+              <li key={reply.id}>
+                <a href={reply.url} target="_blank" rel="noreferrer" className="mono">#{reply.id}</a>
+                <span className="mono">d{reply.depth} · {reply.score} pts</span>
+                <span>{reply.excerpt || "(empty comment)"}</span>
+              </li>
+            ))}
+          </ul>
+        ) : <p className="hn-thread-empty">No representative replies available.</p>}
+      </div>
+    </section>
+  );
+}
+
 function ClusterRow({ cluster }: { cluster: DigestCluster }) {
   const [open, setOpen] = useState(false);
   const [takes, setTakes] = useState(cluster.takes);
   const [loading, setLoading] = useState(false);
+  const [thread, setThread] = useState<HnThreadInsights | null>(null);
+  const [threadLoading, setThreadLoading] = useState(false);
+  const [threadUnavailable, setThreadUnavailable] = useState(false);
   const codeShare = 1 - cluster.talkShare;
   const sourceParts = [
     cluster.sources.hnThreads > 0 ? `${cluster.sources.hnThreads} HN threads` : "",
@@ -56,13 +155,25 @@ function ClusterRow({ cluster }: { cluster: DigestCluster }) {
   async function toggle() {
     const next = !open;
     setOpen(next);
-    if (!next || takes || loading) return;
-    setLoading(true);
-    try {
-      const res = await fetch(`/api/digest/takes?subject=${encodeURIComponent(cluster.id)}`);
-      if (res.ok) setTakes(await res.json());
-    } finally {
-      setLoading(false);
+    if (!next) return;
+    if (!takes && !loading) {
+      setLoading(true);
+      void fetch(`/api/digest/takes?subject=${encodeURIComponent(cluster.id)}`)
+        .then(async (res) => { if (res.ok) setTakes(await res.json()); })
+        .catch(() => undefined)
+        .finally(() => setLoading(false));
+    }
+    if (!thread && !threadUnavailable && !threadLoading) {
+      setThreadLoading(true);
+      void fetch(`/api/digest/thread?subject=${encodeURIComponent(cluster.id)}`)
+        .then(async (res) => {
+          if (!res.ok) throw new Error("thread evidence unavailable");
+          const parsed = HnThreadInsightsSchema.safeParse(await res.json());
+          if (!parsed.success) throw new Error("malformed thread evidence");
+          setThread(parsed.data);
+        })
+        .catch(() => setThreadUnavailable(true))
+        .finally(() => setThreadLoading(false));
     }
   }
 
@@ -117,6 +228,9 @@ function ClusterRow({ cluster }: { cluster: DigestCluster }) {
           <div>
             <div className="debate-label mono">OUTLIER</div>
             {takes?.outlier ? <TakeLink take={takes.outlier} /> : <p>{loading ? "loading..." : "tap a take to validate it"}</p>}
+          </div>
+          <div className="debate-map-thread">
+            {threadLoading ? <p>loading bounded thread sample...</p> : thread ? <HnThreadPanel insights={thread} /> : <p>{threadUnavailable ? "HN thread intelligence unavailable; the story and debate takes remain available." : "HN thread intelligence not loaded."}</p>}
           </div>
         </div>
       )}

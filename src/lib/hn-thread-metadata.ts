@@ -159,6 +159,19 @@ export function buildHnThreadEvidence(
   replies: ReplyRow[],
   options: HnThreadEvidenceOptions = {},
 ): HnThreadEvidence {
+  return buildHnThreadEvidenceDetails(story, replies, options).evidence;
+}
+
+export interface HnThreadEvidenceDetails {
+  evidence: HnThreadEvidence;
+  observedReplies: Array<{ id: number; parent: number; depth: number; text: string }>;
+}
+
+export function buildHnThreadEvidenceDetails(
+  story: StoryRow,
+  replies: ReplyRow[],
+  options: HnThreadEvidenceOptions = {},
+): HnThreadEvidenceDetails {
   const limits = optionsWithDefaults(options);
   const storyId = numberValue(story.id);
   const deduplicatedReplies = [...new Map(replies.map((reply) => [numberValue(reply.id), reply])).values()]
@@ -182,8 +195,15 @@ export function buildHnThreadEvidence(
   const reason = commentsTruncated || branchTruncated ? "sampling_limit" : depthTruncated ? "depth_limit" : missingItems ? "missing_items" : "within_bounds";
   const maxObservedDepth = uniqueReplies.reduce((max, reply) => Math.max(max, numberValue(reply.depth)), 0);
   const maxObservedBranching = Math.max(0, story.kids?.length ?? 0, ...uniqueReplies.map((reply) => reply.kids?.length ?? 0));
+  const depthProfile = [...uniqueReplies.reduce((counts, reply) => {
+    const depth = Math.max(0, numberValue(reply.depth));
+    counts.set(depth, (counts.get(depth) ?? 0) + 1);
+    return counts;
+  }, new Map<number, number>())]
+    .sort(([a], [b]) => a - b)
+    .map(([depth, count]) => ({ depth, count }));
 
-  return HnThreadEvidenceSchema.parse({
+  const evidence = HnThreadEvidenceSchema.parse({
     story: {
       id: storyId,
       title: story.title ?? "",
@@ -198,6 +218,7 @@ export function buildHnThreadEvidence(
     completeness: { state: partial ? "partial" : "complete", reason },
     sampling: { ...limits, truncated },
     depth: { maxObserved: maxObservedDepth, limit: limits.maxDepth, bounded: true },
+    depthProfile,
     branching: { maxObserved: maxObservedBranching, limit: limits.maxBranching, bounded: true },
     representativeReplies: uniqueReplies.slice(0, limits.representativeLimit).map((reply) => ({
       id: numberValue(reply.id),
@@ -210,14 +231,29 @@ export function buildHnThreadEvidence(
       url: itemUrl(numberValue(reply.id)),
     })),
   });
+
+  return {
+    evidence,
+    observedReplies: uniqueReplies.map((reply) => ({
+      id: numberValue(reply.id),
+      parent: numberValue(reply.parent),
+      depth: Math.max(1, numberValue(reply.depth)),
+      text: reply.text ?? "",
+    })),
+  };
 }
 
-export async function hnThreadEvidence(storyId: number, options: HnThreadEvidenceOptions = {}) {
+export async function hnThreadEvidenceDetails(storyId: number, options: HnThreadEvidenceOptions = {}) {
   const limits = optionsWithDefaults(options);
   const params = { storyId, ...limits };
   const storyResult = await q<StoryRow>(HN_THREAD_EVIDENCE_SQL.story, ["raw.hackernews"], params);
   const story = storyResult.rows[0];
   if (!story) return null;
   const replyResult = await q<ReplyRow>(HN_THREAD_EVIDENCE_SQL.replies, ["raw.hackernews"], params);
-  return buildHnThreadEvidence(story, replyResult.rows, limits);
+  return buildHnThreadEvidenceDetails(story, replyResult.rows, limits);
+}
+
+export async function hnThreadEvidence(storyId: number, options: HnThreadEvidenceOptions = {}) {
+  const details = await hnThreadEvidenceDetails(storyId, options);
+  return details?.evidence ?? null;
 }
