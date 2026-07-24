@@ -13,7 +13,7 @@ SELECT
     0 AS gh_stars,
     uniqState('') AS repos
 FROM hackernews h
-CROSS JOIN curated.daily_skinny_taxonomy t
+CROSS JOIN daily_skinny_taxonomy t
 WHERE h.type = 'story'
   AND h.deleted = 0
   AND h.dead = 0
@@ -31,7 +31,7 @@ SELECT
     countIf(g.event_type = 'WatchEvent') AS gh_stars,
     uniqState(g.repo_name) AS repos
 FROM github_events g
-CROSS JOIN curated.daily_skinny_taxonomy t
+CROSS JOIN daily_skinny_taxonomy t
 WHERE arrayExists(pat -> lower(g.repo_name) LIKE pat, t.gh_repo_patterns)
 GROUP BY hour, subject;
 
