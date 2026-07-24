@@ -112,7 +112,10 @@ function AttentionChatOverlay() {
             ))}
           </div>
         )}
-        {messages.map((message) => <Message key={message.id} message={message} />)}
+        {messages.map((message, index) => {
+          const question = message.role === "assistant" ? questionForAssistantMessage(messages, index) : undefined;
+          return <Message key={message.id} message={message} question={question} />;
+        })}
       </div>
 
       {faultText && (
@@ -303,15 +306,44 @@ export function FloatingChat() {
   );
 }
 
-function Message({ message }: { message: UIMessage }) {
+// Answer spec v1 / grammar rule: "no trailing prose paragraph." The agent
+// often emits a text part AFTER renderAnswer that just restates the caption
+// — the design brief forbids it ("if the best answer is a paragraph, you've
+// missed the brief"). A message that rendered an answer shows the card alone;
+// any text part is hidden. Pure so it's unit-testable without the transport.
+export function messageHasRenderAnswer(message: UIMessage): boolean {
+  return message.parts.some((p) => p.type === "tool-renderAnswer");
+}
+
+// Answer spec v1 anatomy step 1: echo the question as a `›` prompt at the top
+// of the answer card. Pull it from the most recent preceding user message.
+export function questionForAssistantMessage(messages: UIMessage[], index: number): string | undefined {
+  if (index <= 0) return undefined;
+  for (let j = index - 1; j >= 0; j--) {
+    const prev = messages[j];
+    if (prev.role !== "user") continue;
+    const textPart = prev.parts.find((p) => p.type === "text");
+    if (textPart && textPart.type === "text" && textPart.text.trim()) {
+      return textPart.text.trim();
+    }
+    return undefined;
+  }
+  return undefined;
+}
+
+function Message({ message, question }: { message: UIMessage; question?: string }) {
+  const hasRender = messageHasRenderAnswer(message);
   return (
     <article className={`agent-message agent-message-${message.role}`}>
-      {message.parts.map((part, index) => <MessagePart key={index} part={part} />)}
+      {message.parts.map((part, index) => {
+        if (hasRender && part.type === "text") return null;
+        return <MessagePart key={index} part={part} question={question} />;
+      })}
     </article>
   );
 }
 
-function MessagePart({ part }: { part: UIMessage["parts"][number] }) {
+function MessagePart({ part, question }: { part: UIMessage["parts"][number]; question?: string }) {
   if (part.type === "text") {
     return <MarkdownText text={part.text} />;
   }
@@ -327,7 +359,7 @@ function MessagePart({ part }: { part: UIMessage["parts"][number] }) {
     if (!parsed.success) {
       return <div className="agent-tool mono">building answer...</div>;
     }
-    return <RenderedAnswer payload={parsed.data} showCopy={false} />;
+    return <RenderedAnswer payload={parsed.data} showCopy={false} question={question} />;
   }
 
   if (part.type === "tool-listTables") {

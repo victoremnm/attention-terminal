@@ -1,6 +1,6 @@
 import { prompts } from "@trigger.dev/sdk";
 import { chat } from "@trigger.dev/sdk/ai";
-import { stepCountIs, streamText } from "ai";
+import { stepCountIs, streamText, type StopCondition } from "ai";
 import { z } from "zod";
 import { attentionTelemetry, ensureAiSdkTelemetry } from "../lib/ai-telemetry";
 import { analystPromptTemplate, answerReference } from "../lib/agent-prompt";
@@ -78,6 +78,26 @@ function extractRenderedAnswer(message: unknown): { type: string; subject: strin
   return null;
 }
 
+// Stop the agent loop when a renderAnswer call SUCCEEDS — not on any call.
+// The renderAnswer tool (src/lib/agent-tools.ts) returns { ok: false, errors }
+// when the payload fails validation, so the model can repair and retry. Stopping
+// on any renderAnswer call (the naive hasToolCall("renderAnswer") approach) would
+// strand the UI in the "refining payload..." state with no retry. This custom
+// StopCondition walks completed steps and returns true only when a renderAnswer
+// tool result carries `ok: true`.
+const renderAnswerSucceeded: StopCondition<typeof attentionTools> = ({ steps }) => {
+  for (const step of steps) {
+    for (const result of step.toolResults) {
+      if (result.toolName !== "renderAnswer") continue;
+      const output = (result as { output?: unknown }).output;
+      if (output && typeof output === "object" && (output as { ok?: unknown }).ok === true) {
+        return true;
+      }
+    }
+  }
+  return false;
+};
+
 export const attentionAgent = chat.agent({
   id: "attention-agent",
   idleTimeoutInSeconds: 300,
@@ -139,7 +159,7 @@ export const attentionAgent = chat.agent({
       model,
       messages,
       tools,
-      stopWhen: stepCountIs(15),
+      stopWhen: [stepCountIs(15), renderAnswerSucceeded],
       abortSignal: signal,
       prepareStep: ({ steps, stepNumber }) => {
         const toolNamesCalledSoFar = steps.flatMap((step) =>

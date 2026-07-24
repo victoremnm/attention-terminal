@@ -3210,3 +3210,80 @@ a { color: inherit; }
 .docs-article h1 { font-size: 22px; }
 .docs-article h2 { font-size: 18px; }
 .docs-article h3 { font-size: 16px; }
+
+/* Answer spec v1 — enhanced chart draw-in (design doc turn 4b/6).
+   Motion stays sparse per the DS rule: draw-in on arrival only, no loops.
+   The freshness pulse already exists (--tick: 1s / .agent-freshness). */
+.chart-enhanced .ch-line {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  animation: ch-draw 1.05s cubic-bezier(0.35, 0.5, 0.15, 1) forwards;
+  /* pathLength=1 normalizes the dash math so the stroke length is uniform
+     across differently-sized series without per-chart tuning. */
+}
+.chart-enhanced .ch-line.d2 { animation-delay: 0.14s; }
+.chart-enhanced .ch-area,
+.chart-enhanced .ch-band { animation: ch-fade 0.7s ease 0.55s both; }
+.chart-enhanced .ch-dot {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: ch-pop 0.45s cubic-bezier(0.3, 1.5, 0.5, 1) 0.95s both;
+}
+.chart-enhanced .ch-peak { animation: ch-fade 0.5s ease 1.15s both; }
+@media (prefers-reduced-motion: reduce) {
+  .chart-enhanced .ch-line,
+  .chart-enhanced .ch-area,
+  .chart-enhanced .ch-band,
+  .chart-enhanced .ch-dot,
+  .chart-enhanced .ch-peak { animation: none; stroke-dashoffset: 0; opacity: 1; }
+}
+@keyframes ch-draw { to { stroke-dashoffset: 0; } }
+@keyframes ch-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes ch-pop { from { transform: scale(0.2); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+
+/* Answer spec v1 — anatomy step 5: context strip. The only home for process.
+   Freshness dot pulses (reuses --tick); fold keeps everything else muted. */
+.agent-ctx-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  margin-top: 10px;
+  padding-top: 9px;
+  border-top: 1px solid var(--line-soft);
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--muted);
+}
+.agent-ctx-strip .ctx-fresh { animation: ctx-pulse 1s ease infinite; color: var(--cyan); }
+.agent-ctx-strip details.agent-query { border-top: 0; padding-top: 0; }
+.agent-ctx-strip details.agent-query summary { font-size: 10px; }
+.agent-ctx-strip details.agent-query summary::before { content: "⟲ "; }
+@keyframes ctx-pulse { 0%, 100% { opacity: 0.45; } 50% { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) {
+  .agent-ctx-strip .ctx-fresh { animation: none; }
+}
+
+/* Answer spec v1 — anatomy step 1: the `›` question-line echo at the top of
+   the answer card. Mono, muted, never restated in the body. */
+.agent-question-echo {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--muted);
+  margin: 0 0 10px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.agent-question-echo::before { content: "› "; color: var(--cyan); }
+
+/* Answer spec v1 — fold-zeros KPI chip (design doc 2a preview). */
+.repo-kpi-fold {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--muted);
+  margin: 8px 0 0;
+  padding: 6px 10px;
+  border: 1px solid var(--line-soft);
+  border-radius: 5px;
+  background: var(--panel-2);
+}

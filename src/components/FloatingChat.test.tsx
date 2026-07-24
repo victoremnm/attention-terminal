@@ -6,7 +6,8 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-libra
 import "@testing-library/jest-dom/vitest";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ChatProvider, useChatContext } from "@/lib/chat-context";
-import { FloatingChat } from "./FloatingChat";
+import { FloatingChat, messageHasRenderAnswer, questionForAssistantMessage } from "./FloatingChat";
+import type { UIMessage } from "ai";
 
 function renderInProvider() {
   return render(
@@ -151,5 +152,44 @@ describe("FloatingChat", () => {
     renderWithControls();
     act(() => screen.getByTestId("btn-open").click());
     expect(screen.getByPlaceholderText("ask about tech attention...")).toBeInTheDocument();
+  });
+});
+
+describe("Answer spec v1 — prose gate + question echo helpers", () => {
+  // Lightweight fake UIMessage-shaped objects. We exercise the pure helpers
+  // (exported from FloatingChat) rather than the full chat transport, since the
+  // gate decision is the load-bearing rule and doesn't need the network layer.
+  function mkMessage(role: "user" | "assistant", parts: { type: string; text?: string }[]): UIMessage {
+    return { id: `${role}-${Math.random()}`, role, parts } as unknown as UIMessage;
+  }
+
+  it("messageHasRenderAnswer is true only when a tool-renderAnswer part is present", () => {
+    const withRender = mkMessage("assistant", [{ type: "tool-renderAnswer" }]);
+    const withText = mkMessage("assistant", [{ type: "text", text: "some prose" }]);
+    const user = mkMessage("user", [{ type: "text", text: "hi" }]);
+    expect(messageHasRenderAnswer(withRender)).toBe(true);
+    expect(messageHasRenderAnswer(withText)).toBe(false);
+    expect(messageHasRenderAnswer(user)).toBe(false);
+  });
+
+  it("questionForAssistantMessage returns the most recent preceding user text", () => {
+    const messages = [
+      mkMessage("user", [{ type: "text", text: "is htmx hype or real?" }]),
+      mkMessage("assistant", [{ type: "tool-renderAnswer" }]),
+    ];
+    expect(questionForAssistantMessage(messages, 1)).toBe("is htmx hype or real?");
+  });
+
+  it("questionForAssistantMessage returns undefined when the preceding user message has no text", () => {
+    const messages = [
+      mkMessage("user", [{ type: "tool-something" }]),
+      mkMessage("assistant", [{ type: "tool-renderAnswer" }]),
+    ];
+    expect(questionForAssistantMessage(messages, 1)).toBeUndefined();
+  });
+
+  it("questionForAssistantMessage returns undefined for the first message", () => {
+    const messages = [mkMessage("assistant", [{ type: "tool-renderAnswer" }])];
+    expect(questionForAssistantMessage(messages, 0)).toBeUndefined();
   });
 });
