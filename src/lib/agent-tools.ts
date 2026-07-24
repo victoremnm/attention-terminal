@@ -27,6 +27,11 @@ import {
   requireFinalOnReplacingTables,
   TABLE_LIST_LIMIT,
 } from "./sql-catalog-guard";
+import {
+  blockAntipatternsIfPresent,
+  executeTaggedJsonEachRowQuery,
+  normalizeUnionQuery,
+} from "./query-execution";
 
 import { getDataPolicyTier } from "./catalog";
 
@@ -35,7 +40,7 @@ import { dailyDigest } from "./digest";
 import { realBuildersDeck } from "./real-builders";
 import { RenderPayloadSchema } from "./render-payload";
 import { repoDrilldown } from "./queries";
-import { normalizeUnionQuery, runDataRetrievalAgent } from "./agents/data-retrieval-agent";
+import { runDataRetrievalAgent } from "./agents/data-retrieval-agent";
 import { runVisualizationMappingAgent } from "./agents/visualization-mapping-agent";
 
 let clickhouse: ClickHouseClient | undefined;
@@ -91,23 +96,18 @@ export const listTables = tool({
   execute: async () => {
     const t0 = Date.now();
     try {
-      const result = await getTableListClickHouse().query({
-        query: LIST_TABLES_SQL,
-        format: "JSONEachRow",
-        query_params: { limit: TABLE_LIST_LIMIT },
-        abort_signal: AbortSignal.timeout(TABLE_LIST_TIMEOUT_MS),
-        clickhouse_settings: {
-          readonly: "2",
-          max_execution_time: 5,
-        },
-      });
-      const tablesRaw = (await result.json()) as Array<{
+      const { rows: tablesRaw } = await executeTaggedJsonEachRowQuery<{
         database: string;
         name: string;
         engine: string;
         total_rows: string;
         size: string;
-      }>;
+      }>(getTableListClickHouse(), LIST_TABLES_SQL, {
+        queryParams: { limit: TABLE_LIST_LIMIT },
+        abortSignal: AbortSignal.timeout(TABLE_LIST_TIMEOUT_MS),
+        maxExecutionTime: 5,
+        logComment: { toolName: "listTables", surface: "catalog" },
+      });
       const elapsedMs = Date.now() - t0;
       registerCatalogTables(tablesRaw);
       const tables = tablesRaw.map((t) => ({
@@ -156,24 +156,23 @@ export const describeTable = tool({
         error: `Unknown table ${normalized}. Call listTables first, then describe a table that listTables returned.`,
       };
     }
-    const result = await getClickHouse().query({
-      query: database
-        ? "DESCRIBE TABLE {database: Identifier}.{name: Identifier}"
-        : "DESCRIBE TABLE {name: Identifier}",
-      query_params: { database, name },
-      format: "JSONEachRow",
-      clickhouse_settings: {
-        readonly: "2",
-        max_execution_time: 10,
-      },
-    });
-    const columns = (await result.json()) as Array<{
+    const { rows: columns } = await executeTaggedJsonEachRowQuery<{
       name: string;
       type: string;
       default_type?: string;
       default_expression?: string;
       comment?: string;
-    }>;
+    }>(
+      getClickHouse(),
+      database
+        ? "DESCRIBE TABLE {database: Identifier}.{name: Identifier}"
+        : "DESCRIBE TABLE {name: Identifier}",
+      {
+        queryParams: { database, name },
+        maxExecutionTime: 10,
+        logComment: { toolName: "describeTable", surface: "catalog" },
+      },
+    );
     registerTableSchema(catalogKey, columns.map((column) => `${column.name}:${column.type}`));
     registerTableSchema(name, columns.map((column) => `${column.name}:${column.type}`));
     return {
@@ -192,6 +191,10 @@ export const runReadOnlyQuery = tool({
       return {
         error: "Only one read-only SELECT-style statement is allowed.",
       };
+    }
+    const antipatternHint = blockAntipatternsIfPresent(normalizedQuery);
+    if (antipatternHint) {
+      return { error: antipatternHint };
     }
 
     try {
@@ -215,18 +218,13 @@ export const runReadOnlyQuery = tool({
       }
       const tables = extractTableCandidates(normalizedQuery);
       await ensureTablesExist(tables);
-      const result = await getClickHouse().query({
-        query: normalizedQuery,
-        format: "JSONEachRow",
-        clickhouse_settings: {
-          readonly: "2",
-          max_result_rows: "1000",
-          result_overflow_mode: "break",
-          max_execution_time: 30,
-          union_default_mode: "ALL",
-        },
+      const { rows } = await executeTaggedJsonEachRowQuery<Record<string, unknown>>(getClickHouse(), normalizedQuery, {
+        readonly: "2",
+        maxExecutionTime: 30,
+        maxResultRows: "1000",
+        resultOverflowMode: "break",
+        logComment: { toolName: "runReadOnlyQuery", surface: "read-only-query" },
       });
-      const rows = await result.json();
       const capped = capOutput(rows);
       return {
         rowCount: rows.length,

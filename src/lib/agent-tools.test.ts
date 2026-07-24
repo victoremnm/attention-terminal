@@ -11,6 +11,7 @@ import {
   FALLBACK_TABLES,
   LIST_TABLES_SQL,
   listTables,
+  describeTable,
   resetCatalogState,
   TABLE_LIST_TIMEOUT_MS,
   buildMorphingCard,
@@ -49,11 +50,49 @@ describe("listTables tool", () => {
       expect.objectContaining({
         query: LIST_TABLES_SQL,
         abort_signal: expect.any(AbortSignal),
-        clickhouse_settings: {
+        query_params: { limit: 50 },
+        query_id: expect.any(String),
+        clickhouse_settings: expect.objectContaining({
           readonly: "2",
           max_execution_time: 5,
-        },
+          union_default_mode: "ALL",
+          log_comment: expect.stringMatching(
+            /^attn \| tool=listTables \| surface=catalog \| qid=/,
+          ),
+        }),
       })
+    );
+  });
+
+  it("tags describeTable metadata queries", async () => {
+    resetCatalogState();
+    mockQuery.mockResolvedValueOnce({
+      json: async () => [
+        { database: "default", name: "events", engine: "MergeTree", total_rows: "1", size: "1 KB" },
+      ],
+    });
+    await (listTables as any).execute({});
+    mockQuery.mockResolvedValueOnce({
+      json: async () => [{ name: "id", type: "UInt64" }],
+    });
+
+    const res = await (describeTable as any).execute({ table: "default.events" });
+
+    expect(res.columns).toEqual([{ name: "id", type: "UInt64" }]);
+    expect(mockQuery).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        query: "DESCRIBE TABLE {database: Identifier}.{name: Identifier}",
+        query_params: { database: "default", name: "events" },
+        query_id: expect.any(String),
+        clickhouse_settings: expect.objectContaining({
+          readonly: "2",
+          max_execution_time: 10,
+          union_default_mode: "ALL",
+          log_comment: expect.stringMatching(
+            /^attn \| tool=describeTable \| surface=catalog \| qid=/,
+          ),
+        }),
+      }),
     );
   });
 
