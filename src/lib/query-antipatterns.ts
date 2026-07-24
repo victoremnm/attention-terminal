@@ -102,6 +102,13 @@ function hasTimePredicate(sql: string, tableBare: string): boolean {
   return false;
 }
 
+function hasUnboundedRawTableScan(sql: string): boolean {
+  return extractTables(sql).some((ref) => {
+    const isRawTable = KNOWN_RAW_TABLES.includes(ref.qualified) || KNOWN_RAW_TABLES.includes(ref.table);
+    return isRawTable && !hasTimePredicate(sql, ref.table);
+  });
+}
+
 function findLeadingWildcardLike(sql: string): AntipatternHit | null {
   // `lower(col) LIKE '%x%'` / `col LIKE '%x'` / `ILIKE '%x%'` on String columns.
   // The leading `%` defeats tokenbf/ngrambf skip indexes and forces a full
@@ -127,11 +134,14 @@ function findLeadingWildcardLike(sql: string): AntipatternHit | null {
     // ClickHouse can use the lower(actor_login) token index for the documented
     // bot-account filter, including qualified actor_login references in rollups.
     // Keep this exception exact so unrelated leading-wildcard searches remain
-    // blocked, and do not exempt ILIKE (which bypasses the index).
+    // blocked, and do not exempt ILIKE (which bypasses the index). An unbounded
+    // raw-table read must retain this P1 guard: its raw-table-full-scan hit is
+    // only P2 and therefore does not block in formatAntipatternHint().
     if (
       m[1].toUpperCase() === "LIKE" &&
       pattern === "%[bot]%" &&
-      /^lower\(\s*(?:[A-Za-z_][\w$]*\.)?actor_login\s*\)$/i.test(operand)
+      /^lower\(\s*(?:[A-Za-z_][\w$]*\.)?actor_login\s*\)$/i.test(operand) &&
+      !hasUnboundedRawTableScan(sql)
     ) {
       continue;
     }

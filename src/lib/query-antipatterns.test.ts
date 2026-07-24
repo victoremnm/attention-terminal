@@ -100,6 +100,13 @@ describe("query-antipatterns — known-good curated queries (zero false positive
   ])("allows documented bot predicate: %s", (predicate) => {
     expect(hitIds(`SELECT actor_login FROM gh_actor_daily WHERE day >= now() - INTERVAL 1 DAY AND ${predicate}`)).toEqual([]);
   });
+
+  it("allows a bounded raw github_events bot filter", () => {
+    const sql = `SELECT actor_login FROM raw.github_events
+      WHERE created_at >= now() - INTERVAL 24 HOUR
+        AND lower(actor_login) LIKE '%[bot]%'`;
+    expect(hitIds(sql)).toEqual([]);
+  });
 });
 
 describe("query-antipatterns — per-rule positive coverage", () => {
@@ -127,6 +134,14 @@ describe("query-antipatterns — per-rule positive coverage", () => {
       `SELECT actor_login FROM gh_actor_daily WHERE actor_login LIKE '%[bot]%'`
     );
     expect(hits.some((h) => h.id === "leading-wildcard-like" && h.severity === "P1")).toBe(true);
+  });
+
+  it("keeps an unbounded raw github_events bot scan blocked at P1", () => {
+    const sql = `SELECT count() FROM raw.github_events
+      WHERE lower(actor_login) LIKE '%[bot]%'`;
+    const hits = analyzeQueryAntipatterns(sql);
+    expect(hits.some((h) => h.id === "leading-wildcard-like" && h.severity === "P1")).toBe(true);
+    expect(formatAntipatternHint(hits)).toMatch(/blocked by the antipattern analyzer/i);
   });
 
   it("function-wrapped-predicate (P1) — lower(time) or toString(created_at) in WHERE", () => {
