@@ -124,9 +124,8 @@ describe("runDataRetrievalAgent", () => {
     await runDataRetrievalAgent("anything");
 
     const call = generateObjectMock.mock.calls[0][0] as any;
-    const systemMessage = call.messages.find((m: any) => m.role === "system");
-    expect(systemMessage.content).toContain("raw.hackernews");
-    expect(systemMessage.content).toContain("raw.github_events");
+    expect(call.instructions).toContain("raw.hackernews");
+    expect(call.instructions).toContain("raw.github_events");
   });
 
   it("rejects a query against a fabricated table without executing it, then succeeds on retry", async () => {
@@ -217,9 +216,8 @@ describe("runDataRetrievalAgent", () => {
     const result = await runDataRetrievalAgent("repos active today");
 
     const firstCallPrompt = generateObjectMock.mock.calls[0][0] as any;
-    const systemMessage = firstCallPrompt.messages.find((m: any) => m.role === "system");
-    expect(systemMessage.content).toContain("Time column is created_at");
-    expect(systemMessage.content).toContain("gh_repo_metadata");
+    expect(firstCallPrompt.instructions).toContain("Time column is created_at");
+    expect(firstCallPrompt.instructions).toContain("gh_repo_metadata");
 
     const secondCallPrompt = generateObjectMock.mock.calls[1][0] as any;
     const retryUserMsg = [...secondCallPrompt.messages].reverse().find((m: any) => m.role === "user");

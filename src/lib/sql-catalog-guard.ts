@@ -144,24 +144,40 @@ export function requireDescribedTables(query: string): string[] {
 
 /**
  * ReplacingMergeTree (and Shared/Replicated variant) tables referenced in
- * `query` without a FINAL modifier immediately after the table name. Empty
- * means every ReplacingMergeTree reference is correctly deduplicated.
- * Requires the catalog to be loaded (registerCatalogTables) with engine
- * info -- tables of unknown engine are assumed safe rather than flagged, so
- * this only fires on a confirmed ReplacingMergeTree. Sees through views
+ * `query` without a FINAL modifier at the correct position (after the alias,
+ * if any). Empty means every ReplacingMergeTree reference is correctly
+ * deduplicated. Requires the catalog to be loaded (registerCatalogTables) with
+ * engine info -- tables of unknown engine are assumed safe rather than flagged,
+ * so this only fires on a confirmed ReplacingMergeTree. Sees through views
  * (isReplacingMergeTree checks every engine registered under the same bare
  * table name, so `raw.hackernews` -- a View over `default.hackernews`, a
  * ReplacingMergeTree -- still requires FINAL). CTE references are excluded:
  * a CTE that already reads its source table with FINAL doesn't need the
  * outer query to repeat it.
+ *
+ * ClickHouse requires FINAL to come AFTER any alias, not before it. Both
+ * `FROM t FINAL` (bare) and `FROM t AS alias FINAL` are valid; `FROM t FINAL
+ * AS alias` is a syntax error. This function correctly accepts the former two
+ * and flags the latter as missing FINAL so the model corrects the position.
  */
 export function requireFinalOnReplacingTables(query: string): string[] {
   const cteNames = getCteNames(query);
   const missing = new Set<string>();
-  for (const match of query.matchAll(
-    /\b(?:from|join)\s+([`"]?)([A-Za-z_][\w$]*)\1(?:\.([`"]?)([A-Za-z_][\w$]*)\3)?(\s+FINAL\b)?/gi
-  )) {
-    if (cteNames.has(match[2])) continue; // a CTE reference, not a real table -- already deduped inside its own definition
+
+  // Match table references, optionally with an alias (requires AS keyword)
+  // before FINAL. Bare aliases (FROM t alias FINAL) are rare and intentionally
+  // not matched to avoid consuming SQL keywords (ON, WHERE, JOIN) as aliases.
+  const TABLE_FINAL_PATTERN =
+    /\b(?:from|join)\s+([`"]?)([A-Za-z_][\w$]*)\1(?:\.([`"]?)([A-Za-z_][\w$]*)\3)?(?:\s+AS\s+[A-Za-z_]\w*)?(\s+FINAL\b)?/gi;
+
+  // Detect FINAL placed *before* an alias — ClickHouse rejects this form.
+  // E.g. `FROM t FINAL AS alias`. Uses the same capture group structure as
+  // TABLE_FINAL_PATTERN so the same table name construction logic works.
+  const FINAL_BEFORE_ALIAS =
+    /\b(?:from|join)\s+([`"]?)([A-Za-z_][\w$]*)\1(?:\.([`"]?)([A-Za-z_][\w$]*)\3)?\s+FINAL\s+AS\s+[A-Za-z_]\w*\b/gi;
+
+  for (const match of query.matchAll(TABLE_FINAL_PATTERN)) {
+    if (cteNames.has(match[2])) continue;
     const table = match[4] ? `${match[2]}.${match[4]}` : match[2];
     const normalized = normalizeTableName(table);
     const hasFinal = Boolean(match[5]);
@@ -169,5 +185,16 @@ export function requireFinalOnReplacingTables(query: string): string[] {
       missing.add(normalized);
     }
   }
+
+  // When FINAL appears before an alias, ClickHouse rejects the query — treat
+  // as missing FINAL so the model corrects the position.
+  for (const match of query.matchAll(FINAL_BEFORE_ALIAS)) {
+    const table = match[4] ? `${match[2]}.${match[4]}` : match[2];
+    const normalized = normalizeTableName(table);
+    if (isReplacingMergeTree(normalized)) {
+      missing.add(normalized);
+    }
+  }
+
   return [...missing];
 }
