@@ -92,6 +92,21 @@ describe("query-antipatterns — known-good curated queries (zero false positive
                  GROUP BY repo_name LIMIT 20`;
     expect(hitIds(sql)).toEqual([]);
   });
+
+  it.each([
+    "lower(actor_login) LIKE '%[bot]%'",
+    "lower(actor_login) NOT LIKE '%[bot]%'",
+    "lower(bucket.actor_login) LIKE '%[bot]%'",
+  ])("allows documented bot predicate: %s", (predicate) => {
+    expect(hitIds(`SELECT actor_login FROM gh_actor_daily WHERE day >= now() - INTERVAL 1 DAY AND ${predicate}`)).toEqual([]);
+  });
+
+  it("allows a bounded raw github_events bot filter", () => {
+    const sql = `SELECT actor_login FROM raw.github_events
+      WHERE created_at >= now() - INTERVAL 24 HOUR
+        AND lower(actor_login) LIKE '%[bot]%'`;
+    expect(hitIds(sql)).toEqual([]);
+  });
 });
 
 describe("query-antipatterns — per-rule positive coverage", () => {
@@ -105,6 +120,28 @@ describe("query-antipatterns — per-rule positive coverage", () => {
   it("leading-wildcard-like (P1) — ILIKE with leading %", () => {
     const hits = analyzeQueryAntipatterns(`SELECT * FROM x WHERE name ILIKE '%foo%'`);
     expect(hits.some((h) => h.id === "leading-wildcard-like")).toBe(true);
+  });
+
+  it("still rejects non-bot leading-wildcard LIKE predicates", () => {
+    const hits = analyzeQueryAntipatterns(
+      `SELECT title FROM hackernews WHERE lower(title) LIKE '%htmx%'`
+    );
+    expect(hits.some((h) => h.id === "leading-wildcard-like" && h.severity === "P1")).toBe(true);
+  });
+
+  it("still rejects an unindexed actor bot LIKE predicate", () => {
+    const hits = analyzeQueryAntipatterns(
+      `SELECT actor_login FROM gh_actor_daily WHERE actor_login LIKE '%[bot]%'`
+    );
+    expect(hits.some((h) => h.id === "leading-wildcard-like" && h.severity === "P1")).toBe(true);
+  });
+
+  it("keeps an unbounded raw github_events bot scan blocked at P1", () => {
+    const sql = `SELECT count() FROM raw.github_events
+      WHERE lower(actor_login) LIKE '%[bot]%'`;
+    const hits = analyzeQueryAntipatterns(sql);
+    expect(hits.some((h) => h.id === "leading-wildcard-like" && h.severity === "P1")).toBe(true);
+    expect(formatAntipatternHint(hits)).toMatch(/blocked by the antipattern analyzer/i);
   });
 
   it("function-wrapped-predicate (P1) — lower(time) or toString(created_at) in WHERE", () => {
