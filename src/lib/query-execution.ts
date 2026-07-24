@@ -40,7 +40,8 @@ export async function executeTaggedJsonEachRowQuery<T>(
   client: Pick<ClickHouseClient, "query">,
   query: string,
   options: ExecuteTaggedJsonEachRowOptions = {},
-): Promise<{ rows: T[]; queryId: string }> {
+): Promise<{ rows: T[]; queryId: string; rowsRead: number; elapsedMs: number }> {
+  const startedAt = Date.now();
   const queryId = options.queryId ?? randomUUID();
   const logComment = buildLogComment({
     ...(options.logComment ?? { toolName: "query" }),
@@ -63,5 +64,17 @@ export async function executeTaggedJsonEachRowQuery<T>(
   });
 
   const rows = await result.json<T>();
-  return { rows, queryId };
+  let rowsRead = rows.length;
+  try {
+    const summary = (result as unknown as { response_headers?: Record<string, string | string[]> })
+      .response_headers?.["x-clickhouse-summary"];
+    if (summary) {
+      const parsed = JSON.parse(String(summary)) as { read_rows?: string | number };
+      const parsedRowsRead = Number(parsed.read_rows);
+      if (Number.isFinite(parsedRowsRead)) rowsRead = parsedRowsRead;
+    }
+  } catch {
+    // Use returned row count when ClickHouse does not expose its summary.
+  }
+  return { rows, queryId, rowsRead, elapsedMs: Date.now() - startedAt };
 }

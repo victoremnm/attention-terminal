@@ -93,6 +93,7 @@ export async function runDataRetrievalAgent(intent: string): Promise<
       rowCount: number;
       metadata: Record<string, unknown>;
       queryExecuted: string;
+      query: { sql: string; rowsRead: number; elapsedMs: number };
       sampleRows: Record<string, unknown>[];
     }
   | { error: string }
@@ -182,7 +183,7 @@ If you are unsure whether a column exists on a table, prefer a simpler query ove
     }
 
     try {
-      const { rows } = await executeTaggedJsonEachRowQuery<Record<string, unknown>>(getClickHouse(), query, {
+      const { rows, rowsRead, elapsedMs } = await executeTaggedJsonEachRowQuery<Record<string, unknown>>(getClickHouse(), query, {
         readonly: "2",
         maxExecutionTime: 30,
         logComment: { toolName: "runDataRetrieval", surface: "ad-hoc-intent" },
@@ -222,6 +223,7 @@ If you are unsure whether a column exists on a table, prefer a simpler query ove
         rowCount: rows.length,
         metadata,
         queryExecuted: query,
+        query: { sql: query, rowsRead, elapsedMs },
         // Bounded sample the model can pass straight into a morphing-card
         // payload's chartConfig.data.values (see MorphingCardSchema in render-payload.ts).
         sampleRows: rows.slice(0, MAX_SAMPLE_ROWS),

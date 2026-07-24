@@ -218,7 +218,7 @@ export const runReadOnlyQuery = tool({
       }
       const tables = extractTableCandidates(normalizedQuery);
       await ensureTablesExist(tables);
-      const { rows } = await executeTaggedJsonEachRowQuery<Record<string, unknown>>(getClickHouse(), normalizedQuery, {
+      const { rows, rowsRead, elapsedMs } = await executeTaggedJsonEachRowQuery<Record<string, unknown>>(getClickHouse(), normalizedQuery, {
         readonly: "2",
         maxExecutionTime: 30,
         maxResultRows: "1000",
@@ -229,6 +229,7 @@ export const runReadOnlyQuery = tool({
       return {
         rowCount: rows.length,
         rows: capped.rows,
+        query: { sql: normalizedQuery, rowsRead, elapsedMs },
         ...(capped.truncated ? { note: "Result truncated. Refine the query or aggregate." } : {}),
       };
     } catch (error) {
