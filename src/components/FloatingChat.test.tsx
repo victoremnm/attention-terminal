@@ -115,6 +115,7 @@ describe("FloatingChat", () => {
     expect(header).toBeInTheDocument();
 
     act(() => fireEvent.pointerDown(header!, { button: 0, clientX: 1000, clientY: 10 }));
+    act(() => fireEvent.pointerMove(window, { clientX: 1020, clientY: 30 }));
     expect(document.querySelector(".floating-chat-drawer")?.className).toContain("detached");
 
     act(() => screen.getByTestId("btn-minimize").click());

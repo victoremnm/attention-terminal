@@ -184,7 +184,8 @@ export function FloatingChat() {
   const minimizedPillRef = useRef<HTMLDivElement>(null);
   const drawerRef = useRef<HTMLDivElement>(null);
   const resizingRef = useRef(false);
-  const draggingRef = useRef(false);
+  const isDraggingRef = useRef(false);
+  const dragActiveRef = useRef(false);
   const startXRef = useRef(0);
   const startYRef = useRef(0);
   const startPosRef = useRef({ x: 0, y: 0 });
@@ -223,39 +224,46 @@ export function FloatingChat() {
 
   function startDrag(e: React.PointerEvent) {
     if (e.button !== 0) return;
-    // Don't intercept clicks on action buttons or interactive controls
-    if ((e.target as HTMLElement).closest(".floating-chat-drawer-actions, button, a, input")) return;
-    
-    e.preventDefault();
+    dragActiveRef.current = true;
+    isDraggingRef.current = false;
+    startXRef.current = e.clientX;
+    startYRef.current = e.clientY;
+
     let startingPos = { ...pos };
     if (!detached) {
       const rect = (e.currentTarget.closest(".floating-chat-drawer") as HTMLElement)?.getBoundingClientRect();
       if (rect) {
         startingPos = { x: rect.left, y: rect.top };
-        setPos(startingPos);
-        setDetached(true);
       }
     }
-    draggingRef.current = true;
-    startXRef.current = e.clientX;
-    startYRef.current = e.clientY;
     startPosRef.current = startingPos;
-    document.body.style.userSelect = "none";
+
     window.addEventListener("pointermove", onDragMove);
     window.addEventListener("pointerup", endDrag);
   }
 
   function onDragMove(e: PointerEvent) {
-    if (!draggingRef.current) return;
+    if (!dragActiveRef.current) return;
     const dx = e.clientX - startXRef.current;
     const dy = e.clientY - startYRef.current;
-    const newX = Math.max(0, Math.min(window.innerWidth - drawerWidth, startPosRef.current.x + dx));
-    const newY = Math.max(0, Math.min(window.innerHeight - 48, startPosRef.current.y + dy));
-    setPos({ x: newX, y: newY });
+    const dist = Math.hypot(dx, dy);
+
+    if (dist > 4 && !isDraggingRef.current) {
+      isDraggingRef.current = true;
+      if (!detached) setDetached(true);
+      document.body.style.userSelect = "none";
+    }
+
+    if (isDraggingRef.current) {
+      const newX = Math.max(0, Math.min(window.innerWidth - drawerWidth, startPosRef.current.x + dx));
+      const newY = Math.max(0, Math.min(window.innerHeight - 48, startPosRef.current.y + dy));
+      setPos({ x: newX, y: newY });
+    }
   }
 
   function endDrag() {
-    draggingRef.current = false;
+    dragActiveRef.current = false;
+    isDraggingRef.current = false;
     document.body.style.userSelect = "";
     window.removeEventListener("pointermove", onDragMove);
     window.removeEventListener("pointerup", endDrag);
