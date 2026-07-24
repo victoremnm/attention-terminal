@@ -39,7 +39,15 @@ const NUMBER = new Intl.NumberFormat("en-US");
 const PAGE_SIZE = 100;
 const ACTIVE_LIMIT = 40;
 const ATTENTION_SERVER_SORTS = new Set(["events", "actors", "pushes", "commits", "stars", "forks", "prsOpened", "prsMerged"]);
-const ACTIVE_SERVER_SORTS = new Set(["commits", "pushes"]);
+const ACTIVE_SERVER_SORTS = new Set([
+  "top_forks",
+  "top_pushes",
+  "top_commits",
+  "pr_velocity",
+  "active_builders",
+  "commits",
+  "pushes",
+]);
 
 function isServerSortSupported(source: "attention" | "active", field: string): boolean {
   return source === "attention" ? ATTENTION_SERVER_SORTS.has(field) : ACTIVE_SERVER_SORTS.has(field);
@@ -433,6 +441,7 @@ export function RepoRankings({ windows }: { windows: Record<RepoWindow, RepoWind
             type="button"
             className="rankings-mode-button"
             aria-pressed={prefs.mode === m.key}
+            aria-label={m.label}
             onClick={() => handleSelectMode(m.key)}
           >
             {m.label}
