@@ -14,6 +14,11 @@
   --amber: #f5b53d;
   --emerald: #34d399;
   --blue: #4f9dff;
+  /* Chart primitives under src/components/charts/ reference these directly;
+     alias onto the existing token set instead of introducing new colors. */
+  --grid-line: var(--line-soft);
+  --axis-stroke: var(--line);
+  --text-secondary: var(--muted);
   --mono: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
   --sans: system-ui, -apple-system, "Segoe UI", sans-serif;
 }

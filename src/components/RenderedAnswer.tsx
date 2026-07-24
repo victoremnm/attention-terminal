@@ -3,7 +3,32 @@
 import { useState, type ReactNode } from "react";
 import type { CandlesPayload, DigestPayload, DivergencePayload, MatrixPayload, MorphingCardPayload, RenderPayload, RepoDrilldownPayload, RepoDrilldownActivity, RepoDrilldownPulse, RepoDrilldownTrend, TableColumn, TablePayload, TickerPayload, VerdictTile } from "@/lib/render-payload";
 import { VERDICT_COLOR } from "@/lib/verdict-color";
-import { AreaChart, CodeFrequencyChart, DualLine, HorizontalBarChart, PieChart, Sparkline, StackedBarChart, TreemapChart, VerticalBarChart, WaterfallChart } from "./charts";
+import {
+  AreaChart,
+  BoxplotChart,
+  BubbleChart,
+  BulletGraph,
+  ChoroplethMap,
+  CodeFrequencyChart,
+  DataTable,
+  DotPlot,
+  DualLine,
+  FlowChart,
+  GanttChart,
+  HorizontalBarChart,
+  PieChart,
+  SankeyDiagram,
+  Scatterplot,
+  Slopegraph,
+  SpiderChart,
+  Sparkline,
+  StackedBarChart,
+  TreemapChart,
+  UnitChart,
+  VerticalBarChart,
+  WaffleChart,
+  WaterfallChart,
+} from "./charts";
 import { MarkdownText } from "./MarkdownText";
 import { SkinnyDeck } from "./SkinnyDeck";
 import { copyToClipboard, exportAssetAsHTML, exportAssetAsMarkdown } from "@/lib/asset-export";
@@ -175,6 +200,19 @@ function humanizeKey(key: string) {
   return key
     .replace(/_/g, " ")
     .replace(/\b([a-z])/g, (match) => match.toUpperCase());
+}
+
+function parseDateLike(value: unknown): number | null {
+  if (value instanceof Date) {
+    const time = value.getTime();
+    return Number.isFinite(time) ? time : null;
+  }
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string") {
+    const time = new Date(value).getTime();
+    return Number.isFinite(time) ? time : null;
+  }
+  return null;
 }
 
 function formatTableCell(value: unknown): string {
@@ -769,39 +807,66 @@ function RepoDrilldownAnswer({ payload }: { payload: RepoDrilldownPayload }) {
 }
 
 // Adapter: turns a morphing-card's raw row objects + Vega-Lite-ish chartConfig
-// into one of the existing SVG chart components (see ./charts). Returns null
-// whenever the visualizationType/mark isn't chart-capable (yet) or the data
-// is too sparse to plot — callers fall back to the MorphingCardTable in
-// that case, they never crash. Supported set is intentionally minimal:
-// Bar Chart, Line Graph, Area Chart. Everything else (Pie Chart, Treemap,
-// Stacked Bar Chart, Scatterplot, ...) has no matching component and must
-// keep rendering the table.
+// into one of the chart primitives exposed from ./charts. Returns null
+// whenever the visualizationType/mark isn't chart-capable yet or the data is
+// too sparse to plot — callers fall back to the MorphingCardTable in that
+// case, they never crash.
 function buildMorphingChart(
   markType: string,
   visualizationType: MorphingCardPayload["visualizationType"],
   dataValues: MorphingCardRow[],
   config: Record<string, unknown>,
 ): ReactNode | null {
-  if (dataValues.length < 2) return null;
+  if (dataValues.length === 0) return null;
+  const singleRowSupported = new Set([
+    "Spider Chart",
+    "Slopegraph",
+    "Gantt Chart",
+    "Dot Plot",
+    "Bullet Graph",
+    "Square Area Chart",
+    "Waffle",
+    "Unit Chart",
+    "Boxplot",
+    "Scatterplot",
+    "Bubble Chart",
+    "Sankey Diagram",
+    "Flow Chart",
+    "Choropleth Map",
+  ]);
+  if (dataValues.length < 2 && !singleRowSupported.has(visualizationType)) return null;
 
-  const firstRow = dataValues[0];
+  const firstRow = dataValues[0] ?? {};
   const encoding = isRecord(config.encoding) ? config.encoding : undefined;
   const xEncoding = isRecord(encoding?.x) ? encoding.x : undefined;
   const yEncoding = isRecord(encoding?.y) ? encoding.y : undefined;
+  const sizeEncoding = isRecord(encoding?.size) ? encoding.size : undefined;
+  const colorEncoding = isRecord(encoding?.color) ? encoding.color : undefined;
+  const encodingRecord = encoding as Record<string, unknown> | undefined;
+  const sourceEncoding = isRecord(encodingRecord?.source) ? encodingRecord.source : undefined;
+  const targetEncoding = isRecord(encodingRecord?.target) ? encodingRecord.target : undefined;
 
-  const xField = typeof xEncoding?.field === "string" ? xEncoding.field : Object.keys(firstRow)[0];
-  if (!xField) return null;
-
+  const xField = typeof xEncoding?.field === "string" ? xEncoding.field : Object.keys(firstRow)[0] ?? "";
   const yField = typeof yEncoding?.field === "string"
     ? yEncoding.field
     : Object.keys(firstRow).find((key) => key !== xField && isFiniteNumeric(firstRow[key]));
-  if (!yField) return null;
-
-  const yTitle = typeof yEncoding?.title === "string" && yEncoding.title.trim().length > 0 ? yEncoding.title : yField;
+  const labelField = Object.keys(firstRow).find((key) => typeof firstRow[key] === "string" && key !== xField && key !== yField) ?? xField;
+  const allNumericFields = Object.keys(firstRow).filter((key) => isFiniteNumeric(firstRow[key]) && key !== labelField);
+  // Deliberately keeps yField in the list (only xField is excluded): branches
+  // that need one measure (Dot Plot/Unit Chart/Waffle) read numericFields[0],
+  // which must resolve to yField for a plain {label, metric} row, while
+  // multi-measure branches (Bullet/Slopegraph/Boxplot) still get every
+  // numeric column in row order, yField included, to fill later slots.
+  const numericFields = Object.keys(firstRow).filter((key) => isFiniteNumeric(firstRow[key]) && key !== xField);
+  const dateFields = Object.keys(firstRow).filter((key) => parseDateLike(firstRow[key]) !== null && key !== xField && key !== yField);
+  const title = typeof config.title === "string" && config.title.trim().length > 0 ? config.title : undefined;
+  const yTitle = typeof yEncoding?.title === "string" && yEncoding.title.trim().length > 0 ? yEncoding.title : yField || title || "value";
   const isTemporal = xEncoding?.type === "temporal";
   const MAX_BARS = 15;
 
-  let rows = dataValues.map((row) => ({ label: String(row[xField] ?? ""), value: Number(row[yField]) || 0 }));
+  let rows = dataValues
+    .filter((row) => xField ? row[xField] !== undefined : true)
+    .map((row) => ({ label: String(row[xField] ?? row[labelField] ?? ""), value: Number(row[yField as string]) || 0 }));
   // Non-temporal (categorical) series with more rows than a bar chart can show
   // legibly get sorted to their most significant values and pruned -- a
   // 28-bar comparison of unrelated repo names is unreadable regardless of
@@ -823,30 +888,25 @@ function buildMorphingChart(
   const isStackedBar = vis === "Stacked Bar Chart";
   const isWaterfall = vis === "Waterfall Chart";
   const isTreemap = vis === "Treemap" || vis === "Heatmap" || markType === "rect";
+  const fallbackBarItems = labels.map((label, i) => ({ label, value: values[i] }));
 
   if (isBar) {
-    return (
-      <HorizontalBarChart items={labels.map((label, i) => ({ label, value: values[i] }))} title={yTitle} />
-    );
+    return <HorizontalBarChart items={fallbackBarItems} title={yTitle} />;
   }
   if (isLineOrArea) {
     return <AreaChart days={labels} values={values} label={yTitle} />;
   }
   if (isPie) {
-    return (
-      <PieChart items={labels.map((label, i) => ({ label, value: values[i] }))} title={yTitle} />
-    );
+    return <PieChart items={fallbackBarItems} title={yTitle} />;
   }
   if (isStackedBar) {
-    const colorEncoding = isRecord(encoding?.color) ? encoding.color : undefined;
     const colorField = typeof colorEncoding?.field === "string" ? colorEncoding.field : undefined;
-
     if (colorField) {
       const categoryMap = new Map<string, { key: string; label: string; value: number }[]>();
       dataValues.forEach((row) => {
         const cat = String(row[xField] ?? "");
         const colorVal = String(row[colorField] ?? "");
-        const val = Number(row[yField]) || 0;
+        const val = Number(row[yField as string]) || 0;
         if (!categoryMap.has(cat)) categoryMap.set(cat, []);
         categoryMap.get(cat)!.push({ key: colorVal, label: colorVal, value: val });
       });
@@ -858,31 +918,187 @@ function buildMorphingChart(
 
       return <StackedBarChart items={stackedItems} title={yTitle} />;
     }
-
-    return (
-      <HorizontalBarChart items={labels.map((label, i) => ({ label, value: values[i] }))} title={yTitle} />
-    );
+    return <HorizontalBarChart items={fallbackBarItems} title={yTitle} />;
   }
   if (isWaterfall) {
-    const colorEncoding = isRecord(encoding?.color) ? encoding.color : undefined;
     const typeField = typeof colorEncoding?.field === "string" ? colorEncoding.field : undefined;
-
     const steps = dataValues.map((row) => {
-      const label = String(row[xField] ?? "");
-      const delta = Number(row[yField]) || 0;
+      const label = String(row[xField] ?? row[labelField] ?? "");
+      const delta = Number(row[yField as string]) || 0;
       const typeStr = typeField ? String(row[typeField] ?? "").toLowerCase() : undefined;
       const type: "baseline" | "change" | "total" | undefined =
         typeStr === "baseline" ? "baseline" : typeStr === "total" ? "total" : "change";
       return { label, delta, type };
     });
-
     return <WaterfallChart steps={steps} title={yTitle} />;
   }
   if (isTreemap) {
-    return (
-      <TreemapChart items={labels.map((label, i) => ({ label, value: values[i] }))} title={yTitle} />
-    );
+    return <TreemapChart items={fallbackBarItems} title={yTitle} />;
   }
+
+  if (vis === "Spider Chart") {
+    const axes = allNumericFields.slice(0, 8);
+    if (axes.length < 3) return null;
+    const series = dataValues.slice(0, 6).map((row, idx) => ({
+      label: String(row[labelField] ?? row[xField] ?? `Series ${idx + 1}`),
+      values: axes.map((field) => Number(row[field]) || 0),
+    }));
+    return <SpiderChart axes={axes.map(humanizeKey)} series={series} title={title || yTitle} />;
+  }
+
+  if (vis === "Slopegraph") {
+    const startField = numericFields[0];
+    const endField = numericFields[1];
+    if (!startField || !endField) return null;
+    const items = dataValues.map((row, idx) => ({
+      label: String(row[labelField] ?? row[xField] ?? `Row ${idx + 1}`),
+      start: Number(row[startField]) || 0,
+      end: Number(row[endField]) || 0,
+    }));
+    return <Slopegraph items={items} startLabel={humanizeKey(startField)} endLabel={humanizeKey(endField)} title={title || yTitle} />;
+  }
+
+  if (vis === "Gantt Chart") {
+    if (dateFields.length < 2) return null;
+    const startField = dateFields[0];
+    const endField = dateFields[1];
+    const items = dataValues.map((row, idx) => ({
+      label: String(row[labelField] ?? row[xField] ?? `Task ${idx + 1}`),
+      start: String(row[startField] ?? ""),
+      end: String(row[endField] ?? ""),
+      lane: String(row[labelField] ?? row[xField] ?? `Task ${idx + 1}`),
+    }));
+    return <GanttChart items={items} title={title || yTitle} />;
+  }
+
+  if (vis === "Dot Plot") {
+    const valueField = numericFields[0];
+    if (!valueField) return null;
+    const items = dataValues.map((row, idx) => ({
+      label: String(row[labelField] ?? row[xField] ?? `Row ${idx + 1}`),
+      value: Number(row[valueField]) || 0,
+    }));
+    return <DotPlot items={items} title={title || yTitle} />;
+  }
+
+  if (vis === "Bullet Graph") {
+    const valueField = numericFields[0];
+    const targetField = numericFields[1];
+    if (!valueField || !targetField) return null;
+    const items = dataValues.map((row, idx) => ({
+      label: String(row[labelField] ?? row[xField] ?? `Row ${idx + 1}`),
+      value: Number(row[valueField]) || 0,
+      target: Number(row[targetField]) || 0,
+    }));
+    return <BulletGraph items={items} title={title || yTitle} />;
+  }
+
+  if (vis === "Square Area Chart" || vis === "Waffle") {
+    const valueField = numericFields[0];
+    if (!valueField) return null;
+    const total = dataValues.reduce((sum, row) => sum + (Number(row[valueField]) || 0), 0);
+    return <WaffleChart value={total} total={Math.max(100, total)} label={title || yTitle} title={title || yTitle} />;
+  }
+
+  if (vis === "Unit Chart") {
+    const valueField = numericFields[0];
+    if (!valueField) return null;
+    const items = dataValues.map((row, idx) => ({
+      label: String(row[labelField] ?? row[xField] ?? `Row ${idx + 1}`),
+      value: Number(row[valueField]) || 0,
+    }));
+    return <UnitChart items={items} title={title || yTitle} />;
+  }
+
+  if (vis === "Boxplot") {
+    if (numericFields.length < 5) return null;
+    const [minField, q1Field, medianField, q3Field, maxField] = numericFields;
+    const items = dataValues.map((row, idx) => ({
+      label: String(row[labelField] ?? row[xField] ?? `Series ${idx + 1}`),
+      min: Number(row[minField]) || 0,
+      q1: Number(row[q1Field]) || 0,
+      median: Number(row[medianField]) || 0,
+      q3: Number(row[q3Field]) || 0,
+      max: Number(row[maxField]) || 0,
+    }));
+    return <BoxplotChart items={items} title={title || yTitle} />;
+  }
+
+  if (vis === "Scatterplot") {
+    const xNumeric = typeof xEncoding?.field === "string" ? xEncoding.field : allNumericFields[0];
+    const yNumeric = typeof yEncoding?.field === "string" ? yEncoding.field : allNumericFields[1];
+    if (!xNumeric || !yNumeric) return null;
+    const points = dataValues.map((row, idx) => ({
+      x: Number(row[xNumeric]) || 0,
+      y: Number(row[yNumeric]) || 0,
+      label: String(row[labelField] ?? row[xField] ?? `P${idx + 1}`),
+    }));
+    return <Scatterplot points={points} xLabel={humanizeKey(xNumeric)} yLabel={humanizeKey(yNumeric)} title={title || yTitle} />;
+  }
+
+  if (vis === "Bubble Chart") {
+    const xNumeric = typeof xEncoding?.field === "string" ? xEncoding.field : allNumericFields[0];
+    const yNumeric = typeof yEncoding?.field === "string" ? yEncoding.field : allNumericFields[1];
+    const sizeField = typeof sizeEncoding?.field === "string" ? sizeEncoding.field : allNumericFields[2];
+    if (!xNumeric || !yNumeric || !sizeField) return null;
+    const points = dataValues.map((row, idx) => ({
+      x: Number(row[xNumeric]) || 0,
+      y: Number(row[yNumeric]) || 0,
+      size: Number(row[sizeField]) || 0,
+      label: String(row[labelField] ?? row[xField] ?? `B${idx + 1}`),
+    }));
+    return <BubbleChart points={points} xLabel={humanizeKey(xNumeric)} yLabel={humanizeKey(yNumeric)} title={title || yTitle} />;
+  }
+
+  if (vis === "Sankey Diagram") {
+    const sourceField =
+      (typeof sourceEncoding?.field === "string" ? sourceEncoding.field : undefined) ??
+      Object.keys(firstRow).find((key) => key.toLowerCase().includes("source")) ??
+      Object.keys(firstRow).find((key) => typeof firstRow[key] === "string" && key !== labelField && key !== xField && key !== yField) ??
+      "";
+    const targetField =
+      (typeof targetEncoding?.field === "string" ? targetEncoding.field : undefined) ??
+      Object.keys(firstRow).find((key) => key.toLowerCase().includes("target")) ??
+      Object.keys(firstRow).find((key) => typeof firstRow[key] === "string" && key !== labelField && key !== xField && key !== yField && key !== sourceField) ??
+      "";
+    const valueField = numericFields[0];
+    if (!sourceField || !targetField || !valueField) return null;
+    const links = dataValues.map((row) => ({
+      source: String(row[sourceField] ?? ""),
+      target: String(row[targetField] ?? ""),
+      value: Number(row[valueField]) || 0,
+    }));
+    return <SankeyDiagram links={links} title={title || yTitle} />;
+  }
+
+  if (vis === "Flow Chart") {
+    const nodes = dataValues.map((row, idx) => ({
+      id: String(row[labelField] ?? row[xField] ?? `node-${idx}`),
+      label: String(row[labelField] ?? row[xField] ?? `Node ${idx + 1}`),
+      kind: typeof row.kind === "string" ? (row.kind as "start" | "process" | "decision" | "input" | "output") : undefined,
+    }));
+    const edges = nodes.length > 1
+      ? nodes.slice(0, -1).map((node, idx) => ({ from: node.id, to: nodes[idx + 1].id }))
+      : [];
+    return <FlowChart nodes={nodes} edges={edges} title={title || yTitle} />;
+  }
+
+  if (vis === "Choropleth Map") {
+    const pathField = Object.keys(firstRow).find((key) => ["path", "d", "svgPath"].includes(key)) ?? Object.keys(firstRow).find((key) => typeof firstRow[key] === "string" && String(firstRow[key]).includes("M"));
+    const valueField = numericFields[0];
+    if (!valueField) return null;
+    const regions = dataValues.map((row, idx) => {
+      const fallbackPath = `M ${30 + (idx % 6) * 90} ${50 + Math.floor(idx / 6) * 55} h 72 v 38 h -72 Z`;
+      return {
+        id: String(row[labelField] ?? row[xField] ?? `region-${idx}`),
+        label: String(row[labelField] ?? row[xField] ?? `Region ${idx + 1}`),
+        value: Number(row[valueField]) || 0,
+        path: String(row[pathField ?? ""] ?? fallbackPath),
+      };
+    });
+    return <ChoroplethMap regions={regions} title={title || yTitle} />;
+  }
+
   return null;
 }
 

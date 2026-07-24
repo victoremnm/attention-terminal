@@ -761,3 +761,18 @@ export function CodeFrequencyChart({ data }: { data: Array<{ week: string; addit
     </figure>
   );
 }
+
+export { BoxplotChart } from "./charts/boxplot-chart";
+export { BubbleChart } from "./charts/bubble-chart";
+export { BulletGraph } from "./charts/bullet-graph";
+export { ChoroplethMap } from "./charts/choropleth-map";
+export { DataTable } from "./charts/data-table";
+export { DotPlot } from "./charts/dot-plot";
+export { FlowChart } from "./charts/flow-chart";
+export { GanttChart } from "./charts/gantt-chart";
+export { SankeyDiagram } from "./charts/sankey-diagram";
+export { Scatterplot } from "./charts/scatterplot";
+export { Slopegraph } from "./charts/slopegraph";
+export { SpiderChart } from "./charts/spider-chart";
+export { UnitChart } from "./charts/unit-chart";
+export { WaffleChart } from "./charts/waffle-chart";

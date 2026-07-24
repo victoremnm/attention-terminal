@@ -78,7 +78,7 @@ export const runDataRetrievalDef = {
 
 export const runVisualizationMappingDef = {
   description:
-    "Visualization Mapping Agent: Maps data metadata and semantic intent against the data storytelling taxonomy to return a UI configuration payload (chart type, axes mapping, stylistic overrides). The client only renders chart types Line Graph, Area Chart, and Bar Chart from this taxonomy — for any other chartType, still call buildMorphingCard with your rows (or populate the morphing-card payload's `chartConfig.data.values` directly) so the answer shows a table instead of nothing.",
+    "Visualization Mapping Agent: Maps data metadata and semantic intent against the data storytelling taxonomy to return a UI configuration payload (chart type, axes mapping, stylistic overrides). The client now renders the supported chart primitives for the fixed taxonomy, including Line Graph, Area Chart, Bar Chart, Pie Chart, Stacked Bar Chart, Waterfall Chart, Treemap, Spider Chart, Slopegraph, Gantt Chart, Dot Plot, Bullet Graph, Square Area Chart, Unit Chart, Boxplot, Scatterplot, Bubble Chart, Sankey Diagram, Flow Chart, Choropleth Map, and Data Table.",
   inputSchema: z.object({
     intent: z.string(),
     metadata: z.record(z.string(), z.unknown()),

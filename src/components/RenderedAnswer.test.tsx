@@ -201,6 +201,100 @@ describe("RenderedAnswer", () => {
     expect(screen.getAllByText("alpha/repo").length).toBeGreaterThan(0);
   });
 
+  it("renders a Spider Chart morphing card", () => {
+    const payload: RenderPayload = {
+      type: "morphing-card",
+      visualizationType: "Spider Chart",
+      generatedAt: "2026-07-23T08:27:40.000Z",
+      chartConfig: {
+        title: "Builder profile",
+        data: {
+          values: [
+            { name: "alpha", speed: 5, quality: 3, uptime: 4 },
+            { name: "beta", speed: 2, quality: 4, uptime: 5 },
+          ],
+        },
+      },
+    } as RenderPayload;
+
+    const { container } = render(<RenderedAnswer payload={payload} />);
+
+    expect(container.querySelector("figure.chart.spider-chart svg")).toBeInTheDocument();
+    expect(screen.queryByText(/previewing .* markup/i)).not.toBeInTheDocument();
+  });
+
+  it("renders a Scatterplot morphing card", () => {
+    const payload: RenderPayload = {
+      type: "morphing-card",
+      visualizationType: "Scatterplot",
+      generatedAt: "2026-07-23T08:27:40.000Z",
+      chartConfig: {
+        title: "Correlation",
+        encoding: {
+          x: { field: "repos", type: "quantitative" },
+          y: { field: "pushes", type: "quantitative" },
+        },
+        data: {
+          values: [
+            { actor: "alpha", repos: 2, pushes: 10 },
+            { actor: "beta", repos: 6, pushes: 4 },
+          ],
+        },
+      },
+    } as RenderPayload;
+
+    const { container } = render(<RenderedAnswer payload={payload} />);
+
+    expect(container.querySelector("figure.chart.scatterplot svg")).toBeInTheDocument();
+  });
+
+  it("renders a Gantt Chart morphing card", () => {
+    const payload: RenderPayload = {
+      type: "morphing-card",
+      visualizationType: "Gantt Chart",
+      generatedAt: "2026-07-23T08:27:40.000Z",
+      chartConfig: {
+        title: "Timeline",
+        data: {
+          values: [
+            { task: "Plan", start: "2026-07-01", end: "2026-07-03" },
+            { task: "Ship", start: "2026-07-04", end: "2026-07-07" },
+          ],
+        },
+      },
+    } as RenderPayload;
+
+    const { container } = render(<RenderedAnswer payload={payload} />);
+
+    expect(container.querySelector("figure.chart.gantt-chart svg")).toBeInTheDocument();
+  });
+
+  it("renders a Bubble Chart morphing card", () => {
+    const payload: RenderPayload = {
+      type: "morphing-card",
+      visualizationType: "Bubble Chart",
+      generatedAt: "2026-07-23T08:27:40.000Z",
+      chartConfig: {
+        title: "Three variables",
+        encoding: {
+          x: { field: "repos", type: "quantitative" },
+          y: { field: "pushes", type: "quantitative" },
+          size: { field: "commits", type: "quantitative" },
+        },
+        data: {
+          values: [
+            { actor: "alpha", repos: 2, pushes: 10, commits: 30 },
+            { actor: "beta", repos: 6, pushes: 4, commits: 80 },
+          ],
+        },
+      },
+    } as RenderPayload;
+
+    const { container } = render(<RenderedAnswer payload={payload} />);
+
+    expect(container.querySelector("figure.chart.bubble-chart svg")).toBeInTheDocument();
+  });
+
   it("does not crash and does not chart when data.values is empty or insufficient", () => {
     const baseEncoding = {
       x: { field: "repo", type: "nominal" },
