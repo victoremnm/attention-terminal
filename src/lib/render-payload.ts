@@ -49,6 +49,54 @@ export const EvidenceLinkSchema = z.object({
   comments: z.number().optional(),
 });
 
+// A bounded HN thread sample. Reported descendants come from the story's HN
+// snapshot; observed comments are only the deduplicated rows available to the
+// bounded traversal and must not be presented as the full thread count.
+export const HnThreadEvidenceSchema = z.object({
+  story: z.object({
+    id: z.number().int().nonnegative(),
+    title: z.string().max(240),
+    url: z.string().url(),
+    author: z.string().max(120),
+    time: z.number().int().nonnegative(),
+    score: z.number(),
+  }),
+  descendantsReported: z.number().int().nonnegative(),
+  commentsObserved: z.number().int().nonnegative(),
+  topLevelRepliesObserved: z.number().int().nonnegative(),
+  completeness: z.object({
+    state: z.enum(["complete", "partial"]),
+    reason: z.enum(["within_bounds", "sampling_limit", "depth_limit", "missing_items"]).optional(),
+  }),
+  sampling: z.object({
+    maxComments: z.number().int().positive(),
+    maxDepth: z.number().int().positive(),
+    maxBranching: z.number().int().positive(),
+    representativeLimit: z.number().int().positive(),
+    truncated: z.boolean(),
+  }),
+  depth: z.object({
+    maxObserved: z.number().int().nonnegative(),
+    limit: z.number().int().positive(),
+    bounded: z.literal(true),
+  }),
+  branching: z.object({
+    maxObserved: z.number().int().nonnegative(),
+    limit: z.number().int().positive(),
+    bounded: z.literal(true),
+  }),
+  representativeReplies: z.array(z.object({
+    id: z.number().int().nonnegative(),
+    parent: z.number().int().nonnegative(),
+    author: z.string().max(120),
+    time: z.number().int().nonnegative(),
+    score: z.number(),
+    excerpt: z.string().max(280),
+    depth: z.number().int().positive(),
+    url: z.string().url(),
+  })),
+});
+
 export const DigestClusterSchema = z.object({
   id: z.string(),
   subject: z.string(),
@@ -407,6 +455,7 @@ export const RenderPayloadSchema = z.discriminatedUnion("type", [
 export type Verdict = z.infer<typeof VerdictSchema>;
 export type VerdictTile = z.infer<typeof VerdictTileSchema>;
 export type EvidenceLink = z.infer<typeof EvidenceLinkSchema>;
+export type HnThreadEvidence = z.infer<typeof HnThreadEvidenceSchema>;
 export type DigestCluster = z.infer<typeof DigestClusterSchema>;
 export type DigestPayload = z.infer<typeof DigestSchema>;
 export type TickerPayload = z.infer<typeof TickerSchema>;
