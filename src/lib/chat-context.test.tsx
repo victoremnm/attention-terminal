@@ -4,7 +4,7 @@
 
 import { act, cleanup, render, screen } from "@testing-library/react";
 import "@testing-library/jest-dom/vitest";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ChatProvider, useChatContext } from "./chat-context";
 
 function Consumer() {
@@ -34,6 +34,10 @@ function renderProvider() {
 }
 
 describe("ChatProvider", () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+  });
+
   afterEach(() => cleanup());
 
   it("starts in closed state with empty pending input", () => {

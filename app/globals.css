@@ -2991,6 +2991,7 @@ a { color: inherit; }
   inset: 0;
   z-index: 997;
   background: rgba(0, 0, 0, 0.4);
+  pointer-events: none;
   animation: fade-in .2s ease;
 }
 
