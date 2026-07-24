@@ -107,6 +107,18 @@ export async function activeContributionRanking(
             ? "builder_total > 0"
             : "commit_total > 0 OR pr_opened_total > 0 OR pr_merged_total > 0";
 
+  const forkJoinSql =
+    sort === "top_forks"
+      ? `LEFT JOIN (
+          SELECT repo_name, sum(forks) AS fork_total
+          FROM gh_repo_daily
+          WHERE day >= today() - ${days}
+          GROUP BY repo_name
+        ) f ON f.repo_name = bucket.repo_name`
+      : "";
+  const forkSelectSql = sort === "top_forks" ? "coalesce(any(f.fork_total), toUInt64(0))" : "toUInt64(0)";
+  const targetTables = sort === "top_forks" ? ["gh_repo_actor_hourly", "gh_repo_daily"] : ["gh_repo_actor_hourly"];
+
   const sql = `
     WITH (SELECT max(hour) FROM gh_repo_actor_hourly) AS high_water
     SELECT
@@ -145,12 +157,13 @@ export async function activeContributionRanking(
         uniqExactIf(bucket.actor_login, bucket.pushes > 0 AND lower(bucket.actor_login) LIKE '%[bot]%') AS bot_pusher_total,
         sum(bucket.prs_opened) AS pr_opened_total,
         sum(bucket.prs_merged) AS pr_merged_total,
-        toUInt64(0) AS fork_total
+        ${forkSelectSql} AS fork_total
       FROM (
         SELECT repo_name, actor_login, pushes, commits, distinct_commits, prs_opened, prs_merged
         FROM gh_repo_actor_hourly
         WHERE hour > high_water - INTERVAL ${days} DAY
       ) AS bucket
+      ${forkJoinSql}
       GROUP BY repo_name
       -- Empty pushes and push-only PR noise do not qualify for push mode.
       HAVING ${eligibilitySql}
@@ -161,7 +174,7 @@ export async function activeContributionRanking(
 
   const { rows, provenance } = await q<ActiveContributionSqlRow>(
     sql,
-    ["gh_repo_actor_hourly"],
+    targetTables,
     { limit: boundedLimit }
   );
 
