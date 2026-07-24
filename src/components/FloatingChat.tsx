@@ -3,7 +3,7 @@
 import { useChat } from "@ai-sdk/react";
 import { useTriggerChatTransport } from "@trigger.dev/sdk/chat/react";
 import type { UIMessage } from "ai";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { mintChatAccessToken, startChatSession } from "@/lib/chat-actions";
 import { RenderPayloadSchema } from "@/lib/render-payload";
 import type { attentionAgent } from "@/trigger/attention-agent";
@@ -48,9 +48,13 @@ function AttentionChatOverlay() {
     task: "attention-agent",
     baseURL: process.env.NEXT_PUBLIC_TRIGGER_API_URL,
     headStart: "/api/chat",
-    accessToken: ({ chatId }) => mintChatAccessToken(chatId),
-    startSession: ({ chatId, clientData }) => startChatSession({ chatId, clientData }),
-    onEvent: (event) => {
+    accessToken: useCallback(({ chatId }: { chatId: string }) => mintChatAccessToken(chatId), []),
+    startSession: useCallback(
+      ({ chatId, clientData }: { chatId: string; clientData?: Record<string, unknown> }) =>
+        startChatSession({ chatId, clientData }),
+      [],
+    ),
+    onEvent: useCallback((event) => {
       switch (event.type) {
         case "message-sent":
           armWatchdog();
@@ -62,14 +66,14 @@ function AttentionChatOverlay() {
           break;
         case "message-send-failed":
           disarmWatchdog();
-          setFault(`send failed: ${event.error.message}`);
+          setFault(`send failed: ${event.error?.message}`);
           break;
         case "stream-error":
           disarmWatchdog();
-          setFault(`stream error: ${event.error.message}`);
+          setFault(`stream error: ${event.error?.message}`);
           break;
       }
-    },
+    }, []),
   });
 
   const { messages, sendMessage, stop, status, error, regenerate } = useChat({ transport });
