@@ -4,6 +4,8 @@ export * from "./actor";
 export * from "./ticker";
 export * from "./repo";
 export * from "./signals";
+export { hnThreadEvidence, buildHnThreadEvidence, sanitizeHnExcerpt, HN_THREAD_EVIDENCE_SQL } from "../hn-thread-metadata";
+export type { HnThreadEvidenceOptions } from "../hn-thread-metadata";
 
 export {
   activeContributionRanking,
