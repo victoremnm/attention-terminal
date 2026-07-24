@@ -728,8 +728,29 @@ describe("RenderedAnswer table payload", () => {
       expect(screen.getByText("peak")).toBeInTheDocument();
       // 30d max guide
       expect(screen.getByText("30d max")).toBeInTheDocument();
-      // two lines (cyan talk + magenta code)
-      expect(container.querySelectorAll("figure.chart-enhanced svg polyline.ch-line").length).toBe(2);
+      // two lines (cyan talk + magenta code), each tagged with pathLength=1
+      const lines = container.querySelectorAll("figure.chart-enhanced svg polyline.ch-line");
+      expect(lines.length).toBe(2);
+      expect(Array.from(lines).every((l) => l.getAttribute("pathLength") === "1")).toBe(true);
+    });
+
+    it("divergence band closes along the code series without mirroring it", () => {
+      // Regression: the band polygon used to reverse only the x positions of the
+      // code series, which mapped nb[0] onto x(last) — making the band mirror
+      // the magenta line on asymmetric series. The polygon now traces back
+      // along the actual code values (nb[last] -> nb[0]) at the reversed xs.
+      const { container } = render(<RenderedAnswer payload={divergencePayload} />);
+      const band = container.querySelector("figure.chart-enhanced svg polygon.ch-band") as Element | null;
+      expect(band).not.toBeNull();
+      const pts = (band?.getAttribute("points") ?? "").split(/\s+/).filter(Boolean);
+      // 5 forward (talk) + 5 back (code) = 10 vertices for a 5-day series.
+      expect(pts.length).toBe(divergencePayload.days.length * 2);
+      // The first half traces talk (a) forward: pts[0] shares x with pts[1].
+      // The reversed half closes back along code (b): its last vertex must
+      // share its x with the first talk vertex (the polygon closes the loop).
+      const first = pts[0].split(",");
+      const last = pts[pts.length - 1].split(",");
+      expect(last[0]).toBe(first[0]);
     });
 
     it("still renders the verdict + caption (anatomy steps 2 + 4)", () => {

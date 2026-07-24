@@ -91,9 +91,15 @@ export function DualLine({
   // Area fill under `a`, closed back to the baseline at both ends.
   const areaPts = `${x(0).toFixed(1)},${y(0).toFixed(1)} ${aPts} ${x(days.length - 1).toFixed(1)},${y(0).toFixed(1)}`;
   // Shaded divergence band between the two normalized series (polygon from a
-  // forward then b back), clipped to the plot area.
+  // forward then b reversed), clipped to the plot area. To trace the code
+  // series back to the first day we reverse BOTH the x position AND the value;
+  // reversing only the x position would mirror the band horizontally relative
+  // to the magenta line on asymmetric series.
   const bandPts = `${na.map((v, i) => `${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(" ")} ${nb
-    .map((v, i) => `${x(days.length - 1 - i).toFixed(1)},${y(v).toFixed(1)}`)
+    .map((v, i) => {
+      const j = nb.length - 1 - i;
+      return `${x(j).toFixed(1)},${y(nb[j]).toFixed(1)}`;
+    })
     .join(" ")}`;
   // Peak = max divergence bucket where `a` outruns `b` (talk peaks above code).
   let peakIdx = -1;
@@ -129,8 +135,8 @@ export function DualLine({
         ))}
         {area && <polygon className="ch-area" points={areaPts} fill="var(--cyan)" fillOpacity="0.10" />}
         {band && <polygon className="ch-band" points={bandPts} fill="var(--mag)" fillOpacity="0.13" />}
-        <polyline className="ch-line d2" points={bPts} fill="none" stroke="var(--mag)" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
-        <polyline className="ch-line" points={aPts} fill="none" stroke="var(--cyan)" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
+        <polyline className="ch-line d2" points={bPts} fill="none" stroke="var(--mag)" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" pathLength={1} />
+        <polyline className="ch-line" points={aPts} fill="none" stroke="var(--cyan)" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" pathLength={1} />
         {peak && peakIdx >= 0 && (
           <g className="ch-peak">
             <line x1={peakX} x2={peakX} y1={peakY} y2={padT + ih} stroke="var(--cyan)" strokeWidth="1" strokeDasharray="2 2" opacity="0.55" />
