@@ -3047,7 +3047,8 @@ a { color: inherit; }
   inset: 0;
   z-index: 997;
   background: rgba(0, 0, 0, 0.4);
-  pointer-events: none;
+  pointer-events: auto;
+  cursor: pointer;
   animation: fade-in .2s ease;
 }
 
@@ -3065,6 +3066,9 @@ a { color: inherit; }
   box-shadow: -8px 0 32px rgba(0, 0, 0, 0.4);
   overflow: hidden;
   animation: drawer-slide-in .2s ease;
+}
+.floating-chat-drawer.minimized-hidden {
+  display: none !important;
 }
 .floating-chat-resize-handle {
   position: absolute;
@@ -3121,6 +3125,29 @@ a { color: inherit; }
   gap: 6px;
   align-items: center;
   flex: none;
+}
+.floating-chat-action-btn {
+  background: transparent;
+  border: 1px solid var(--line-soft);
+  border-radius: 4px;
+  color: var(--muted);
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: color .15s, border-color .15s, background .15s;
+}
+.floating-chat-action-btn:hover {
+  color: var(--ink);
+  border-color: var(--cyan);
+  background: rgba(34, 211, 238, 0.1);
+}
+.floating-chat-action-btn.floating-chat-close:hover {
+  color: var(--mag);
+  border-color: var(--mag);
+  background: rgba(255, 79, 151, 0.1);
 }
 .floating-chat-drawer-actions .chip {
   font-size: 11px;

@@ -18,6 +18,8 @@ const SUGGESTIONS = [
   "is htmx hype or real?",
   "what data do I have?",
   "show me the daily skinny",
+  "what's trending in the last 24h?",
+  "compare htmx vs alpine",
   "give me the most popular \"claw\" repos",
   "what agent skills are trending?",
   "what type of visualizations can you make?",
@@ -176,7 +178,6 @@ function AttentionChatOverlay() {
 
 export function FloatingChat() {
   const ctx = useChatContext();
-  const [animateIn, setAnimateIn] = useState(false);
   const [drawerWidth, setDrawerWidth] = useState(420);
   const [detached, setDetached] = useState(false);
   const [pos, setPos] = useState({ x: 0, y: 0 });
@@ -188,14 +189,6 @@ export function FloatingChat() {
   const startYRef = useRef(0);
   const startPosRef = useRef({ x: 0, y: 0 });
   const startWidthRef = useRef(420);
-
-  useEffect(() => {
-    if (ctx.state === "open") {
-      requestAnimationFrame(() => setAnimateIn(true));
-    } else {
-      setAnimateIn(false);
-    }
-  }, [ctx.state]);
 
   useLayoutEffect(() => {
     if (drawerRef.current) drawerRef.current.inert = ctx.state === "minimized";
@@ -230,6 +223,9 @@ export function FloatingChat() {
 
   function startDrag(e: React.PointerEvent) {
     if (e.button !== 0) return;
+    // Don't intercept clicks on action buttons or interactive controls
+    if ((e.target as HTMLElement).closest(".floating-chat-drawer-actions, button, a, input")) return;
+    
     e.preventDefault();
     let startingPos = { ...pos };
     if (!detached) {
@@ -284,27 +280,45 @@ export function FloatingChat() {
   return (
     <>
       {isMinimized && (
-        <div ref={minimizedPillRef} className="floating-chat-minimized" role="button" tabIndex={0}
-          onClick={() => ctx.setState("open")}
-          onKeyDown={(e) => e.key === "Enter" && ctx.setState("open")}
-          aria-label="Open chat">
-          <span className="mono">CHAT</span>
+        <div
+          ref={minimizedPillRef}
+          className="floating-chat-minimized"
+          role="button"
+          tabIndex={0}
+          onClick={() => ctx.open()}
+          onKeyDown={(e) => e.key === "Enter" && ctx.open()}
+          aria-label="Expand chat drawer"
+        >
+          <span className="status-dot" data-status="ready" />
+          <span className="mono">CHAT.AGENT · Expand chat</span>
           <button
-            className="floating-chat-close"
-            onClick={(e) => { e.stopPropagation(); ctx.close(); }}
+            className="floating-chat-action-btn floating-chat-close"
+            onClick={(e) => {
+              e.stopPropagation();
+              ctx.close();
+            }}
             aria-label="Close chat"
+            title="Close chat"
             type="button"
           >
-            ×
+            <svg width="12" height="12" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+              <path d="M3 3l10 10M13 3L3 13" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+            </svg>
           </button>
         </div>
       )}
-      {!detached && !isMinimized && <div className="floating-chat-backdrop" aria-hidden="true" />}
+      {!detached && !isMinimized && (
+        <div
+          className="floating-chat-backdrop"
+          onClick={() => ctx.close()}
+          aria-hidden="true"
+        />
+      )}
       <div
         ref={drawerRef}
         className={`floating-chat-drawer${detached ? " detached" : ""}${isMinimized ? " minimized-hidden" : ""}`}
         role="dialog"
-        aria-label="Chat"
+        aria-label="Attention Terminal Chat Drawer"
         aria-hidden={isMinimized}
         style={drawerStyle}
       >
@@ -320,15 +334,48 @@ export function FloatingChat() {
           </div>
           <div className="floating-chat-drawer-actions">
             {detached && (
-              <button type="button" className="chip" onClick={() => setDetached(false)} aria-label="Dock to side">
-                ⬈
+              <button
+                type="button"
+                className="floating-chat-action-btn"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setDetached(false);
+                }}
+                aria-label="Dock chat to right panel"
+                title="Dock to right"
+              >
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                  <path d="M3 13L13 3M13 3H7M13 3V9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
               </button>
             )}
-            <button type="button" className="chip" onClick={() => ctx.minimize()} aria-label="Minimize chat">
-              _
+            <button
+              type="button"
+              className="floating-chat-action-btn"
+              onClick={(e) => {
+                e.stopPropagation();
+                ctx.minimize();
+              }}
+              aria-label="Minimize chat"
+              title="Minimize"
+            >
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                <path d="M2 10h12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+              </svg>
             </button>
-            <button type="button" className="floating-chat-close" onClick={() => ctx.close()} aria-label="Close chat">
-              ×
+            <button
+              type="button"
+              className="floating-chat-action-btn floating-chat-close"
+              onClick={(e) => {
+                e.stopPropagation();
+                ctx.close();
+              }}
+              aria-label="Close chat"
+              title="Close"
+            >
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                <path d="M3 3l10 10M13 3L3 13" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+              </svg>
             </button>
           </div>
         </header>
@@ -340,17 +387,10 @@ export function FloatingChat() {
   );
 }
 
-// Answer spec v1 / grammar rule: "no trailing prose paragraph." The agent
-// often emits a text part AFTER renderAnswer that just restates the caption
-// — the design brief forbids it ("if the best answer is a paragraph, you've
-// missed the brief"). A message that rendered an answer shows the card alone;
-// any text part is hidden. Pure so it's unit-testable without the transport.
 export function messageHasRenderAnswer(message: UIMessage): boolean {
   return message.parts.some((p) => p.type === "tool-renderAnswer");
 }
 
-// Answer spec v1 anatomy step 1: echo the question as a `›` prompt at the top
-// of the answer card. Pull it from the most recent preceding user message.
 export function questionForAssistantMessage(messages: UIMessage[], index: number): string | undefined {
   if (index <= 0) return undefined;
   for (let j = index - 1; j >= 0; j--) {

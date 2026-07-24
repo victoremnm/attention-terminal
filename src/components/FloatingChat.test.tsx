@@ -76,13 +76,13 @@ describe("FloatingChat", () => {
     expect(screen.getByText("what type of visualizations can you make?")).toBeInTheDocument();
   });
 
-  it("keeps the chat open when the backdrop is clicked", () => {
+  it("closes the chat when the backdrop is clicked", () => {
     renderWithControls();
     act(() => screen.getByTestId("btn-open").click());
     const backdrop = document.querySelector(".floating-chat-backdrop");
     expect(backdrop).toBeInTheDocument();
     act(() => fireEvent.click(backdrop!));
-    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
   it("shows minimized pill when minimized", () => {
