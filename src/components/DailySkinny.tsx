@@ -29,6 +29,8 @@ function ageLabel(freshAt: string | Date | number) {
 }
 
 function hnAgeLabel(unixSeconds: number) {
+  if (!Number.isFinite(unixSeconds) || unixSeconds <= 0) return "age unavailable";
+
   const seconds = Math.max(0, Math.round(Date.now() / 1000 - unixSeconds));
   if (seconds < 90) return `${seconds}s ago`;
   const minutes = Math.round(seconds / 60);
