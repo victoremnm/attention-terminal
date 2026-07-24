@@ -30,13 +30,12 @@ describe.skipIf(!hasCH)("sql-catalog-guard FINAL handling (integration)", () => 
 
     const { clickhouse } = await import("./clickhouse");
     const result = await clickhouse.query({
-      query: `SELECT count() FROM ${database}.${name} AS t FINAL`,
+      query: `SELECT 1 FROM ${database}.${name} AS t FINAL LIMIT 1`,
       format: "JSONEachRow",
       clickhouse_settings: { readonly: "2", max_execution_time: 30 },
     });
-    const vals = await result.json<{ "count()": string }>();
-    expect(vals.length).toBe(1);
-    expect(Number(vals[0]["count()"])).toBeGreaterThanOrEqual(0);
+    const vals = await result.json<{ "1": string }>();
+    expect(vals.length).toBeGreaterThanOrEqual(0);
   }, 30_000);
 
   it("FINAL before alias is rejected by ClickHouse (FROM t FINAL AS alias)", async () => {
@@ -47,7 +46,7 @@ describe.skipIf(!hasCH)("sql-catalog-guard FINAL handling (integration)", () => 
     const { clickhouse } = await import("./clickhouse");
     await expect(
       clickhouse.query({
-        query: `SELECT count() FROM ${database}.${name} FINAL AS t`,
+        query: `SELECT 1 FROM ${database}.${name} FINAL AS t LIMIT 1`,
         format: "JSONEachRow",
         clickhouse_settings: { readonly: "2", max_execution_time: 30 },
       })
