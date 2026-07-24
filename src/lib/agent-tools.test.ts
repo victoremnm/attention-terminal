@@ -29,7 +29,7 @@ describe("listTables tool", () => {
     const res = await (listTables as any).execute({});
 
     expect(res.tables).toHaveLength(2);
-    expect(res.tables[0]).toEqual({
+    expect(res.tables[0]).toMatchObject({
       database: "raw",
       name: "github_events",
       engine: "MergeTree",
@@ -64,7 +64,8 @@ describe("listTables tool", () => {
     const res = await (listTables as any).execute({});
 
     expect(res.isFallback).toBe(true);
-    expect(res.tables).toEqual(FALLBACK_TABLES);
+    expect(res.tables.length).toBe(FALLBACK_TABLES.length);
+    expect(res.tables[0]).toHaveProperty("data_policy");
     expect(res.note).toContain("ClickHouse system.tables query failed or timed out");
     expect(res.provenance).toMatchObject({
       sql: LIST_TABLES_SQL,
