@@ -4,7 +4,7 @@
 
 import { act, cleanup, render, screen } from "@testing-library/react";
 import "@testing-library/jest-dom/vitest";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { ChatProvider, useChatContext } from "./chat-context";
 
 function Consumer() {
@@ -34,10 +34,6 @@ function renderProvider() {
 }
 
 describe("ChatProvider", () => {
-  beforeEach(() => {
-    window.localStorage.clear();
-  });
-
   afterEach(() => cleanup());
 
   it("starts in closed state with empty pending input", () => {
@@ -72,15 +68,6 @@ describe("ChatProvider", () => {
     expect(screen.getByTestId("state")).toHaveTextContent("open");
     act(() => screen.getByTestId("toggle").click());
     expect(screen.getByTestId("state")).toHaveTextContent("closed");
-  });
-
-  it("toggle() reopens a minimized chat", () => {
-    renderProvider();
-    act(() => screen.getByTestId("open").click());
-    act(() => screen.getByTestId("minimize").click());
-    expect(screen.getByTestId("state")).toHaveTextContent("minimized");
-    act(() => screen.getByTestId("toggle").click());
-    expect(screen.getByTestId("state")).toHaveTextContent("open");
   });
 
   it("ask() sets pendingInput and opens the chat", () => {

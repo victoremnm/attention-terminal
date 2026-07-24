@@ -6,6 +6,7 @@ import { randomUUID } from "node:crypto";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import * as os from "node:os";
+import { blockAntipatternsIfPresent, executeTaggedJsonEachRowQuery, normalizeUnionQuery } from "../query-execution";
 import {
   FALLBACK_TABLES,
   LIST_TABLES_SQL,
@@ -15,6 +16,8 @@ import {
   requireFinalOnReplacingTables,
   requireGroupedRollupTables,
 } from "../sql-catalog-guard";
+
+export { normalizeUnionQuery } from "../query-execution";
 
 let clickhouse: ReturnType<typeof createClient> | undefined;
 
@@ -36,7 +39,6 @@ function getClickHouse() {
   return clickhouse;
 }
 
-const READ_ONLY_STATEMENTS = /^\s*(select|with|show|describe|desc|explain|exists)\b/i;
 // Bounded row sample returned to the calling model so it can populate a
 // morphing-card payload's `data` field directly — previously this tool only
 // returned column metadata, leaving the model with no rows to render and no
@@ -57,26 +59,16 @@ function hasMultipleStatements(query: string) {
   return query.replace(/;+\s*$/, "").includes(";");
 }
 
-export function normalizeUnionQuery(query: string): string {
-  // Preserve single and double quoted string literals while normalizing bare UNION keywords
-  return query.replace(/(['"])(?:(?!\1)[^\\]|\\.)*\1|\bUNION\b(?!\s+(?:ALL|DISTINCT)\b)/gi, (match, quote) => {
-    if (quote) return match;
-    return "UNION ALL";
-  });
-}
-
 type CatalogTable = { database: string; name: string; engine: string };
 
 async function loadCatalog(): Promise<{ tables: CatalogTable[]; referenceText: string }> {
   try {
-    const result = await getClickHouse().query({
-      query: LIST_TABLES_SQL,
-      format: "JSONEachRow",
-      query_params: { limit: TABLE_LIST_LIMIT },
-      abort_signal: AbortSignal.timeout(CATALOG_TIMEOUT_MS),
-      clickhouse_settings: { readonly: "2", max_execution_time: 5 },
+    const { rows: tables } = await executeTaggedJsonEachRowQuery<CatalogTable>(getClickHouse(), LIST_TABLES_SQL, {
+      queryParams: { limit: TABLE_LIST_LIMIT },
+      abortSignal: AbortSignal.timeout(CATALOG_TIMEOUT_MS),
+      maxExecutionTime: 5,
+      logComment: { toolName: "runDataRetrieval", surface: "catalog" },
     });
-    const tables = await result.json<CatalogTable>();
     registerCatalogTables(tables);
     return { tables, referenceText: formatCatalogReference(tables) };
   } catch {
@@ -101,6 +93,7 @@ export async function runDataRetrievalAgent(intent: string): Promise<
       rowCount: number;
       metadata: Record<string, unknown>;
       queryExecuted: string;
+      query: { sql: string; rowsRead: number; elapsedMs: number };
       sampleRows: Record<string, unknown>[];
     }
   | { error: string }
@@ -161,8 +154,13 @@ If you are unsure whether a column exists on a table, prefer a simpler query ove
 
     const query = normalizeUnionQuery(object.query);
 
-    if (!READ_ONLY_STATEMENTS.test(query) || hasMultipleStatements(query)) {
+    if (!/^\s*(select|with|show|describe|desc|explain|exists)\b/i.test(query) || hasMultipleStatements(query)) {
       lastError = "Only one read-only SELECT-style statement is allowed.";
+      continue;
+    }
+    const antipatternHint = blockAntipatternsIfPresent(query);
+    if (antipatternHint) {
+      lastError = antipatternHint;
       continue;
     }
 
@@ -185,17 +183,11 @@ If you are unsure whether a column exists on a table, prefer a simpler query ove
     }
 
     try {
-      const result = await getClickHouse().query({
-        query,
-        format: "JSONEachRow",
-        clickhouse_settings: {
-          readonly: "2",
-          max_execution_time: 30,
-          union_default_mode: "ALL",
-        },
+      const { rows, rowsRead, elapsedMs } = await executeTaggedJsonEachRowQuery<Record<string, unknown>>(getClickHouse(), query, {
+        readonly: "2",
+        maxExecutionTime: 30,
+        logComment: { toolName: "runDataRetrieval", surface: "ad-hoc-intent" },
       });
-
-      const rows = await result.json<Record<string, unknown>>();
 
       // Persist raw result to a secure temporary storage layer
       const retrievalKey = randomUUID();
@@ -231,6 +223,7 @@ If you are unsure whether a column exists on a table, prefer a simpler query ove
         rowCount: rows.length,
         metadata,
         queryExecuted: query,
+        query: { sql: query, rowsRead, elapsedMs },
         // Bounded sample the model can pass straight into a morphing-card
         // payload's chartConfig.data.values (see MorphingCardSchema in render-payload.ts).
         sampleRows: rows.slice(0, MAX_SAMPLE_ROWS),

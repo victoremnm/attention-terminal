@@ -181,7 +181,7 @@ sequenceDiagram
     Agent->>Catalog: re-fetch catalog, re-resolve prompt w/ prior-turn memory
 
     Client->>Model: run({ messages, tools })
-    Model->>Model: stopWhen 15 steps; prepareStep forces renderAnswer near budget
+    Model->>Model: stopWhen 15 steps · prepareStep forces renderAnswer near budget
     Model-->>Client: streamed tool calls + final answer
 
     Client->>Agent: onTurnComplete

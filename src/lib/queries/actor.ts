@@ -17,7 +17,7 @@ export async function actorLeaderboard(window: "24h" | "7d" = "24h"): Promise<Ac
   const humanQuery =
     window === "24h"
       ? `
-    WITH (SELECT max(created_at) FROM raw.github_events) AS high_water
+    WITH (SELECT coalesce(max(hour), toStartOfHour(now())) FROM gh_repo_hourly) AS high_water
     SELECT
       actor_login,
       toString(count()) AS events,
@@ -71,7 +71,7 @@ export async function actorLeaderboard(window: "24h" | "7d" = "24h"): Promise<Ac
   const botQuery =
     window === "24h"
       ? `
-    WITH (SELECT max(created_at) FROM raw.github_events) AS high_water
+    WITH (SELECT coalesce(max(hour), toStartOfHour(now())) FROM gh_repo_hourly) AS high_water
     SELECT
       actor_login,
       toString(count()) AS events,
@@ -174,32 +174,46 @@ function devScatterSql(mergedCol: "merged_prs_7d" | "merged_prs_30d") {
         countIf(NOT is_bot AND NOT (repos = 1 AND pushes >= {megaPushThreshold: UInt32})) AS kept_count
       FROM per_actor
     ),
+    filtered AS (
+      SELECT actor, pushes, repos, commits, prs, mergedPrs
+      FROM per_actor
+      WHERE NOT is_bot
+        AND NOT (repos = 1 AND pushes >= {megaPushThreshold: UInt32})
+    ),
     enriched AS (
       SELECT actor_login, ${mergedCol} AS merged_prs, 1 AS has_stats
       FROM gh_actor_pr_stats FINAL
+    ),
+    ranked AS (
+      SELECT
+        f.actor AS actor,
+        f.pushes AS pushes,
+        f.repos AS repos,
+        f.commits AS commits,
+        f.prs AS prs,
+        if(en.has_stats = 1, en.merged_prs, f.mergedPrs) AS mergedPrs
+      FROM filtered AS f
+      LEFT JOIN enriched AS en ON en.actor_login = f.actor
+      ORDER BY
+        (en.has_stats = 1) DESC,
+        (f.prs > 0 OR en.has_stats = 1) DESC,
+        (if(en.has_stats = 1, en.merged_prs, f.mergedPrs) + 1.0) / (f.prs + 1.0) DESC,
+        f.repos DESC,
+        f.commits DESC
+      LIMIT {limit: UInt32}
     )
     SELECT
-      p.actor AS actor,
-      p.pushes AS pushes,
-      p.repos AS repos,
-      p.commits AS commits,
-      p.prs AS prs,
-      if(en.has_stats = 1, en.merged_prs, p.mergedPrs) AS mergedPrs,
+      r.actor AS actor,
+      r.pushes AS pushes,
+      r.repos AS repos,
+      r.commits AS commits,
+      r.prs AS prs,
+      r.mergedPrs AS mergedPrs,
       m.bot_count AS bot_count,
       m.mega_pusher_count AS mega_pusher_count,
       m.kept_count AS kept_count
-    FROM per_actor AS p
+    FROM ranked AS r
     CROSS JOIN meta AS m
-    LEFT JOIN enriched AS en ON en.actor_login = p.actor
-    WHERE NOT p.is_bot
-      AND NOT (p.repos = 1 AND p.pushes >= {megaPushThreshold: UInt32})
-    ORDER BY
-      (en.has_stats = 1) DESC,
-      (p.prs > 0 OR en.has_stats = 1) DESC,
-      (if(en.has_stats = 1, en.merged_prs, p.mergedPrs) + 1.0) / (p.prs + 1.0) DESC,
-      p.repos DESC,
-      p.commits DESC
-    LIMIT {limit: UInt32}
   `.trim();
 }
 

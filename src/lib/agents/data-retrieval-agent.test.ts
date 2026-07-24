@@ -27,7 +27,7 @@ vi.mock("node:crypto", () => ({
 }));
 
 import { generateObject } from "ai";
-import { resetCatalogState } from "../sql-catalog-guard";
+import { LIST_TABLES_SQL, resetCatalogState } from "../sql-catalog-guard";
 import { normalizeUnionQuery, runDataRetrievalAgent } from "./data-retrieval-agent";
 
 const generateObjectMock = vi.mocked(generateObject);
@@ -86,6 +86,7 @@ describe("runDataRetrievalAgent", () => {
     mockCatalogFetch();
     mocks.query.mockResolvedValueOnce({
       json: async () => [{ day: "2026-07-23" }],
+      response_headers: { "x-clickhouse-summary": JSON.stringify({ read_rows: "123" }) },
     });
     generateObjectMock.mockResolvedValueOnce({
       object: { query: "SELECT day FROM raw.hackernews UNION SELECT day FROM raw.github_events" },
@@ -96,12 +97,31 @@ describe("runDataRetrievalAgent", () => {
     expect(mocks.query).toHaveBeenLastCalledWith(
       expect.objectContaining({
         query: "SELECT day FROM raw.hackernews UNION ALL SELECT day FROM raw.github_events",
+        query_id: expect.any(String),
         clickhouse_settings: expect.objectContaining({
           readonly: "2",
           max_execution_time: 30,
           union_default_mode: "ALL",
+          log_comment: expect.stringMatching(
+            /^attn \| tool=runDataRetrieval \| surface=ad-hoc-intent \| qid=/,
+          ),
         }),
       })
+    );
+    expect(mocks.query).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        query: LIST_TABLES_SQL,
+        query_id: expect.any(String),
+        clickhouse_settings: expect.objectContaining({
+          readonly: "2",
+          max_execution_time: 5,
+          union_default_mode: "ALL",
+          log_comment: expect.stringMatching(
+            /^attn \| tool=runDataRetrieval \| surface=catalog \| qid=/,
+          ),
+        }),
+      }),
     );
     expect(mocks.writeFile).toHaveBeenCalledWith(
       expect.stringContaining("clickhouse_result_retrieval-key.json"),
@@ -112,6 +132,11 @@ describe("runDataRetrievalAgent", () => {
       retrievalKey: "retrieval-key",
       rowCount: 1,
       queryExecuted: "SELECT day FROM raw.hackernews UNION ALL SELECT day FROM raw.github_events",
+      query: {
+        sql: "SELECT day FROM raw.hackernews UNION ALL SELECT day FROM raw.github_events",
+        rowsRead: 123,
+        elapsedMs: expect.any(Number),
+      },
     });
   });
 

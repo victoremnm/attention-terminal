@@ -10,6 +10,7 @@ import { catalogPromptSection } from "../lib/catalog";
 import { subjectSynonymsPromptSection } from "../lib/subject-synonyms";
 import { logAgentRun } from "../lib/agent-telemetry";
 import { shouldForceRenderAnswer } from "../lib/agent-render-enforcement";
+import { hasUserMessage } from "../lib/chat-validation";
 
 ensureAiSdkTelemetry("trigger");
 
@@ -146,6 +147,10 @@ export const attentionAgent = chat.agent({
   },
 
   run: async ({ messages, tools, signal }) => {
+    if (!hasUserMessage(messages)) {
+      throw new Error("Cannot run attention chat without a previous user message");
+    }
+
     const { telemetry, runtimeContext } = attentionTelemetry("worker");
     const model = resolveAgentModel();
     const runStart = Date.now();
@@ -157,6 +162,10 @@ export const attentionAgent = chat.agent({
       telemetry,
       runtimeContext,
       model,
+      // Provider quota/billing failures are not transient. Leave deliberate
+      // retries to the UI after the operator restores quota, rather than
+      // spending the default retry budget on the same rejected request.
+      maxRetries: 0,
       messages,
       tools,
       stopWhen: [stepCountIs(15), renderAnswerSucceeded],

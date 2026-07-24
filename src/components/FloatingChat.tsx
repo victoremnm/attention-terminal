@@ -3,16 +3,10 @@
 import { useChat } from "@ai-sdk/react";
 import { useTriggerChatTransport } from "@trigger.dev/sdk/chat/react";
 import type { UIMessage } from "ai";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { mintChatAccessToken, startChatSession } from "@/lib/chat-actions";
-import {
-  clampDrawerWidth,
-  clampDetachedPosition,
-  createFallbackChatId,
-  getSafeLocalStorage,
-  loadFloatingChatSession,
-  saveFloatingChatSession,
-} from "@/lib/chat-persistence";
+import { chatErrorMessage, guardChatTransport, isClosedReadableStreamError } from "@/lib/chat-stream";
+import { getLastUserMessage } from "@/lib/chat-validation";
 import { RenderPayloadSchema } from "@/lib/render-payload";
 import type { attentionAgent } from "@/trigger/attention-agent";
 import { MarkdownText } from "./MarkdownText";
@@ -31,15 +25,7 @@ const SUGGESTIONS = [
 
 const STALL_TIMEOUT_MS = 20_000;
 
-function AttentionChatOverlay({
-  chatId,
-  initialMessages,
-  onMessagesChange,
-}: {
-  chatId: string;
-  initialMessages: UIMessage[];
-  onMessagesChange: (messages: UIMessage[]) => void;
-}) {
+function AttentionChatOverlay() {
   const [fault, setFault] = useState<string | null>(null);
   const watchdog = useRef<ReturnType<typeof setTimeout> | null>(null);
   const ctx = useChatContext();
@@ -82,28 +68,25 @@ function AttentionChatOverlay({
           break;
         case "message-send-failed":
           disarmWatchdog();
-          setFault(`send failed: ${event.error?.message}`);
+          setFault(`send failed: ${chatErrorMessage(event.error)}`);
           break;
         case "stream-error":
           disarmWatchdog();
-          setFault(`stream error: ${event.error?.message}`);
+          if (event.error && isClosedReadableStreamError(event.error)) break;
+          setFault(`stream error: ${chatErrorMessage(event.error)}`);
           break;
       }
     }, []),
   });
 
-  const { messages, sendMessage, stop, status, error, regenerate } = useChat({
-    id: chatId,
-    messages: initialMessages,
-    transport,
-  });
-  const [input, setInput] = useState("");
-  const busy = status === "submitted" || status === "streaming";
-  const faultText = fault ?? (status === "error" ? (error?.message ?? "chat request failed") : null);
+  const safeTransport = useMemo(() => guardChatTransport(transport), [transport]);
 
-  useEffect(() => {
-    onMessagesChange(messages);
-  }, [messages, onMessagesChange]);
+  const { messages, sendMessage, stop, status, error } = useChat({ transport: safeTransport });
+  const [input, setInput] = useState("");
+  const [retrying, setRetrying] = useState(false);
+  const retryingRef = useRef(false);
+  const busy = status === "submitted" || status === "streaming";
+  const faultText = fault ?? (status === "error" ? chatErrorMessage(error) : null);
 
   ctx.sendMessageRef.current = (text: string) => sendMessage({ text });
 
@@ -123,9 +106,24 @@ function AttentionChatOverlay({
   }
 
   async function retry() {
+    if (retryingRef.current || busy) return;
+    const lastUserMessage = getLastUserMessage(messages);
+    if (!lastUserMessage) {
+      setFault("there is no user message to retry");
+      return;
+    }
+
+    retryingRef.current = true;
+    setRetrying(true);
     setFault(null);
-    await stop();
-    await regenerate();
+    try {
+      await sendMessage({ text: lastUserMessage.text, messageId: lastUserMessage.id });
+    } catch (retryError) {
+      setFault(`retry failed: ${chatErrorMessage(retryError, "unknown error")}`);
+    } finally {
+      retryingRef.current = false;
+      setRetrying(false);
+    }
   }
 
   return (
@@ -149,7 +147,7 @@ function AttentionChatOverlay({
       {faultText && (
         <div className="agent-fault mono" role="alert">
           <span>! {faultText}</span>
-          <button type="button" className="chip" onClick={() => void retry()}>retry</button>
+          <button type="button" className="chip" disabled={retrying || busy} onClick={() => void retry()}>retry</button>
         </div>
       )}
 
@@ -178,35 +176,31 @@ function AttentionChatOverlay({
 
 export function FloatingChat() {
   const ctx = useChatContext();
-  const fallbackChatIdRef = useRef(createFallbackChatId());
-  const initialSnapshot = useState(() => {
-    const stored = loadFloatingChatSession(getSafeLocalStorage());
-    if (!stored) return null;
-    const drawerWidth = clampDrawerWidth(stored.drawerWidth);
-    return {
-      chatId: stored.chatId || fallbackChatIdRef.current,
-      messages: stored.messages,
-      detached: stored.detached,
-      drawerWidth,
-      position: clampDetachedPosition(
-        stored.position,
-        drawerWidth,
-        { width: window.innerWidth, height: window.innerHeight },
-      ),
-    };
-  })[0];
-  const chatId = initialSnapshot?.chatId ?? fallbackChatIdRef.current;
-  const initialMessages = initialSnapshot?.messages ?? [];
-  const [currentMessages, setCurrentMessages] = useState<UIMessage[]>(() => initialMessages);
-  const [drawerWidth, setDrawerWidth] = useState(() => initialSnapshot?.drawerWidth ?? 420);
-  const [detached, setDetached] = useState(() => initialSnapshot?.detached ?? false);
-  const [pos, setPos] = useState(() => initialSnapshot?.position ?? { x: 0, y: 0 });
+  const [animateIn, setAnimateIn] = useState(false);
+  const [drawerWidth, setDrawerWidth] = useState(420);
+  const [detached, setDetached] = useState(false);
+  const [pos, setPos] = useState({ x: 0, y: 0 });
+  const minimizedPillRef = useRef<HTMLDivElement>(null);
+  const drawerRef = useRef<HTMLDivElement>(null);
   const resizingRef = useRef(false);
   const draggingRef = useRef(false);
   const startXRef = useRef(0);
   const startYRef = useRef(0);
   const startPosRef = useRef({ x: 0, y: 0 });
   const startWidthRef = useRef(420);
+
+  useEffect(() => {
+    if (ctx.state === "open") {
+      requestAnimationFrame(() => setAnimateIn(true));
+    } else {
+      setAnimateIn(false);
+    }
+  }, [ctx.state]);
+
+  useLayoutEffect(() => {
+    if (drawerRef.current) drawerRef.current.inert = ctx.state === "minimized";
+    if (ctx.state === "minimized") minimizedPillRef.current?.focus();
+  }, [ctx.state]);
 
   function startResize(e: React.PointerEvent) {
     e.preventDefault();
@@ -280,29 +274,17 @@ export function FloatingChat() {
     };
   }, []);
 
-  const isClosed = ctx.state === "closed";
+  if (ctx.state === "closed") return null;
+
   const isMinimized = ctx.state === "minimized";
   const drawerStyle: React.CSSProperties = detached
     ? { width: drawerWidth, left: pos.x, top: pos.y, right: "auto", height: "min(600px, 100vh)" }
     : { width: drawerWidth };
-  useEffect(() => {
-    try {
-      saveFloatingChatSession(getSafeLocalStorage(), {
-        chatId,
-        messages: currentMessages,
-        detached,
-        drawerWidth,
-        position: pos,
-      });
-    } catch {
-      // Best-effort persistence only.
-    }
-  }, [chatId, currentMessages, detached, drawerWidth, pos]);
 
   return (
     <>
       {isMinimized && (
-        <div className="floating-chat-minimized" role="button" tabIndex={0}
+        <div ref={minimizedPillRef} className="floating-chat-minimized" role="button" tabIndex={0}
           onClick={() => ctx.setState("open")}
           onKeyDown={(e) => e.key === "Enter" && ctx.setState("open")}
           aria-label="Open chat">
@@ -317,13 +299,13 @@ export function FloatingChat() {
           </button>
         </div>
       )}
-      {!detached && !isMinimized && !isClosed && <div className="floating-chat-backdrop" aria-hidden="true" />}
+      {!detached && !isMinimized && <div className="floating-chat-backdrop" aria-hidden="true" />}
       <div
+        ref={drawerRef}
         className={`floating-chat-drawer${detached ? " detached" : ""}${isMinimized ? " minimized-hidden" : ""}`}
         role="dialog"
         aria-label="Chat"
-        aria-hidden={isMinimized || isClosed}
-        hidden={isClosed}
+        aria-hidden={isMinimized}
         style={drawerStyle}
       >
         <div className="floating-chat-resize-handle" onPointerDown={startResize} aria-hidden="true" />
@@ -339,20 +321,19 @@ export function FloatingChat() {
           <div className="floating-chat-drawer-actions">
             {detached && (
               <button type="button" className="chip" onClick={() => setDetached(false)} aria-label="Dock to side">
-                ⤢
+                ⬈
               </button>
             )}
-            <button type="button" className="floating-chat-minimize" onClick={() => ctx.minimize()} aria-label="Minimize chat">
-              —
+            <button type="button" className="chip" onClick={() => ctx.minimize()} aria-label="Minimize chat">
+              _
+            </button>
+            <button type="button" className="floating-chat-close" onClick={() => ctx.close()} aria-label="Close chat">
+              ×
             </button>
           </div>
         </header>
         <div className="floating-chat-drawer-body">
-          <AttentionChatOverlay
-            chatId={chatId}
-            initialMessages={initialMessages}
-            onMessagesChange={setCurrentMessages}
-          />
+          <AttentionChatOverlay />
         </div>
       </div>
     </>

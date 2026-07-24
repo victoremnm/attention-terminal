@@ -1,5 +1,5 @@
 import { q } from "./core";
-import type { DailySeries, Provenance } from "./types";
+import type { DailySeries } from "./types";
 
 export async function divergence(subject: string): Promise<DailySeries & { talk: number[]; code: number[] }> {
   const { rows, provenance } = await q<{ day: string; talk: string; code: string }>(
@@ -11,13 +11,14 @@ export async function divergence(subject: string): Promise<DailySeries & { talk:
         AND time > now() - INTERVAL 30 DAY AND deleted = 0 AND dead = 0
       GROUP BY day
       UNION ALL
-      SELECT toDate(created_at) AS day, count() AS c, 'gh' AS src
-      FROM raw.github_events
-      WHERE repo_name ILIKE '%${subject}%' AND created_at > now() - INTERVAL 30 DAY
+      SELECT toDate(hour) AS day, sum(code_score) AS c, 'gh' AS src
+      FROM daily_skinny_subject_hourly
+      WHERE (subject = '${subject}' OR lower(subject) = lower('${subject}') OR subject ILIKE '%${subject}%')
+        AND hour > now() - INTERVAL 30 DAY
       GROUP BY day
      )
      GROUP BY day ORDER BY day`,
-    ["raw.hackernews", "raw.github_events"]
+    ["raw.hackernews", "daily_skinny_subject_hourly"]
   );
   const byDay = new Map(rows.map((r) => [r.day, r]));
   const days: string[] = [];

@@ -6,21 +6,22 @@ import type { TickerLanes } from "./types";
 async function assembleTickerLanes(): Promise<TickerLanes> {
   const [repos, forks, shipping, stars, stories, actors] = await Promise.all([
     q<{ name: string; at: string; spark: number[] }>(
-      `SELECT repo_name AS name, max(h) AS at,
+      `WITH (SELECT coalesce(max(hour), toStartOfHour(now())) FROM gh_repo_hourly) AS high_water
+       SELECT repo_name AS name, max(h) AS at,
               groupArray(6)(cnt) AS spark
        FROM (
          SELECT repo_name, toStartOfHour(created_at) AS h, count() AS cnt
          FROM raw.github_events
          WHERE event_type = 'CreateEvent'
            AND ref_type = 'repository'
-           AND created_at > (SELECT max(created_at) FROM raw.github_events) - INTERVAL 6 HOUR
+           AND created_at > high_water - INTERVAL 6 HOUR
          GROUP BY repo_name, h ORDER BY repo_name, h
        ) GROUP BY repo_name ORDER BY at DESC LIMIT 20`,
-      ["raw.github_events"]
+      ["raw.github_events", "gh_repo_hourly"]
     ),
     q<{ name: string; forks: string; stars: string; pushes: string; prs: string; issues: string; spark: number[] }>(
       `WITH
-         (SELECT max(hour) FROM gh_repo_hourly) AS max_h,
+         (SELECT coalesce(max(hour), toStartOfHour(now())) FROM gh_repo_hourly) AS max_h,
          per_repo_event AS (
            SELECT repo_name, event_type, countMerge(events) AS event_count
            FROM gh_repo_hourly
@@ -77,7 +78,7 @@ async function assembleTickerLanes(): Promise<TickerLanes> {
       spark: number[];
     }>(
       `WITH
-         (SELECT max(created_at) FROM gh_repo_activity_feed) AS max_time
+         (SELECT coalesce(max(created_at), now()) FROM gh_repo_activity_feed) AS max_time
        SELECT repo_name AS name,
               sum(commits) AS commit_total,
               countIf(event_type = 'PushEvent') AS push_count,
@@ -104,14 +105,15 @@ async function assembleTickerLanes(): Promise<TickerLanes> {
       ["gh_repo_activity_feed"]
     ),
     q<{ name: string; stars: string; surge: number; spark: number[] }>(
-      `WITH recent AS (
+      `WITH (SELECT coalesce(max(hour), toStartOfHour(now())) FROM gh_repo_hourly) AS max_h,
+       recent AS (
           SELECT repo_name, sum(cnt) AS star_total,
                  reverse(groupArray(8)(cnt)) AS spark
           FROM (
             SELECT repo_name, toStartOfHour(hour) AS h, countMerge(events) AS cnt
             FROM gh_repo_hourly
             WHERE event_type = 'WatchEvent'
-              AND hour > (SELECT max(hour) FROM gh_repo_hourly) - INTERVAL 24 HOUR
+              AND hour > max_h - INTERVAL 24 HOUR
             GROUP BY repo_name, h ORDER BY repo_name, h DESC
           ) GROUP BY repo_name
        ),
@@ -121,8 +123,8 @@ async function assembleTickerLanes(): Promise<TickerLanes> {
            SELECT repo_name, toDate(hour) AS day, countMerge(events) AS cnt
            FROM gh_repo_hourly
            WHERE event_type = 'WatchEvent'
-             AND hour > (SELECT max(hour) FROM gh_repo_hourly) - INTERVAL 30 DAY
-             AND hour <= (SELECT max(hour) FROM gh_repo_hourly) - INTERVAL 24 HOUR
+             AND hour > max_h - INTERVAL 30 DAY
+             AND hour <= max_h - INTERVAL 24 HOUR
            GROUP BY repo_name, day
          )
          GROUP BY repo_name
@@ -152,7 +154,7 @@ async function assembleTickerLanes(): Promise<TickerLanes> {
     newRepos: repos.rows.map((r) => ({
       kicker: "NEW REPO",
       name: r.name,
-      metric: "born " + r.at.slice(11, 16) + " UTC",
+      metric: "born " + (r.at ? r.at.slice(11, 16) : "--:--") + " UTC",
       spark: r.spark,
       href: `https://github.com/${r.name}`,
       repoName: r.name,
