@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import type { TelemetryPayload } from "@/lib/telemetry-queries";
 import type { QueryPerformancePayload } from "@/lib/query-performance";
 import { QueryPerformancePanel } from "./QueryPerformancePanel";
@@ -10,10 +10,33 @@ interface AnalysisDashboardProps {
   initialData: TelemetryPayload;
 }
 
+type AnalysisTab = "models" | "learnings" | "runs" | "events" | "sql" | "query-performance";
+
+const TAB_ORDER: AnalysisTab[] = ["models", "learnings", "runs", "events", "sql", "query-performance"];
+
+const TAB_IDS: Record<AnalysisTab, string> = {
+  models: "analysis-tab-models",
+  learnings: "analysis-tab-learnings",
+  runs: "analysis-tab-runs",
+  events: "analysis-tab-events",
+  sql: "analysis-tab-sql",
+  "query-performance": "analysis-tab-query-performance",
+};
+
+const PANEL_IDS: Record<AnalysisTab, string> = {
+  models: "analysis-panel-models",
+  learnings: "analysis-panel-learnings",
+  runs: "analysis-panel-runs",
+  events: "analysis-panel-events",
+  sql: "analysis-panel-sql",
+  "query-performance": "analysis-panel-query-performance",
+};
+
 export function AnalysisDashboard({ initialData }: AnalysisDashboardProps) {
   const [data, setData] = useState<TelemetryPayload>(initialData);
   const [loading, setLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState<"models" | "learnings" | "runs" | "events" | "sql" | "query-performance">("models");
+  const [activeTab, setActiveTab] = useState<AnalysisTab>("models");
+  const tabRefs = useRef<Partial<Record<AnalysisTab, HTMLButtonElement | null>>>({});
   const [queryPerformance, setQueryPerformance] = useState<QueryPerformancePayload | null>(null);
   const [queryPerformanceLoading, setQueryPerformanceLoading] = useState(false);
   const [queryPerformanceLoaded, setQueryPerformanceLoaded] = useState(false);
@@ -40,6 +63,35 @@ export function AnalysisDashboard({ initialData }: AnalysisDashboardProps) {
     setQueryPerformance(null);
     setQueryPerformanceError(null);
     setQueryPerformanceLoaded(false);
+  };
+
+  const handleTabKeyDown = (event: KeyboardEvent<HTMLButtonElement>, tab: AnalysisTab) => {
+    const currentIndex = TAB_ORDER.indexOf(tab);
+    let nextIndex: number | null = null;
+
+    switch (event.key) {
+      case "ArrowRight":
+        nextIndex = (currentIndex + 1) % TAB_ORDER.length;
+        break;
+      case "ArrowLeft":
+        nextIndex = (currentIndex - 1 + TAB_ORDER.length) % TAB_ORDER.length;
+        break;
+      case "Home":
+        nextIndex = 0;
+        break;
+      case "End":
+        nextIndex = TAB_ORDER.length - 1;
+        break;
+      default:
+        return;
+    }
+
+    if (nextIndex === null) return;
+
+    event.preventDefault();
+    const nextTab = TAB_ORDER[nextIndex];
+    setActiveTab(nextTab);
+    tabRefs.current[nextTab]?.focus();
   };
 
   useEffect(() => {
@@ -142,40 +194,102 @@ export function AnalysisDashboard({ initialData }: AnalysisDashboardProps) {
       </div>
 
       {/* Tab Navigation */}
-      <div className="tab-nav">
+      <div className="tab-nav" role="tablist" aria-label="Analysis views">
         <button
+          type="button"
           className={`tab-btn ${activeTab === "models" ? "active" : ""}`}
+          id={TAB_IDS.models}
+          role="tab"
+          aria-selected={activeTab === "models"}
+          aria-controls={activeTab === "models" ? PANEL_IDS.models : undefined}
+          tabIndex={activeTab === "models" ? 0 : -1}
+          ref={(element) => {
+            tabRefs.current.models = element;
+          }}
           onClick={() => setActiveTab("models")}
+          onKeyDown={(event) => handleTabKeyDown(event, "models")}
         >
           📊 Model Distribution ({data.modelStats.length} Models)
         </button>
         <button
+          type="button"
           className={`tab-btn ${activeTab === "learnings" ? "active" : ""}`}
+          id={TAB_IDS.learnings}
+          role="tab"
+          aria-selected={activeTab === "learnings"}
+          aria-controls={activeTab === "learnings" ? PANEL_IDS.learnings : undefined}
+          tabIndex={activeTab === "learnings" ? 0 : -1}
+          ref={(element) => {
+            tabRefs.current.learnings = element;
+          }}
           onClick={() => setActiveTab("learnings")}
+          onKeyDown={(event) => handleTabKeyDown(event, "learnings")}
         >
           🧠 Session Learnings ({data.learnings.length})
         </button>
         <button
+          type="button"
           className={`tab-btn ${activeTab === "runs" ? "active" : ""}`}
+          id={TAB_IDS.runs}
+          role="tab"
+          aria-selected={activeTab === "runs"}
+          aria-controls={activeTab === "runs" ? PANEL_IDS.runs : undefined}
+          tabIndex={activeTab === "runs" ? 0 : -1}
+          ref={(element) => {
+            tabRefs.current.runs = element;
+          }}
           onClick={() => setActiveTab("runs")}
+          onKeyDown={(event) => handleTabKeyDown(event, "runs")}
         >
           🤖 Subagent Runs ({data.runs.length})
         </button>
         <button
+          type="button"
           className={`tab-btn ${activeTab === "events" ? "active" : ""}`}
+          id={TAB_IDS.events}
+          role="tab"
+          aria-selected={activeTab === "events"}
+          aria-controls={activeTab === "events" ? PANEL_IDS.events : undefined}
+          tabIndex={activeTab === "events" ? 0 : -1}
+          ref={(element) => {
+            tabRefs.current.events = element;
+          }}
           onClick={() => setActiveTab("events")}
+          onKeyDown={(event) => handleTabKeyDown(event, "events")}
         >
           📡 OTel API Events ({data.apiEvents.length})
         </button>
         <button
+          type="button"
           className={`tab-btn ${activeTab === "sql" ? "active" : ""}`}
+          id={TAB_IDS.sql}
+          role="tab"
+          aria-selected={activeTab === "sql"}
+          aria-controls={activeTab === "sql" ? PANEL_IDS.sql : undefined}
+          tabIndex={activeTab === "sql" ? 0 : -1}
+          ref={(element) => {
+            tabRefs.current.sql = element;
+          }}
           onClick={() => setActiveTab("sql")}
+          onKeyDown={(event) => handleTabKeyDown(event, "sql")}
         >
           ⚡ SQL Provenance
         </button>
         <button
+          type="button"
           className={`tab-btn ${activeTab === "query-performance" ? "active" : ""}`}
           onClick={() => setActiveTab("query-performance")}
+          id={TAB_IDS["query-performance"]}
+          role="tab"
+          aria-selected={activeTab === "query-performance"}
+          aria-controls={
+            activeTab === "query-performance" ? PANEL_IDS["query-performance"] : undefined
+          }
+          tabIndex={activeTab === "query-performance" ? 0 : -1}
+          ref={(element) => {
+            tabRefs.current["query-performance"] = element;
+          }}
+          onKeyDown={(event) => handleTabKeyDown(event, "query-performance")}
         >
           📈 Query Performance
         </button>
@@ -183,14 +297,26 @@ export function AnalysisDashboard({ initialData }: AnalysisDashboardProps) {
 
       {/* Tab Content 0: Model Distribution Box/Violin Plot */}
       {activeTab === "models" && (
-        <section className="dashboard-section space-y-6">
+        <section
+          className="dashboard-section space-y-6"
+          id={PANEL_IDS.models}
+          role="tabpanel"
+          aria-labelledby={TAB_IDS.models}
+          tabIndex={0}
+        >
           <ModelDistributionChart stats={data.modelStats} />
         </section>
       )}
 
       {/* Tab Content 1: Learnings Bank */}
       {activeTab === "learnings" && (
-        <section className="dashboard-section">
+        <section
+          className="dashboard-section"
+          id={PANEL_IDS.learnings}
+          role="tabpanel"
+          aria-labelledby={TAB_IDS.learnings}
+          tabIndex={0}
+        >
           <div className="filter-bar">
             <div className="category-pills">
               {categories.map((cat) => (
@@ -245,7 +371,13 @@ export function AnalysisDashboard({ initialData }: AnalysisDashboardProps) {
 
       {/* Tab Content 2: Subagent Runs Table */}
       {activeTab === "runs" && (
-        <section className="dashboard-section">
+        <section
+          className="dashboard-section"
+          id={PANEL_IDS.runs}
+          role="tabpanel"
+          aria-labelledby={TAB_IDS.runs}
+          tabIndex={0}
+        >
           <div className="table-responsive">
             <table className="telemetry-table">
               <thead>
@@ -292,7 +424,13 @@ export function AnalysisDashboard({ initialData }: AnalysisDashboardProps) {
 
       {/* Tab Content 3: OTel API Events */}
       {activeTab === "events" && (
-        <section className="dashboard-section">
+        <section
+          className="dashboard-section"
+          id={PANEL_IDS.events}
+          role="tabpanel"
+          aria-labelledby={TAB_IDS.events}
+          tabIndex={0}
+        >
           <div className="table-responsive">
             <table className="telemetry-table">
               <thead>
@@ -336,7 +474,13 @@ export function AnalysisDashboard({ initialData }: AnalysisDashboardProps) {
 
       {/* Tab Content 4: SQL Provenance */}
       {activeTab === "sql" && (
-        <section className="dashboard-section">
+        <section
+          className="dashboard-section"
+          id={PANEL_IDS.sql}
+          role="tabpanel"
+          aria-labelledby={TAB_IDS.sql}
+          tabIndex={0}
+        >
           <div className="sql-box">
             <div className="sql-header mono">
               <span>PROVENANCE EXECUTION TIMING</span>
@@ -361,7 +505,13 @@ export function AnalysisDashboard({ initialData }: AnalysisDashboardProps) {
 
       {/* Tab Content 5: Query Performance */}
       {activeTab === "query-performance" && (
-        <section className="dashboard-section">
+        <section
+          className="dashboard-section"
+          id={PANEL_IDS["query-performance"]}
+          role="tabpanel"
+          aria-labelledby={TAB_IDS["query-performance"]}
+          tabIndex={0}
+        >
           {queryPerformanceLoading ? (
             <div className="empty-state">Loading query performance from system.query_log…</div>
           ) : queryPerformanceError ? (
