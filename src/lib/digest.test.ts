@@ -109,12 +109,29 @@ describe("dailyDigest", () => {
       if (tables[0] === "daily_skinny_taxonomy") return { rows: taxonomyRows, provenance: {} };
       return { rows: [{ id: "900", title: "ClickHouse discussion" }], provenance: {} };
     });
-    coreQ.mockResolvedValue({
-      rows: [{
-        id: 900, title: "ClickHouse discussion", url: "", by: "author", time: 1_700_000_000,
-        score: "42", descendants: "4", kids: [901, 902, 903],
-      },
-      ],
+    let coreCalls = 0;
+    coreQ.mockImplementation(async () => {
+      coreCalls += 1;
+      if (coreCalls === 1) {
+        return {
+          rows: [{
+            id: 900, title: "ClickHouse discussion", url: "", by: "author", time: 1_700_000_000,
+            score: "42", descendants: "11", kids: Array.from({ length: 11 }, (_, index) => 901 + index),
+          }],
+        };
+      }
+      return {
+        rows: Array.from({ length: 11 }, (_, index) => ({
+          id: 901 + index,
+          parent: 900,
+          by: `author-${index}`,
+          time: 1_700_000_000 + index,
+          score: 100 - index,
+          text: index < 8 ? "common implementation phrase" : "rare storage phrase",
+          kids: [],
+          depth: 1,
+        })),
+      };
     });
 
     const { threadInsights, DIGEST_THREAD_STORY_SQL } = await import("./digest");
@@ -123,6 +140,7 @@ describe("dailyDigest", () => {
     expect(DIGEST_THREAD_STORY_SQL).toContain("FROM raw.hackernews FINAL");
     expect(result?.evidence.story.id).toBe(900);
     expect(typeof result?.evidence.story.id).toBe("number");
+    expect(result?.themes.some((theme) => theme.label.includes("rare storage"))).toBe(true);
     expect(coreQ).toHaveBeenCalledWith(expect.stringContaining("WHERE id = {storyId:UInt64}"), ["raw.hackernews"], expect.anything());
   });
 

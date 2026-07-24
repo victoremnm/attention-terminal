@@ -1,5 +1,5 @@
 import { q } from "./queries";
-import { hnThreadEvidence } from "./hn-thread-metadata";
+import { hnThreadEvidenceDetails } from "./hn-thread-metadata";
 import { extractDiscussionThemes } from "./hn-themes";
 import { DigestSchema, HnThreadInsightsSchema, type DigestCluster, type DigestPayload, type EvidenceLink, type HnThreadInsights, type Verdict } from "./render-payload";
 
@@ -256,20 +256,20 @@ export async function threadInsights(subjectId: string): Promise<HnThreadInsight
   const storyId = story ? numericId(story.id) : 0;
   if (!story || !storyId) return null;
 
-  const evidence = await hnThreadEvidence(storyId, {
+  const details = await hnThreadEvidenceDetails(storyId, {
     maxComments: 100,
     maxDepth: 3,
     maxBranching: 20,
     representativeLimit: 8,
   });
-  if (!evidence) return null;
+  if (!details) return null;
 
   const themes = extractDiscussionThemes(
-    evidence.representativeReplies.map((reply) => ({ id: reply.id, text: reply.excerpt })),
-    evidence.story.title,
+    details.observedReplies.map((reply) => ({ id: reply.id, text: reply.text })),
+    details.evidence.story.title,
     5,
   );
-  return HnThreadInsightsSchema.parse({ evidence, themes });
+  return HnThreadInsightsSchema.parse({ evidence: details.evidence, themes });
 }
 
 export async function debateTakes(subjectId: string) {

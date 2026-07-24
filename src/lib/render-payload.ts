@@ -80,6 +80,10 @@ export const HnThreadEvidenceSchema = z.object({
     limit: z.number().int().positive(),
     bounded: z.literal(true),
   }),
+  depthProfile: z.array(z.object({
+    depth: z.number().int().nonnegative(),
+    count: z.number().int().positive(),
+  })).max(16).optional(),
   branching: z.object({
     maxObserved: z.number().int().nonnegative(),
     limit: z.number().int().positive(),

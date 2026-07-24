@@ -55,11 +55,11 @@ function TakeLink({ take }: { take: EvidenceLink }) {
 
 function HnThreadPanel({ insights }: { insights: HnThreadInsights }) {
   const { evidence, themes } = insights;
-  const depthCounts = new Map<number, number>();
-  for (const reply of evidence.representativeReplies) {
-    depthCounts.set(reply.depth, (depthCounts.get(reply.depth) ?? 0) + 1);
-  }
-  const depthRows = [...depthCounts.entries()].sort(([a], [b]) => a - b);
+  const depthRows = evidence.depthProfile?.map(({ depth, count }) => [depth, count] as const)
+    ?? [...evidence.representativeReplies.reduce((counts, reply) => {
+      counts.set(reply.depth, (counts.get(reply.depth) ?? 0) + 1);
+      return counts;
+    }, new Map<number, number>())].sort(([a], [b]) => a - b);
   const maxDepthCount = Math.max(1, ...depthRows.map(([, count]) => count));
   const partialLabel = evidence.completeness.state === "partial"
     ? `sampled · ${evidence.completeness.reason?.replaceAll("_", " ") ?? "partial"}`
@@ -89,7 +89,7 @@ function HnThreadPanel({ insights }: { insights: HnThreadInsights }) {
         <div>
           <div className="debate-label mono">DEPTH PROFILE · OBSERVED</div>
           {depthRows.length ? (
-            <ol className="hn-depth-list" aria-label="Observed representative replies by depth">
+            <ol className="hn-depth-list" aria-label="Observed replies by depth">
               {depthRows.map(([depth, count]) => (
                 <li key={depth}>
                   <span>depth {depth}</span>
