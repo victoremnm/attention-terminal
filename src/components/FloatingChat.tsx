@@ -393,7 +393,7 @@ function MessagePart({ part, question }: { part: UIMessage["parts"][number]; que
     if (!parsed.success) {
       return <div className="agent-tool mono">building answer...</div>;
     }
-    return <RenderedAnswer payload={parsed.data} showCopy={false} question={question} />;
+    return <RenderedAnswer payload={parsed.data} showCopy={true} question={question} />;
   }
 
   if (part.type === "tool-listTables") {

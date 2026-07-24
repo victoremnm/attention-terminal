@@ -29,7 +29,7 @@ export function ChatTrigger() {
 
   return (
     <>
-      {showOnboarding && (
+      {showOnboarding && !isHidden && (
         <div className="chat-onboarding-tooltip">
           Ask the terminal anything — get live visuals over HackerNews + GitHub data
         </div>
