@@ -1,7 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { TelemetryPayload } from "@/lib/telemetry-queries";
+import type { QueryPerformancePayload } from "@/lib/query-performance";
+import { QueryPerformancePanel } from "./QueryPerformancePanel";
 import { ModelDistributionChart } from "./ModelDistributionChart";
 
 interface AnalysisDashboardProps {
@@ -11,7 +13,11 @@ interface AnalysisDashboardProps {
 export function AnalysisDashboard({ initialData }: AnalysisDashboardProps) {
   const [data, setData] = useState<TelemetryPayload>(initialData);
   const [loading, setLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState<"models" | "learnings" | "runs" | "events" | "sql">("models");
+  const [activeTab, setActiveTab] = useState<"models" | "learnings" | "runs" | "events" | "sql" | "query-performance">("models");
+  const [queryPerformance, setQueryPerformance] = useState<QueryPerformancePayload | null>(null);
+  const [queryPerformanceLoading, setQueryPerformanceLoading] = useState(false);
+  const [queryPerformanceLoaded, setQueryPerformanceLoaded] = useState(false);
+  const [queryPerformanceError, setQueryPerformanceError] = useState<string | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState<string>("");
 
@@ -29,6 +35,36 @@ export function AnalysisDashboard({ initialData }: AnalysisDashboardProps) {
       setLoading(false);
     }
   };
+
+  const retryQueryPerformance = () => {
+    setQueryPerformance(null);
+    setQueryPerformanceError(null);
+    setQueryPerformanceLoaded(false);
+  };
+
+  useEffect(() => {
+    if (activeTab !== "query-performance" || queryPerformanceLoaded || queryPerformanceLoading) return;
+
+    const loadQueryPerformance = async () => {
+      setQueryPerformanceLoading(true);
+      setQueryPerformanceError(null);
+      try {
+        const res = await fetch("/api/analysis/query-performance");
+        if (!res.ok) {
+          throw new Error(`HTTP ${res.status}`);
+        }
+        const json = (await res.json()) as QueryPerformancePayload;
+        setQueryPerformance(json);
+      } catch (error) {
+        setQueryPerformanceError(error instanceof Error ? error.message : String(error));
+      } finally {
+        setQueryPerformanceLoaded(true);
+        setQueryPerformanceLoading(false);
+      }
+    };
+
+    void loadQueryPerformance();
+  }, [activeTab, queryPerformanceLoaded, queryPerformanceLoading]);
 
   const categories = [
     "all",
@@ -136,6 +172,12 @@ export function AnalysisDashboard({ initialData }: AnalysisDashboardProps) {
           onClick={() => setActiveTab("sql")}
         >
           ⚡ SQL Provenance
+        </button>
+        <button
+          className={`tab-btn ${activeTab === "query-performance" ? "active" : ""}`}
+          onClick={() => setActiveTab("query-performance")}
+        >
+          📈 Query Performance
         </button>
       </div>
 
@@ -314,6 +356,26 @@ export function AnalysisDashboard({ initialData }: AnalysisDashboardProps) {
 
             <pre className="sql-code mono">{data.provenance.sql}</pre>
           </div>
+        </section>
+      )}
+
+      {/* Tab Content 5: Query Performance */}
+      {activeTab === "query-performance" && (
+        <section className="dashboard-section">
+          {queryPerformanceLoading ? (
+            <div className="empty-state">Loading query performance from system.query_log…</div>
+          ) : queryPerformanceError ? (
+            <div className="empty-state">
+              <p>Failed to load query performance: {queryPerformanceError}</p>
+              <button type="button" className="refresh-btn mono mt-4" onClick={retryQueryPerformance}>
+                Retry query log load
+              </button>
+            </div>
+          ) : queryPerformance ? (
+            <QueryPerformancePanel payload={queryPerformance} />
+          ) : (
+            <div className="empty-state">Open this tab to load query performance data.</div>
+          )}
         </section>
       )}
     </div>

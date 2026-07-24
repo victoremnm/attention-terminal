@@ -6,6 +6,7 @@ import { randomUUID } from "node:crypto";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import * as os from "node:os";
+import { blockAntipatternsIfPresent, executeTaggedJsonEachRowQuery, normalizeUnionQuery } from "../query-execution";
 import {
   FALLBACK_TABLES,
   LIST_TABLES_SQL,
@@ -35,7 +36,6 @@ function getClickHouse() {
   return clickhouse;
 }
 
-const READ_ONLY_STATEMENTS = /^\s*(select|with|show|describe|desc|explain|exists)\b/i;
 // Bounded row sample returned to the calling model so it can populate a
 // morphing-card payload's `data` field directly — previously this tool only
 // returned column metadata, leaving the model with no rows to render and no
@@ -54,14 +54,6 @@ const CATALOG_TIMEOUT_MS = 5_000;
 
 function hasMultipleStatements(query: string) {
   return query.replace(/;+\s*$/, "").includes(";");
-}
-
-export function normalizeUnionQuery(query: string): string {
-  // Preserve single and double quoted string literals while normalizing bare UNION keywords
-  return query.replace(/(['"])(?:(?!\1)[^\\]|\\.)*\1|\bUNION\b(?!\s+(?:ALL|DISTINCT)\b)/gi, (match, quote) => {
-    if (quote) return match;
-    return "UNION ALL";
-  });
 }
 
 type CatalogTable = { database: string; name: string; engine: string };
@@ -140,8 +132,13 @@ If you are unsure whether a column exists on a table, prefer a simpler query ove
 
     const query = normalizeUnionQuery(object.query);
 
-    if (!READ_ONLY_STATEMENTS.test(query) || hasMultipleStatements(query)) {
+    if (!/^\s*(select|with|show|describe|desc|explain|exists)\b/i.test(query) || hasMultipleStatements(query)) {
       lastError = "Only one read-only SELECT-style statement is allowed.";
+      continue;
+    }
+    const antipatternHint = blockAntipatternsIfPresent(query);
+    if (antipatternHint) {
+      lastError = antipatternHint;
       continue;
     }
 
@@ -158,17 +155,11 @@ If you are unsure whether a column exists on a table, prefer a simpler query ove
     }
 
     try {
-      const result = await getClickHouse().query({
-        query,
-        format: "JSONEachRow",
-        clickhouse_settings: {
-          readonly: "2",
-          max_execution_time: 30,
-          union_default_mode: "ALL",
-        },
+      const { rows } = await executeTaggedJsonEachRowQuery<Record<string, unknown>>(getClickHouse(), query, {
+        readonly: "2",
+        maxExecutionTime: 30,
+        logComment: { toolName: "runDataRetrieval", surface: "ad-hoc-intent" },
       });
-
-      const rows = await result.json<Record<string, unknown>>();
 
       // Persist raw result to a secure temporary storage layer
       const retrievalKey = randomUUID();

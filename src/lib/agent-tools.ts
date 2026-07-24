@@ -27,13 +27,18 @@ import {
   requireFinalOnReplacingTables,
   TABLE_LIST_LIMIT,
 } from "./sql-catalog-guard";
+import {
+  blockAntipatternsIfPresent,
+  executeTaggedJsonEachRowQuery,
+  normalizeUnionQuery,
+} from "./query-execution";
 
 export { FALLBACK_TABLES, LIST_TABLES_SQL, TABLE_LIST_LIMIT };
 import { dailyDigest } from "./digest";
 import { realBuildersDeck } from "./real-builders";
 import { RenderPayloadSchema } from "./render-payload";
 import { repoDrilldown } from "./queries";
-import { normalizeUnionQuery, runDataRetrievalAgent } from "./agents/data-retrieval-agent";
+import { runDataRetrievalAgent } from "./agents/data-retrieval-agent";
 import { runVisualizationMappingAgent } from "./agents/visualization-mapping-agent";
 
 let clickhouse: ClickHouseClient | undefined;
@@ -180,6 +185,10 @@ export const runReadOnlyQuery = tool({
         error: "Only one read-only SELECT-style statement is allowed.",
       };
     }
+    const antipatternHint = blockAntipatternsIfPresent(normalizedQuery);
+    if (antipatternHint) {
+      return { error: antipatternHint };
+    }
 
     try {
       const missingTables = requireCatalogedTables(normalizedQuery);
@@ -202,18 +211,13 @@ export const runReadOnlyQuery = tool({
       }
       const tables = extractTableCandidates(normalizedQuery);
       await ensureTablesExist(tables);
-      const result = await getClickHouse().query({
-        query: normalizedQuery,
-        format: "JSONEachRow",
-        clickhouse_settings: {
-          readonly: "2",
-          max_result_rows: "1000",
-          result_overflow_mode: "break",
-          max_execution_time: 30,
-          union_default_mode: "ALL",
-        },
+      const { rows } = await executeTaggedJsonEachRowQuery<Record<string, unknown>>(getClickHouse(), normalizedQuery, {
+        readonly: "2",
+        maxExecutionTime: 30,
+        maxResultRows: "1000",
+        resultOverflowMode: "break",
+        logComment: { toolName: "runReadOnlyQuery", surface: "read-only-query" },
       });
-      const rows = await result.json();
       const capped = capOutput(rows);
       return {
         rowCount: rows.length,
