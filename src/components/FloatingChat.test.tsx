@@ -108,6 +108,22 @@ describe("FloatingChat", () => {
     expect(drawer?.className).not.toContain("minimized-hidden");
   });
 
+  it("keeps a detached drawer detached when minimized and reopened", () => {
+    renderWithControls();
+    act(() => screen.getByTestId("btn-open").click());
+    const header = screen.getByText("CHAT.AGENT").closest("header");
+    expect(header).toBeInTheDocument();
+
+    act(() => fireEvent.pointerDown(header!, { button: 0, clientX: 1000, clientY: 10 }));
+    expect(document.querySelector(".floating-chat-drawer")?.className).toContain("detached");
+
+    act(() => screen.getByTestId("btn-minimize").click());
+    act(() => fireEvent.click(document.querySelector(".floating-chat-minimized")!));
+
+    expect(document.querySelector(".floating-chat-drawer")?.className).toContain("detached");
+    expect(document.querySelector(".floating-chat-drawer")?.className).not.toContain("minimized-hidden");
+  });
+
   it("renders minimize and close buttons in the drawer header", () => {
     renderWithControls();
     act(() => screen.getByTestId("btn-open").click());

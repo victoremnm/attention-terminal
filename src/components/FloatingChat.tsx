@@ -170,7 +170,6 @@ export function FloatingChat() {
       requestAnimationFrame(() => setAnimateIn(true));
     } else {
       setAnimateIn(false);
-      setDetached(false);
     }
   }, [ctx.state]);
 
@@ -203,18 +202,19 @@ export function FloatingChat() {
   function startDrag(e: React.PointerEvent) {
     if (e.button !== 0) return;
     e.preventDefault();
+    let startingPos = { ...pos };
     if (!detached) {
       const rect = (e.currentTarget.closest(".floating-chat-drawer") as HTMLElement)?.getBoundingClientRect();
       if (rect) {
-        setPos({ x: rect.left, y: rect.top });
+        startingPos = { x: rect.left, y: rect.top };
+        setPos(startingPos);
         setDetached(true);
-        startPosRef.current = { x: rect.left, y: rect.top };
       }
     }
     draggingRef.current = true;
     startXRef.current = e.clientX;
     startYRef.current = e.clientY;
-    startPosRef.current = { ...pos };
+    startPosRef.current = startingPos;
     document.body.style.userSelect = "none";
     window.addEventListener("pointermove", onDragMove);
     window.addEventListener("pointerup", endDrag);
