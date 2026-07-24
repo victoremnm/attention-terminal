@@ -131,9 +131,11 @@ async function pickActors(): Promise<string[]> {
           WHERE created_at > (SELECT max(created_at) FROM raw.github_events) - INTERVAL 30 DAY
            AND actor_login != ''
          GROUP BY actor_login
-       )
-       WHERE NOT is_bot AND NOT (repos = 1 AND pushes >= ${MEGA_PUSHER_THRESHOLD_30D})
-       ORDER BY prs DESC, pushes DESC
+       ) AS cr
+       LEFT JOIN gh_actor_classification cls ON cls.actor_login = cr.actor_login
+       WHERE NOT (coalesce(cls.actor_type, '') = 'Bot' OR (cls.actor_type IS NULL AND cr.is_bot))
+         AND NOT (cr.repos = 1 AND cr.pushes >= ${MEGA_PUSHER_THRESHOLD_30D})
+       ORDER BY cr.prs DESC, cr.pushes DESC
        LIMIT ${MAX_ACTORS_PER_RUN * 4}`
     ),
     // Existing stats rows, newest fetch per actor (table is a ReplacingMergeTree

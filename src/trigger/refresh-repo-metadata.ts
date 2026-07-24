@@ -81,14 +81,15 @@ async function pickRepos(): Promise<string[]> {
     // (issue #56) to surface PostHog/posthog, llvm/llvm-project, elastic/kibana
     // instead of push-spam/data-dump repos.
     selectRows<{ repo_name: string }>(
-      `SELECT repo_name,
-              uniqExactIf(actor_login, lower(actor_login) NOT LIKE '%[bot]%') AS human_actors,
-              countIf(event_type = 'PushEvent') AS push_count
-        FROM raw.github_events
-        WHERE created_at > (SELECT max(created_at) FROM raw.github_events) - INTERVAL ${ACTIVITY_WINDOW_DAYS} DAY
-         AND event_type IN ('PushEvent', 'PullRequestEvent', 'IssuesEvent')
-         AND repo_name != ''
-       GROUP BY repo_name
+      `SELECT e.repo_name,
+              uniqExactIf(e.actor_login, coalesce(cls.actor_type, '') != 'Bot' AND (cls.actor_type IS NOT NULL OR lower(e.actor_login) NOT LIKE '%[bot]%')) AS human_actors,
+              countIf(e.event_type = 'PushEvent') AS push_count
+        FROM raw.github_events AS e
+        LEFT JOIN gh_actor_classification cls ON cls.actor_login = e.actor_login
+        WHERE e.created_at > (SELECT max(created_at) FROM raw.github_events) - INTERVAL ${ACTIVITY_WINDOW_DAYS} DAY
+         AND e.event_type IN ('PushEvent', 'PullRequestEvent', 'IssuesEvent')
+         AND e.repo_name != ''
+       GROUP BY e.repo_name
        ORDER BY human_actors DESC, push_count DESC
        LIMIT ${ACTIVITY_LIMIT}`
     ),

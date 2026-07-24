@@ -19,51 +19,53 @@ export async function actorLeaderboard(window: "24h" | "7d" = "24h"): Promise<Ac
       ? `
     WITH (SELECT coalesce(max(hour), toStartOfHour(now())) FROM gh_repo_hourly) AS high_water
     SELECT
-      actor_login,
+      e.actor_login,
       toString(count()) AS events,
-      toString(uniqExact(repo_name)) AS repos,
-      toString(countIf(event_type = 'PushEvent')) AS pushes,
-      toString(countIf(event_type = 'PullRequestEvent' AND action = 'opened')) AS prs_opened,
-      toString(countIf(event_type = 'PullRequestEvent' AND pr_merged = 1)) AS prs_merged,
+      toString(uniqExact(e.repo_name)) AS repos,
+      toString(countIf(e.event_type = 'PushEvent')) AS pushes,
+      toString(countIf(e.event_type = 'PullRequestEvent' AND e.action = 'opened')) AS prs_opened,
+      toString(countIf(e.event_type = 'PullRequestEvent' AND e.pr_merged = 1)) AS prs_merged,
       toString(
         round(
-          countIf(event_type = 'PullRequestEvent' AND pr_merged = 1) * 5 +
-          countIf(event_type = 'PullRequestEvent' AND action = 'opened') * 3 +
-          countIf(event_type = 'PushEvent') * 2 +
+          countIf(e.event_type = 'PullRequestEvent' AND e.pr_merged = 1) * 5 +
+          countIf(e.event_type = 'PullRequestEvent' AND e.action = 'opened') * 3 +
+          countIf(e.event_type = 'PushEvent') * 2 +
           count() * 1 +
-          uniqExact(repo_name) * 2,
+          uniqExact(e.repo_name) * 2,
           1
         )
       ) AS score
-    FROM raw.github_events
-    WHERE created_at > high_water - INTERVAL 24 HOUR
-      AND lower(actor_login) NOT LIKE '%[bot]%'
-    GROUP BY actor_login
+    FROM raw.github_events AS e
+    LEFT JOIN gh_actor_classification cls ON cls.actor_login = e.actor_login
+    WHERE e.created_at > high_water - INTERVAL 24 HOUR
+      AND coalesce(cls.actor_type, '') != 'Bot' AND (cls.actor_type IS NOT NULL OR lower(e.actor_login) NOT LIKE '%[bot]%')
+    GROUP BY e.actor_login
     ORDER BY toFloat64(score) DESC
     LIMIT 10
   `
       : `
     SELECT
-      actor_login,
-      toString(countMerge(events)) AS events,
-      toString(uniqMerge(repos)) AS repos,
-      toString(sum(pushes)) AS pushes,
-      toString(sum(prs_opened)) AS prs_opened,
-      toString(sum(prs_merged)) AS prs_merged,
+      d.actor_login,
+      toString(countMerge(d.events)) AS events,
+      toString(uniqMerge(d.repos)) AS repos,
+      toString(sum(d.pushes)) AS pushes,
+      toString(sum(d.prs_opened)) AS prs_opened,
+      toString(sum(d.prs_merged)) AS prs_merged,
       toString(
         round(
-          sum(prs_merged) * 5 +
-          sum(prs_opened) * 3 +
-          sum(pushes) * 2 +
-          countMerge(events) * 1 +
-          uniqMerge(repos) * 2,
+          sum(d.prs_merged) * 5 +
+          sum(d.prs_opened) * 3 +
+          sum(d.pushes) * 2 +
+          countMerge(d.events) * 1 +
+          uniqMerge(d.repos) * 2,
           1
         )
       ) AS score
-    FROM gh_actor_daily
-    WHERE day >= ${dailyWindow}
-      AND lower(actor_login) NOT LIKE '%[bot]%'
-    GROUP BY actor_login
+    FROM gh_actor_daily AS d
+    LEFT JOIN gh_actor_classification cls ON cls.actor_login = d.actor_login
+    WHERE d.day >= ${dailyWindow}
+      AND coalesce(cls.actor_type, '') != 'Bot' AND (cls.actor_type IS NOT NULL OR lower(d.actor_login) NOT LIKE '%[bot]%')
+    GROUP BY d.actor_login
     ORDER BY toFloat64(score) DESC
     LIMIT 10
   `;
@@ -73,33 +75,35 @@ export async function actorLeaderboard(window: "24h" | "7d" = "24h"): Promise<Ac
       ? `
     WITH (SELECT coalesce(max(hour), toStartOfHour(now())) FROM gh_repo_hourly) AS high_water
     SELECT
-      actor_login,
+      e.actor_login,
       toString(count()) AS events,
-      toString(uniqExact(repo_name)) AS repos,
-      toString(countIf(event_type = 'PushEvent')) AS pushes,
-      toString(countIf(event_type = 'PullRequestEvent' AND action = 'opened')) AS prs_opened,
-      toString(countIf(event_type = 'PullRequestEvent' AND pr_merged = 1)) AS prs_merged,
+      toString(uniqExact(e.repo_name)) AS repos,
+      toString(countIf(e.event_type = 'PushEvent')) AS pushes,
+      toString(countIf(e.event_type = 'PullRequestEvent' AND e.action = 'opened')) AS prs_opened,
+      toString(countIf(e.event_type = 'PullRequestEvent' AND e.pr_merged = 1)) AS prs_merged,
       toString(round(count(), 1)) AS score
-    FROM raw.github_events
-    WHERE created_at > high_water - INTERVAL 24 HOUR
-      AND lower(actor_login) LIKE '%[bot]%'
-    GROUP BY actor_login
+    FROM raw.github_events AS e
+    LEFT JOIN gh_actor_classification cls ON cls.actor_login = e.actor_login
+    WHERE e.created_at > high_water - INTERVAL 24 HOUR
+      AND (cls.actor_type = 'Bot' OR lower(e.actor_login) LIKE '%[bot]%')
+    GROUP BY e.actor_login
     ORDER BY toFloat64(score) DESC
     LIMIT 10
   `
       : `
     SELECT
-      actor_login,
-      toString(countMerge(events)) AS events,
-      toString(uniqMerge(repos)) AS repos,
-      toString(sum(pushes)) AS pushes,
-      toString(sum(prs_opened)) AS prs_opened,
-      toString(sum(prs_merged)) AS prs_merged,
-      toString(round(countMerge(events), 1)) AS score
-    FROM gh_actor_daily
-    WHERE day >= ${dailyWindow}
-      AND lower(actor_login) LIKE '%[bot]%'
-    GROUP BY actor_login
+      d.actor_login,
+      toString(countMerge(d.events)) AS events,
+      toString(uniqMerge(d.repos)) AS repos,
+      toString(sum(d.pushes)) AS pushes,
+      toString(sum(d.prs_opened)) AS prs_opened,
+      toString(sum(d.prs_merged)) AS prs_merged,
+      toString(round(countMerge(d.events), 1)) AS score
+    FROM gh_actor_daily AS d
+    LEFT JOIN gh_actor_classification cls ON cls.actor_login = d.actor_login
+    WHERE d.day >= ${dailyWindow}
+      AND (cls.actor_type = 'Bot' OR lower(d.actor_login) LIKE '%[bot]%')
+    GROUP BY d.actor_login
     ORDER BY toFloat64(score) DESC
     LIMIT 10
   `;
@@ -158,14 +162,15 @@ function devScatterSql(mergedCol: "merged_prs_7d" | "merged_prs_30d") {
     ),
     per_actor AS (
       SELECT
-        actor_login AS actor,
-        lower(actor_login) LIKE '%[bot]%' AS is_bot,
-        pushes,
-        repos,
-        commits,
-        prs,
-        mergedPrs
-      FROM actor_days
+        ad.actor_login AS actor,
+        coalesce(cls.actor_type, '') = 'Bot' OR lower(ad.actor_login) LIKE '%[bot]%' AS is_bot,
+        ad.pushes,
+        ad.repos,
+        ad.commits,
+        ad.prs,
+        ad.mergedPrs
+      FROM actor_days AS ad
+      LEFT JOIN gh_actor_classification cls ON cls.actor_login = ad.actor_login
     ),
     meta AS (
       SELECT

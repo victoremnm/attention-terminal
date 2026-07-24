@@ -93,9 +93,10 @@ async function assembleTickerLanes(): Promise<TickerLanes> {
                 + countIf(event_type = 'IssuesEvent' AND action = 'opened') AS events,
               [] AS spark
        FROM gh_repo_activity_feed
-       WHERE created_at > max_time - INTERVAL 24 HOUR
-         AND event_type IN ('PushEvent', 'PullRequestEvent', 'IssuesEvent', 'ForkEvent')
-         AND lower(actor_login) NOT LIKE '%[bot]%'
+        LEFT JOIN gh_actor_classification cls ON cls.actor_login = gh_repo_activity_feed.actor_login
+        WHERE created_at > max_time - INTERVAL 24 HOUR
+          AND event_type IN ('PushEvent', 'PullRequestEvent', 'IssuesEvent', 'ForkEvent')
+          AND coalesce(cls.actor_type, '') != 'Bot' AND (cls.actor_type IS NOT NULL OR lower(gh_repo_activity_feed.actor_login) NOT LIKE '%[bot]%')
        GROUP BY repo_name
        HAVING commit_total > 0 OR pr_count > 0 OR closed_pr_count > 0
        ORDER BY commit_total * 4 + closed_pr_count * 5 + pr_count * 3

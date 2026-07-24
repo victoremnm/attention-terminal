@@ -434,7 +434,7 @@ export async function repoDrilldown(repoName: string): Promise<RepoDrilldownPayl
            toString(pr_merged_total) AS prs_merged,
            toString(issues_opened_total) AS issues_opened,
            toString(releases_total) AS releases_count,
-           actor ILIKE '%[bot]%' AS is_bot
+            coalesce(cls.actor_type, '') = 'Bot' OR lower(actors.actor) LIKE '%[bot]%' AS is_bot
          FROM (
            SELECT
              coalesce(at.actor, rt.actor) AS actor,
@@ -450,11 +450,12 @@ export async function repoDrilldown(repoName: string): Promise<RepoDrilldownPayl
                + least(coalesce(at.push_total, 0), coalesce(at.commit_total, 0))
                + (coalesce(rt.releases_total, 0) * 4) AS activity_score
            FROM actor_totals AS at
-           FULL OUTER JOIN release_totals AS rt ON at.actor = rt.actor
-         )
-         WHERE commit_total > 0 OR pr_opened_total > 0 OR pr_merged_total > 0 OR issues_opened_total > 0 OR releases_total > 0
-         ORDER BY activity_score DESC, actor
-         LIMIT 8`,
+            FULL OUTER JOIN release_totals AS rt ON at.actor = rt.actor
+          ) AS actors
+          LEFT JOIN gh_actor_classification cls ON cls.actor_login = actors.actor
+          WHERE commit_total > 0 OR pr_opened_total > 0 OR pr_merged_total > 0 OR issues_opened_total > 0 OR releases_total > 0
+          ORDER BY activity_score DESC, actor
+          LIMIT 8`,
         ["gh_repo_actor_hourly", "gh_repo_releases"],
         { ...queryParams, highWater: anchor },
         request
@@ -491,7 +492,7 @@ export async function repoDrilldown(repoName: string): Promise<RepoDrilldownPayl
            toString(pr_merged_total) AS prs_merged,
            toString(issues_opened_total) AS issues_opened,
            toString(releases_total) AS releases_count,
-           actor ILIKE '%[bot]%' AS is_bot
+            coalesce(cls.actor_type, '') = 'Bot' OR lower(actors.actor) LIKE '%[bot]%' AS is_bot
          FROM (
            SELECT
              coalesce(at.actor, rt.actor) AS actor,
@@ -507,11 +508,12 @@ export async function repoDrilldown(repoName: string): Promise<RepoDrilldownPayl
                + least(coalesce(at.push_total, 0), coalesce(at.commit_total, 0))
                + (coalesce(rt.releases_total, 0) * 4) AS activity_score
            FROM actor_totals AS at
-           FULL OUTER JOIN release_totals AS rt ON at.actor = rt.actor
-         )
-         WHERE commit_total > 0 OR pr_opened_total > 0 OR pr_merged_total > 0 OR issues_opened_total > 0 OR releases_total > 0
-         ORDER BY activity_score DESC, actor
-         LIMIT 8`,
+            FULL OUTER JOIN release_totals AS rt ON at.actor = rt.actor
+          ) AS actors
+          LEFT JOIN gh_actor_classification cls ON cls.actor_login = actors.actor
+          WHERE commit_total > 0 OR pr_opened_total > 0 OR pr_merged_total > 0 OR issues_opened_total > 0 OR releases_total > 0
+          ORDER BY activity_score DESC, actor
+          LIMIT 8`,
         ["raw.github_events", "gh_repo_releases"],
         { ...queryParams, highWater: anchor },
         request

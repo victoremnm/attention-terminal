@@ -92,11 +92,12 @@ async function pickRepos(): Promise<string[]> {
       `SELECT repo_name FROM watchlist ORDER BY priority DESC, added_at ASC LIMIT ${MAX_REPOS_PER_RUN}`
     ),
     selectRows<{ repo_name: string }>(
-      `SELECT repo_name,
-              uniqExactIf(actor_login, lower(actor_login) NOT LIKE '%[bot]%') AS human_actors
-       FROM raw.github_events
-       WHERE created_at > (SELECT max(created_at) FROM raw.github_events) - INTERVAL 7 DAY
-         AND event_type IN ('PushEvent', 'PullRequestEvent', 'IssuesEvent')
+      `SELECT e.repo_name,
+              uniqExactIf(e.actor_login, coalesce(cls.actor_type, '') != 'Bot' AND (cls.actor_type IS NOT NULL OR lower(e.actor_login) NOT LIKE '%[bot]%')) AS human_actors
+       FROM raw.github_events AS e
+       LEFT JOIN gh_actor_classification cls ON cls.actor_login = e.actor_login
+       WHERE e.created_at > (SELECT max(created_at) FROM raw.github_events) - INTERVAL 7 DAY
+         AND e.event_type IN ('PushEvent', 'PullRequestEvent', 'IssuesEvent')
          AND repo_name != ''
        GROUP BY repo_name
        ORDER BY human_actors DESC
