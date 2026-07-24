@@ -70,7 +70,7 @@ function AttentionChatOverlay({
         startChatSession({ chatId, clientData }),
       [],
     ),
-    onEvent: useCallback((event) => {
+    onEvent: useCallback((event: { type: string; error?: { message: string } }) => {
       switch (event.type) {
         case "message-sent":
           armWatchdog();
