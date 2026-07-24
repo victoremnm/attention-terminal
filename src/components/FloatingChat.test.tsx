@@ -23,7 +23,6 @@ function StateControl() {
   return (
     <>
       <button onClick={() => ctx.open()} data-testid="btn-open">open</button>
-      <button onClick={() => ctx.minimize()} data-testid="btn-minimize">minimize</button>
       <button onClick={() => ctx.close()} data-testid="btn-close">close</button>
     </>
   );
@@ -85,30 +84,7 @@ describe("FloatingChat", () => {
     expect(screen.getByRole("dialog")).toBeInTheDocument();
   });
 
-  it("shows minimized pill when minimized", () => {
-    renderWithControls();
-    act(() => screen.getByTestId("btn-open").click());
-    act(() => screen.getByTestId("btn-minimize").click());
-    const pill = document.querySelector(".floating-chat-minimized");
-    expect(pill).toBeInTheDocument();
-    // drawer should be hidden (minimized-hidden class)
-    const drawer = document.querySelector(".floating-chat-drawer");
-    expect(drawer?.className).toContain("minimized-hidden");
-  });
-
-  it("reopens from minimized pill", () => {
-    renderWithControls();
-    act(() => screen.getByTestId("btn-open").click());
-    act(() => screen.getByTestId("btn-minimize").click());
-    const pill = document.querySelector(".floating-chat-minimized");
-    expect(pill).toBeInTheDocument();
-    act(() => fireEvent.click(pill!));
-    // drawer should be visible again
-    const drawer = document.querySelector(".floating-chat-drawer");
-    expect(drawer?.className).not.toContain("minimized-hidden");
-  });
-
-  it("keeps a detached drawer detached when minimized and reopened", () => {
+  it("detaches the drawer when its header is dragged", () => {
     renderWithControls();
     act(() => screen.getByTestId("btn-open").click());
     const header = screen.getByText("CHAT.AGENT").closest("header");
@@ -116,38 +92,20 @@ describe("FloatingChat", () => {
 
     act(() => fireEvent.pointerDown(header!, { button: 0, clientX: 1000, clientY: 10 }));
     expect(document.querySelector(".floating-chat-drawer")?.className).toContain("detached");
+    act(() => fireEvent.pointerMove(window, { clientX: 950, clientY: 50 }));
+    expect(document.querySelector(".floating-chat-drawer")).toHaveStyle({
+      left: `${window.innerWidth - 420}px`,
+      top: "40px",
+    });
+  });
 
-    act(() => screen.getByTestId("btn-minimize").click());
-    act(() => fireEvent.click(document.querySelector(".floating-chat-minimized")!));
-
-    expect(document.querySelector(".floating-chat-drawer")?.className).toContain("detached");
+  it("removes minimize controls and keeps the close button", () => {
+    renderWithControls();
+    act(() => screen.getByTestId("btn-open").click());
+    expect(screen.queryByRole("button", { name: "Minimize chat" })).not.toBeInTheDocument();
+    expect(document.querySelector(".floating-chat-minimized")).not.toBeInTheDocument();
     expect(document.querySelector(".floating-chat-drawer")?.className).not.toContain("minimized-hidden");
-  });
-
-  it("renders minimize and close buttons in the drawer header", () => {
-    renderWithControls();
-    act(() => screen.getByTestId("btn-open").click());
-    expect(screen.getByRole("button", { name: "Minimize chat" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Close chat" })).toBeInTheDocument();
-  });
-
-  it("minimizes when the minimize button is clicked", () => {
-    renderWithControls();
-    act(() => screen.getByTestId("btn-open").click());
-    act(() => screen.getByRole("button", { name: "Minimize chat" }).click());
-    expect(document.querySelector(".floating-chat-minimized")).toBeInTheDocument();
-  });
-
-  it("moves focus to the minimized pill and makes the hidden drawer inert", () => {
-    renderWithControls();
-    act(() => screen.getByTestId("btn-open").click());
-    screen.getByPlaceholderText("ask about tech attention...").focus();
-
-    act(() => screen.getByRole("button", { name: "Minimize chat" }).click());
-
-    expect(document.activeElement).toBe(document.querySelector(".floating-chat-minimized"));
-    expect(document.querySelector(".floating-chat-drawer")).toHaveAttribute("aria-hidden", "true");
-    expect((document.querySelector(".floating-chat-drawer") as HTMLElement).inert).toBe(true);
   });
 
   it("closes when the close button is clicked", () => {
