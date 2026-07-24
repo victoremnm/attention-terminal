@@ -74,6 +74,15 @@ describe("ChatProvider", () => {
     expect(screen.getByTestId("state")).toHaveTextContent("closed");
   });
 
+  it("toggle() reopens a minimized chat", () => {
+    renderProvider();
+    act(() => screen.getByTestId("open").click());
+    act(() => screen.getByTestId("minimize").click());
+    expect(screen.getByTestId("state")).toHaveTextContent("minimized");
+    act(() => screen.getByTestId("toggle").click());
+    expect(screen.getByTestId("state")).toHaveTextContent("open");
+  });
+
   it("ask() sets pendingInput and opens the chat", () => {
     renderProvider();
     act(() => screen.getByTestId("ask").click());

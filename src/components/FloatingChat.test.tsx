@@ -112,11 +112,10 @@ describe("FloatingChat", () => {
     });
   });
 
-  it("renders minimize and close buttons in the drawer header", () => {
+  it("renders the minimize button in the drawer header", () => {
     renderWithControls();
     act(() => screen.getByTestId("btn-open").click());
     expect(screen.getByRole("button", { name: "Minimize chat" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Close chat" })).toBeInTheDocument();
   });
 
   it("minimizes when the minimize button is clicked", () => {
@@ -126,9 +125,10 @@ describe("FloatingChat", () => {
     expect(document.querySelector(".floating-chat-minimized")).toBeInTheDocument();
   });
 
-  it("closes when the close button is clicked", () => {
+  it("dismisses the minimized pill when its close button is clicked", () => {
     renderWithControls();
     act(() => screen.getByTestId("btn-open").click());
+    act(() => screen.getByRole("button", { name: "Minimize chat" }).click());
     act(() => screen.getByRole("button", { name: "Close chat" }).click());
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });

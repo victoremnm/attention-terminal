@@ -175,42 +175,34 @@ function AttentionChatOverlay({
 export function FloatingChat() {
   const ctx = useChatContext();
   const fallbackChatIdRef = useRef(createFallbackChatId());
-  const [chatId, setChatId] = useState(fallbackChatIdRef.current);
-  const [initialMessages, setInitialMessages] = useState<UIMessage[]>([]);
-  const [currentMessages, setCurrentMessages] = useState<UIMessage[]>([]);
-  const [drawerWidth, setDrawerWidth] = useState(420);
-  const [detached, setDetached] = useState(false);
-  const [pos, setPos] = useState({ x: 0, y: 0 });
-  const [restored, setRestored] = useState(false);
+  const initialSnapshot = useState(() => {
+    const stored = loadFloatingChatSession(getSafeLocalStorage());
+    if (!stored) return null;
+    const drawerWidth = clampDrawerWidth(stored.drawerWidth);
+    return {
+      chatId: stored.chatId || fallbackChatIdRef.current,
+      messages: stored.messages,
+      detached: stored.detached,
+      drawerWidth,
+      position: clampDetachedPosition(
+        stored.position,
+        drawerWidth,
+        { width: window.innerWidth, height: window.innerHeight },
+      ),
+    };
+  })[0];
+  const chatId = initialSnapshot?.chatId ?? fallbackChatIdRef.current;
+  const initialMessages = initialSnapshot?.messages ?? [];
+  const [currentMessages, setCurrentMessages] = useState<UIMessage[]>(() => initialMessages);
+  const [drawerWidth, setDrawerWidth] = useState(() => initialSnapshot?.drawerWidth ?? 420);
+  const [detached, setDetached] = useState(() => initialSnapshot?.detached ?? false);
+  const [pos, setPos] = useState(() => initialSnapshot?.position ?? { x: 0, y: 0 });
   const resizingRef = useRef(false);
   const draggingRef = useRef(false);
   const startXRef = useRef(0);
   const startYRef = useRef(0);
   const startPosRef = useRef({ x: 0, y: 0 });
   const startWidthRef = useRef(420);
-
-  useEffect(() => {
-    try {
-      const storage = getSafeLocalStorage();
-      const stored = loadFloatingChatSession(storage);
-      if (stored) {
-        setChatId(stored.chatId || fallbackChatIdRef.current);
-        setInitialMessages(stored.messages);
-        setCurrentMessages(stored.messages);
-        setDetached(stored.detached);
-        setDrawerWidth(clampDrawerWidth(stored.drawerWidth));
-        setPos(
-          clampDetachedPosition(stored.position, clampDrawerWidth(stored.drawerWidth), {
-            width: window.innerWidth,
-            height: window.innerHeight,
-          }),
-        );
-      }
-    } catch {
-      // localStorage can be unavailable or blocked; the chat still works.
-    }
-    setRestored(true);
-  }, []);
 
   function startResize(e: React.PointerEvent) {
     e.preventDefault();
@@ -290,7 +282,6 @@ export function FloatingChat() {
     ? { width: drawerWidth, left: pos.x, top: pos.y, right: "auto", height: "min(600px, 100vh)" }
     : { width: drawerWidth };
   useEffect(() => {
-    if (!restored) return;
     try {
       saveFloatingChatSession(getSafeLocalStorage(), {
         chatId,
@@ -302,7 +293,7 @@ export function FloatingChat() {
     } catch {
       // Best-effort persistence only.
     }
-  }, [chatId, currentMessages, detached, drawerWidth, pos, restored]);
+  }, [chatId, currentMessages, detached, drawerWidth, pos]);
 
   return (
     <>
@@ -327,8 +318,8 @@ export function FloatingChat() {
         className={`floating-chat-drawer${detached ? " detached" : ""}${isMinimized ? " minimized-hidden" : ""}`}
         role="dialog"
         aria-label="Chat"
-        aria-hidden={isMinimized || isClosed || !restored}
-        hidden={isClosed || !restored}
+        aria-hidden={isMinimized || isClosed}
+        hidden={isClosed}
         style={drawerStyle}
       >
         <div className="floating-chat-resize-handle" onPointerDown={startResize} aria-hidden="true" />
@@ -344,25 +335,20 @@ export function FloatingChat() {
           <div className="floating-chat-drawer-actions">
             {detached && (
               <button type="button" className="chip" onClick={() => setDetached(false)} aria-label="Dock to side">
-                ⬈
+                ⤢
               </button>
             )}
-            <button type="button" className="chip" onClick={() => ctx.minimize()} aria-label="Minimize chat">
-              _
-            </button>
-            <button type="button" className="floating-chat-close" onClick={() => ctx.close()} aria-label="Close chat">
-              ×
+            <button type="button" className="floating-chat-minimize" onClick={() => ctx.minimize()} aria-label="Minimize chat">
+              —
             </button>
           </div>
         </header>
         <div className="floating-chat-drawer-body">
-          {restored && (
-            <AttentionChatOverlay
-              chatId={chatId}
-              initialMessages={initialMessages}
-              onMessagesChange={setCurrentMessages}
-            />
-          )}
+          <AttentionChatOverlay
+            chatId={chatId}
+            initialMessages={initialMessages}
+            onMessagesChange={setCurrentMessages}
+          />
         </div>
       </div>
     </>

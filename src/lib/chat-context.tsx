@@ -34,7 +34,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
   }, [state]);
 
   const toggle = useCallback(() => {
-    setState((s) => (s === "closed" ? "open" : "closed"));
+    setState((s) => (s === "open" ? "closed" : "open"));
   }, []);
 
   const open = useCallback(() => setState("open"), []);
