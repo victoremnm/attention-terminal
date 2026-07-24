@@ -33,16 +33,15 @@ describe("AttentionChat retry", () => {
   });
 
   it("runs one regenerate for repeated retry clicks without stopping first", () => {
-    let resolveRegenerate: (() => void) | undefined;
-    const regenerate = vi.fn(() => new Promise<void>((resolve) => { resolveRegenerate = resolve; }));
+    let resolveSend: (() => void) | undefined;
+    const sendMessage = vi.fn(() => new Promise<void>((resolve) => { resolveSend = resolve; }));
     const stop = vi.fn();
     chatMock.useChat.mockReturnValue({
       messages: [message("user"), message("assistant")],
-      sendMessage: vi.fn(),
+      sendMessage,
       stop,
       status: "error",
       error: new Error("stream failed"),
-      regenerate,
     });
 
     render(<AttentionChat />);
@@ -50,26 +49,26 @@ describe("AttentionChat retry", () => {
     fireEvent.click(retry);
     fireEvent.click(retry);
 
-    expect(regenerate).toHaveBeenCalledTimes(1);
+    expect(sendMessage).toHaveBeenCalledTimes(1);
+    expect(sendMessage).toHaveBeenCalledWith({ text: "hello", messageId: "user-1" });
     expect(stop).not.toHaveBeenCalled();
-    resolveRegenerate?.();
+    resolveSend?.();
   });
 
   it("does not regenerate an assistant-only history", () => {
-    const regenerate = vi.fn();
+    const sendMessage = vi.fn();
     chatMock.useChat.mockReturnValue({
       messages: [message("assistant")],
-      sendMessage: vi.fn(),
+      sendMessage,
       stop: vi.fn(),
       status: "error",
       error: new Error("stream failed"),
-      regenerate,
     });
 
     render(<AttentionChat />);
     fireEvent.click(screen.getByRole("button", { name: "retry" }));
 
-    expect(regenerate).not.toHaveBeenCalled();
+    expect(sendMessage).not.toHaveBeenCalled();
     expect(screen.getByRole("alert")).toHaveTextContent("there is no user message to retry");
   });
 });

@@ -6,7 +6,7 @@ import type { UIMessage } from "ai";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { mintChatAccessToken, startChatSession } from "@/lib/chat-actions";
 import { guardChatTransport, isClosedReadableStreamError } from "@/lib/chat-stream";
-import { hasUserMessage } from "@/lib/chat-validation";
+import { getLastUserMessage } from "@/lib/chat-validation";
 import { RenderPayloadSchema } from "@/lib/render-payload";
 import type { attentionAgent } from "@/trigger/attention-agent";
 import { MarkdownText } from "./MarkdownText";
@@ -75,7 +75,7 @@ export function AttentionChat() {
 
   const safeTransport = useMemo(() => guardChatTransport(transport), [transport]);
 
-  const { messages, sendMessage, stop, status, error, regenerate } = useChat({ transport: safeTransport });
+  const { messages, sendMessage, stop, status, error } = useChat({ transport: safeTransport });
   const [input, setInput] = useState("");
   const [retrying, setRetrying] = useState(false);
   const retryingRef = useRef(false);
@@ -92,7 +92,8 @@ export function AttentionChat() {
 
   async function retry() {
     if (retryingRef.current || busy) return;
-    if (!hasUserMessage(messages)) {
+    const lastUserMessage = getLastUserMessage(messages);
+    if (!lastUserMessage) {
       setFault("there is no user message to retry");
       return;
     }
@@ -101,7 +102,7 @@ export function AttentionChat() {
     setRetrying(true);
     setFault(null);
     try {
-      await regenerate();
+      await sendMessage({ text: lastUserMessage.text, messageId: lastUserMessage.id });
     } catch (retryError) {
       setFault(`retry failed: ${retryError instanceof Error ? retryError.message : "unknown error"}`);
     } finally {
