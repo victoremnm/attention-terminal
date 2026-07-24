@@ -12,8 +12,8 @@ GRANT SELECT ON system.tables TO read_only_analyst_role;
 GRANT SELECT ON system.columns TO read_only_analyst_role;
 GRANT SELECT ON system.databases TO read_only_analyst_role;
 
--- 3. Create dedicated read-only analyst user
-CREATE USER IF NOT EXISTS read_only_analyst IDENTIFIED WITH plaintext_password BY 'ReadOnlyAnalyst2026!';
+-- 3. Create dedicated read-only analyst user with SHA-256 password hashing
+CREATE USER IF NOT EXISTS read_only_analyst IDENTIFIED WITH sha256_password BY 'ReadOnlyAnalyst2026!';
 GRANT read_only_analyst_role TO read_only_analyst;
 
 -- +goose Down
