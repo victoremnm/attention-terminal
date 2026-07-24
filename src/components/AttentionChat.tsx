@@ -5,7 +5,7 @@ import { useTriggerChatTransport } from "@trigger.dev/sdk/chat/react";
 import type { UIMessage } from "ai";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { mintChatAccessToken, startChatSession } from "@/lib/chat-actions";
-import { guardChatTransport, isClosedReadableStreamError } from "@/lib/chat-stream";
+import { chatErrorMessage, guardChatTransport, isClosedReadableStreamError } from "@/lib/chat-stream";
 import { getLastUserMessage } from "@/lib/chat-validation";
 import { RenderPayloadSchema } from "@/lib/render-payload";
 import type { attentionAgent } from "@/trigger/attention-agent";
@@ -62,12 +62,12 @@ export function AttentionChat() {
           break;
         case "message-send-failed":
           disarmWatchdog();
-          setFault(`send failed: ${event.error.message}`);
+          setFault(`send failed: ${chatErrorMessage(event.error)}`);
           break;
         case "stream-error":
           disarmWatchdog();
           if (isClosedReadableStreamError(event.error)) break;
-          setFault(`stream error: ${event.error.message}`);
+          setFault(`stream error: ${chatErrorMessage(event.error)}`);
           break;
       }
     },
@@ -80,7 +80,7 @@ export function AttentionChat() {
   const [retrying, setRetrying] = useState(false);
   const retryingRef = useRef(false);
   const busy = status === "submitted" || status === "streaming";
-  const faultText = fault ?? (status === "error" ? (error?.message ?? "chat request failed") : null);
+  const faultText = fault ?? (status === "error" ? chatErrorMessage(error) : null);
 
   function submit(text: string) {
     const trimmed = text.trim();
@@ -104,7 +104,7 @@ export function AttentionChat() {
     try {
       await sendMessage({ text: lastUserMessage.text, messageId: lastUserMessage.id });
     } catch (retryError) {
-      setFault(`retry failed: ${retryError instanceof Error ? retryError.message : "unknown error"}`);
+      setFault(`retry failed: ${chatErrorMessage(retryError, "unknown error")}`);
     } finally {
       retryingRef.current = false;
       setRetrying(false);

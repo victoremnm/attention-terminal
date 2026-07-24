@@ -162,6 +162,10 @@ export const attentionAgent = chat.agent({
       telemetry,
       runtimeContext,
       model,
+      // Provider quota/billing failures are not transient. Leave deliberate
+      // retries to the UI after the operator restores quota, rather than
+      // spending the default retry budget on the same rejected request.
+      maxRetries: 0,
       messages,
       tools,
       stopWhen: [stepCountIs(15), renderAnswerSucceeded],

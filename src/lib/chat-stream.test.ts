@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { guardChatTransport, guardReadableStream, isClosedReadableStreamError } from "./chat-stream";
+import { chatErrorMessage, guardChatTransport, guardReadableStream, isClosedReadableStreamError, isQuotaError, QUOTA_ERROR_MESSAGE } from "./chat-stream";
 
 async function readAll<T>(stream: ReadableStream<T>) {
   const reader = stream.getReader();
@@ -12,6 +12,13 @@ async function readAll<T>(stream: ReadableStream<T>) {
 }
 
 describe("chat stream guard", () => {
+  it("recognizes provider quota failures as non-transient", () => {
+    const error = new Error("AI_APICallError: You exceeded your current quota, please check your plan and billing details.");
+    expect(isQuotaError(error)).toBe(true);
+    expect(chatErrorMessage(error)).toBe(QUOTA_ERROR_MESSAGE);
+    expect(isQuotaError(new Error("rate limit exceeded temporarily"))).toBe(false);
+  });
+
   it("recognizes the Trigger cancellation error", () => {
     expect(
       isClosedReadableStreamError(

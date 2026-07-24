@@ -3,8 +3,30 @@ const CLOSED_STREAM_MESSAGES = [
   "Cannot close an errored readable stream",
 ];
 
+const QUOTA_ERROR_PATTERN = /(?:exceeded .*current quota|insufficient[_ ]quota|quota.*(?:exhaust|exceed)|billing (?:details|limit))/i;
+export const QUOTA_ERROR_MESSAGE = "AI quota exhausted — check the model provider billing and usage limits.";
+
 export function isClosedReadableStreamError(error: unknown): boolean {
   return error instanceof Error && CLOSED_STREAM_MESSAGES.some((m) => error.message.includes(m));
+}
+
+function errorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  if (typeof error === "string") return error;
+  if (error && typeof error === "object" && "message" in error && typeof error.message === "string") {
+    return error.message;
+  }
+  return "";
+}
+
+export function isQuotaError(error: unknown): boolean {
+  return QUOTA_ERROR_PATTERN.test(errorMessage(error));
+}
+
+export function chatErrorMessage(error: unknown, fallback = "chat request failed"): string {
+  const message = errorMessage(error);
+  if (isQuotaError(error)) return QUOTA_ERROR_MESSAGE;
+  return message || fallback;
 }
 
 /**
