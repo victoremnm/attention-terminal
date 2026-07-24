@@ -72,18 +72,16 @@ function summarizeEngine(engine: string) {
 export function formatTableRow(table: TableRow): string {
   const rowHint = table.total_rows ? ` (~${Number(table.total_rows).toLocaleString()} rows)` : "";
   const policy = getDataPolicyTier(table.database);
-  return `- \`${table.database}.${table.name}\` (${summarizeEngine(table.engine)}) ${policy.label}${rowHint}`;
+  return `- \`${table.database}.${table.name}\` (${summarizeEngine(table.engine)}) [${policy.tier}]${rowHint}`;
 }
 
 /** Fallback catalog text when metadata queries fail. */
 export function fallbackCatalog(): string {
   return `ClickHouse catalog (Data Policy Language Enforced):
 
-Priority 1 (GOLD - curated.*): task_execution_metrics, task_health_summary
-Priority 2 (SILVER - cleansed.*): github_events_cleansed
-Priority 3 (BRONZE - default.*/raw.*): ${[...RELEVANT_TABLES].sort().join(", ")}
+Known tables: ${[...RELEVANT_TABLES].sort().join(", ")}.
 
-⚠️ Live catalog metadata unavailable at this time. The agent can still query known tables; call listTables and describeTable to discover the schema at query time.`;
+⚠️ Live catalog metadata unavailable. Use listTables and describeTable to discover schemas at query time.`;
 }
 
 export async function catalogPromptSection(): Promise<string> {
@@ -93,6 +91,7 @@ export async function catalogPromptSection(): Promise<string> {
         SELECT database, name, engine, total_rows
         FROM system.tables
         WHERE database NOT IN ('system', 'information_schema', 'INFORMATION_SCHEMA')
+          AND name IN (${[...RELEVANT_TABLES].map((t) => `'${t}'`).join(", ")})
         ORDER BY
           CASE database
             WHEN 'curated' THEN 1
@@ -116,12 +115,6 @@ export async function catalogPromptSection(): Promise<string> {
     const lines = tables.map(formatTableRow);
 
     return `ClickHouse catalog (Data Policy Language Enforced):
-
-Schema Priority:
-1. Priority 1 (GOLD - curated.*): Pre-aggregated, sanitized views (<50ms). PREFERRED.
-2. Priority 2 (SILVER - cleansed.*): Cleaned & typed tables/views. SECONDARY.
-3. Priority 3 (BRONZE - default.*/raw.*): Raw event firehose. FALLBACK.
-4. Priority 4 (INTERNAL OPS - internal.*/system.*): Operational telemetry. DEPRIORITIZED.
 
 ${lines.join("\n")}`;
   } catch {

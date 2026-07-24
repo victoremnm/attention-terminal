@@ -9,7 +9,7 @@ describe("formatTableRow", () => {
       engine: "ReplacingMergeTree",
       total_rows: "1500000",
     });
-    expect(result).toBe("- `raw.github_events` (ReplacingMergeTree) [BRONZE: Raw Event Firehose] (~1,500,000 rows)");
+    expect(result).toBe("- `raw.github_events` (ReplacingMergeTree) [BRONZE] (~1,500,000 rows)");
   });
 
   it("formats a table without row estimate", () => {
@@ -19,7 +19,7 @@ describe("formatTableRow", () => {
       engine: "MergeTree",
       total_rows: undefined,
     });
-    expect(result).toBe("- `default.ingest_log` (MergeTree) [BRONZE: Raw Event Firehose]");
+    expect(result).toBe("- `default.ingest_log` (MergeTree) [BRONZE]");
   });
 
   it("labels views and Data Policy GOLD tier correctly", () => {
@@ -28,7 +28,7 @@ describe("formatTableRow", () => {
       name: "task_execution_metrics",
       engine: "MaterializedView",
     });
-    expect(result).toBe("- `curated.task_execution_metrics` (view) [GOLD: Pre-aggregated / Sanitized View]");
+    expect(result).toBe("- `curated.task_execution_metrics` (view) [GOLD]");
   });
 });
 
