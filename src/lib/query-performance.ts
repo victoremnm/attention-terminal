@@ -36,6 +36,22 @@ export interface QueryPerformancePayload {
   };
 }
 
+const EMPTY_QUERY_PERFORMANCE_SQL = "SELECT * FROM system.query_log";
+
+const REQUIRED_QUERY_LOG_COLUMNS = [
+  "event_date",
+  "event_time",
+  "query_id",
+  "query",
+  "log_comment",
+  "type",
+  "query_duration_ms",
+  "read_rows",
+  "read_bytes",
+  "result_rows",
+  "memory_usage",
+] as const;
+
 function truncateQuery(query: string, maxLength = 220) {
   const normalized = query.replace(/\s+/g, " ").trim();
   return normalized.length > maxLength ? `${normalized.slice(0, maxLength - 1)}…` : normalized;
@@ -46,17 +62,27 @@ function toNumber(value: unknown): number {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
-function presentColumns(columns: string[], missing: string[]) {
-  const missingSet = new Set(missing);
-  return columns.filter((column) => !missingSet.has(column));
+function isAttentionLogComment(logComment: string): boolean {
+  return logComment === "attn" || logComment.startsWith("attn | ");
 }
 
-function selectNumeric(column: string, alias: string, available: ReadonlySet<string>): string {
-  return available.has(column) ? `toUInt64(${column}) AS ${alias}` : `toUInt64(0) AS ${alias}`;
-}
-
-function selectString(column: string, alias: string, available: ReadonlySet<string>): string {
-  return available.has(column) ? `toString(${column}) AS ${alias}` : `'' AS ${alias}`;
+function emptyQueryPerformancePayload(start: number): QueryPerformancePayload {
+  return {
+    rows: [],
+    summary: {
+      queryCount: 0,
+      attentionTaggedCount: 0,
+      avgDurationMs: 0,
+      totalReadRows: 0,
+      totalReadBytes: 0,
+      slowestDurationMs: 0,
+    },
+    provenance: {
+      sql: EMPTY_QUERY_PERFORMANCE_SQL,
+      elapsedMs: Math.round(performance.now() - start),
+      tables: ["system.query_log"],
+    },
+  };
 }
 
 function summarizeRows(rows: QueryPerformanceRow[]): QueryPerformanceSummary {
@@ -82,75 +108,44 @@ export function summarizeQueryPerformanceForTest(rows: QueryPerformanceRow[]): Q
 
 export async function fetchQueryPerformanceData(): Promise<QueryPerformancePayload> {
   const start = performance.now();
-  const missingQueryLog = await missingTables(["system.query_log"]);
-
-  if (missingQueryLog.length > 0) {
-    return {
-      rows: [],
-      summary: {
-        queryCount: 0,
-        attentionTaggedCount: 0,
-        avgDurationMs: 0,
-        totalReadRows: 0,
-        totalReadBytes: 0,
-        slowestDurationMs: 0,
-      },
-      provenance: {
-        sql: "SELECT * FROM system.query_log",
-        elapsedMs: Math.round(performance.now() - start),
-        tables: ["system.query_log"],
-      },
-    };
+  let missingQueryLog: string[];
+  try {
+    missingQueryLog = await missingTables(["system.query_log"]);
+  } catch {
+    return emptyQueryPerformancePayload(start);
   }
 
-  const missingQueryColumns = await missingColumns("system.query_log", [
-    "event_date",
-    "event_time",
-    "query_id",
-    "query",
-    "log_comment",
-    "type",
-    "query_duration_ms",
-    "read_rows",
-    "read_bytes",
-    "result_rows",
-    "memory_usage",
-  ]);
+  if (missingQueryLog.length > 0) {
+    return emptyQueryPerformancePayload(start);
+  }
 
-  const availableColumns = new Set(
-    presentColumns(
-      [
-      "event_time",
-      "event_date",
-      "query_id",
-      "query",
-      "log_comment",
-        "type",
-        "query_duration_ms",
-        "read_rows",
-        "read_bytes",
-        "result_rows",
-        "memory_usage",
-      ],
-      missingQueryColumns,
-    ),
-  );
+  let missingQueryColumns: string[];
+  try {
+    missingQueryColumns = await missingColumns("system.query_log", [...REQUIRED_QUERY_LOG_COLUMNS]);
+  } catch {
+    return emptyQueryPerformancePayload(start);
+  }
+
+  if (missingQueryColumns.length > 0) {
+    return emptyQueryPerformancePayload(start);
+  }
 
   const sql = `
     SELECT
-      ${selectString("event_time", "event_time", availableColumns)},
-      ${selectString("query_id", "query_id", availableColumns)},
-      ${selectString("type", "query_type", availableColumns)},
-      ${selectString("log_comment", "log_comment", availableColumns)},
-      ${selectString("query", "query", availableColumns)},
-      ${selectNumeric("query_duration_ms", "query_duration_ms", availableColumns)},
-      ${selectNumeric("read_rows", "read_rows", availableColumns)},
-      ${selectNumeric("read_bytes", "read_bytes", availableColumns)},
-      ${selectNumeric("result_rows", "result_rows", availableColumns)},
-      ${selectNumeric("memory_usage", "memory_usage", availableColumns)}
+      event_time,
+      query_id,
+      type AS query_type,
+      log_comment,
+      query,
+      toUInt64(query_duration_ms) AS query_duration_ms,
+      toUInt64(read_rows) AS read_rows,
+      toUInt64(read_bytes) AS read_bytes,
+      toUInt64(result_rows) AS result_rows,
+      toUInt64(memory_usage) AS memory_usage
     FROM system.query_log
-    WHERE ${availableColumns.has("event_date") ? "event_date >= today() - 1" : "1 = 1"}
-      AND ${availableColumns.has("type") ? "type = 'QueryFinish'" : "1 = 1"}
+    WHERE event_date >= today() - 1
+      AND type = 'QueryFinish'
+      AND (log_comment = 'attn' OR startsWith(log_comment, 'attn | '))
     ORDER BY event_time DESC
     LIMIT 30
   `.trim();
@@ -165,15 +160,18 @@ export async function fetchQueryPerformanceData(): Promise<QueryPerformancePaylo
   });
   const rawRows = await result.json<Record<string, unknown>>();
 
-  const rows: QueryPerformanceRow[] = rawRows.map((row) => {
+  const rows: QueryPerformanceRow[] = rawRows.flatMap((row) => {
     const query = String(row.query ?? "");
-    const parsedLogComment = parseLogComment(typeof row.log_comment === "string" ? row.log_comment : "");
+    const logComment = typeof row.log_comment === "string" ? row.log_comment : "";
+    if (!isAttentionLogComment(logComment)) return [];
+    const parsedLogComment = parseLogComment(logComment);
+    if (!parsedLogComment.isAttentionQuery) return [];
     const hits = analyzeQueryAntipatterns(query);
     const antipatterns = hits.map((hit) => hit.id);
     const queryDurationMs = toNumber(row.query_duration_ms);
     const readRows = toNumber(row.read_rows);
     const readBytes = toNumber(row.read_bytes);
-    return {
+    return [{
       event_time: String(row.event_time ?? ""),
       query_id: String(row.query_id ?? ""),
       query_type: String(row.query_type ?? ""),
@@ -189,7 +187,7 @@ export async function fetchQueryPerformanceData(): Promise<QueryPerformancePaylo
         ? [parsedLogComment.toolName, parsedLogComment.surface].filter(Boolean).join(" · ")
         : "",
       antipatterns,
-    };
+    }];
   });
 
   return {
