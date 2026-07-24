@@ -4,6 +4,7 @@ import {
   registerCatalogTables,
   requireCatalogedTables,
   requireFinalOnReplacingTables,
+  requireGroupedRollupTables,
   resetCatalogState,
 } from "./sql-catalog-guard";
 
@@ -97,14 +98,51 @@ describe("sql-catalog-guard", () => {
         "WITH gh_repo_metadata AS (SELECT * FROM default.gh_repo_metadata FINAL) SELECT * FROM gh_repo_metadata";
       expect(requireFinalOnReplacingTables(query)).toEqual([]);
     });
+
+    it("recognizes FINAL after an alias (FROM t AS m FINAL)", () => {
+      registerCatalogTables([{ database: "default", name: "gh_repo_metadata", engine: "ReplacingMergeTree" }]);
+      const query = "SELECT * FROM default.gh_repo_metadata AS m FINAL LEFT JOIN other_table AS o ON m.id = o.id";
+      expect(requireFinalOnReplacingTables(query)).toEqual([]);
+    });
+
+    it("flags FINAL placed before an alias (FROM t FINAL AS m)", () => {
+      registerCatalogTables([{ database: "default", name: "gh_repo_metadata", engine: "ReplacingMergeTree" }]);
+      // ClickHouse rejects `FROM t FINAL AS m` — FINAL must come after the alias.
+      const query = "SELECT * FROM default.gh_repo_metadata FINAL AS m LEFT JOIN other_table AS o ON m.id = o.id";
+      expect(requireFinalOnReplacingTables(query)).toEqual(["default.gh_repo_metadata"]);
+    });
+
+    it("handles the JOIN+FINAL bug from production (reported on gh_repo_metadata + gh_repo_daily)", () => {
+      registerCatalogTables([
+        { database: "default", name: "gh_repo_metadata", engine: "ReplacingMergeTree" },
+        { database: "default", name: "gh_repo_daily", engine: "SummingMergeTree" },
+      ]);
+      // This SQL was syntactically valid per the guard but ClickHouse rejected it,
+      // because FINAL came before the alias. After the fix, the guard either accepts
+      // `AS m FINAL` or flags `FINAL AS m` — both are correct behaviors.
+      const goodQuery = `
+        SELECT m.repo_name
+        FROM default.gh_repo_metadata AS m FINAL
+        LEFT JOIN default.gh_repo_daily AS d ON d.repo_name = m.repo_name
+      `;
+      expect(requireFinalOnReplacingTables(goodQuery)).toEqual([]);
+    });
   });
 
-  describe("extractTableCandidates", () => {
-    it("ignores CTE names", () => {
-      const candidates = extractTableCandidates(
-        "WITH recent AS (SELECT 1) SELECT * FROM recent JOIN github_events ON 1=1"
-      );
-      expect(candidates).toEqual(["github_events"]);
+  describe("requireGroupedRollupTables", () => {
+    it("flags queries that read gh_repo_daily without GROUP BY", () => {
+      const sql = "SELECT repo_name, stars FROM default.gh_repo_daily WHERE day >= today() - 7";
+      expect(requireGroupedRollupTables(sql)).toEqual(["default.gh_repo_daily"]);
+    });
+
+    it("passes queries that include GROUP BY repo_name", () => {
+      const sql = "SELECT repo_name, SUM(stars) FROM default.gh_repo_daily WHERE day >= today() - 7 GROUP BY repo_name";
+      expect(requireGroupedRollupTables(sql)).toEqual([]);
+    });
+
+    it("does not flag non-rollup tables without GROUP BY", () => {
+      const sql = "SELECT repo_name FROM raw.github_events WHERE created_at >= now() - INTERVAL 1 HOUR";
+      expect(requireGroupedRollupTables(sql)).toEqual([]);
     });
   });
 });

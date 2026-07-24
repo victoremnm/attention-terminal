@@ -213,7 +213,7 @@ export const runReadOnlyQuery = tool({
       const missingFinal = requireFinalOnReplacingTables(normalizedQuery);
       if (missingFinal.length > 0) {
         return {
-          error: `Table(s) missing FINAL: ${missingFinal.join(", ")}. These are ReplacingMergeTree tables and can contain duplicate/stale-version rows without it -- add FINAL immediately after the table name (e.g. FROM ${missingFinal[0]} FINAL) and retry.`,
+          error: `Table(s) missing FINAL: ${missingFinal.join(", ")}. These are ReplacingMergeTree tables and can contain duplicate/stale-version rows without it -- add FINAL after the alias (e.g. FROM ${missingFinal[0]} AS m FINAL). FINAL must come after any alias, never before it, and retry.`,
         };
       }
       const tables = extractTableCandidates(normalizedQuery);

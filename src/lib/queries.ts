@@ -141,7 +141,7 @@ export async function actorLeaderboard(window: "24h" | "7d" = "24h"): Promise<Ac
   const humanQuery =
     window === "24h"
       ? `
-    WITH (SELECT max(created_at) FROM raw.github_events) AS high_water
+    WITH (SELECT coalesce(max(hour), toStartOfHour(now())) FROM gh_repo_hourly) AS high_water
     SELECT
       actor_login,
       toString(count()) AS events,
@@ -195,7 +195,7 @@ export async function actorLeaderboard(window: "24h" | "7d" = "24h"): Promise<Ac
   const botQuery =
     window === "24h"
       ? `
-    WITH (SELECT max(created_at) FROM raw.github_events) AS high_water
+    WITH (SELECT coalesce(max(hour), toStartOfHour(now())) FROM gh_repo_hourly) AS high_water
     SELECT
       actor_login,
       toString(count()) AS events,
@@ -253,24 +253,23 @@ export async function actorLeaderboard(window: "24h" | "7d" = "24h"): Promise<Ac
 async function assembleTickerLanes(): Promise<TickerLanes> {
   const [repos, forks, shipping, stars, stories, actors] = await Promise.all([
     q<{ name: string; at: string; spark: number[] }>(
-      // Window anchored to the feed's own high-water mark, not wall clock -
-      // GH Archive is hourly and may lag during catch-up; the freshness strip
-      // tells the user exactly how far behind the feed is.
-      `SELECT repo_name AS name, max(h) AS at,
+      // Window anchored to cheap gh_repo_hourly watermark or wall clock fallback
+      `WITH (SELECT coalesce(max(hour), toStartOfHour(now())) FROM gh_repo_hourly) AS high_water
+       SELECT repo_name AS name, max(h) AS at,
               groupArray(6)(cnt) AS spark
        FROM (
          SELECT repo_name, toStartOfHour(created_at) AS h, count() AS cnt
          FROM raw.github_events
          WHERE event_type = 'CreateEvent'
            AND ref_type = 'repository'
-           AND created_at > (SELECT max(created_at) FROM raw.github_events) - INTERVAL 6 HOUR
+           AND created_at > high_water - INTERVAL 6 HOUR
          GROUP BY repo_name, h ORDER BY repo_name, h
        ) GROUP BY repo_name ORDER BY at DESC LIMIT 20`,
-      ["raw.github_events"]
+      ["raw.github_events", "gh_repo_hourly"]
     ),
     q<{ name: string; forks: string; stars: string; pushes: string; prs: string; issues: string; spark: number[] }>(
       `WITH
-         (SELECT max(hour) FROM gh_repo_hourly) AS max_h,
+         (SELECT coalesce(max(hour), toStartOfHour(now())) FROM gh_repo_hourly) AS max_h,
          per_repo_event AS (
            SELECT repo_name, event_type, countMerge(events) AS event_count
            FROM gh_repo_hourly
@@ -327,7 +326,7 @@ async function assembleTickerLanes(): Promise<TickerLanes> {
       spark: number[];
     }>(
       `WITH
-         (SELECT max(created_at) FROM gh_repo_activity_feed) AS max_time
+         (SELECT coalesce(max(created_at), now()) FROM gh_repo_activity_feed) AS max_time
        SELECT repo_name AS name,
               sum(commits) AS commit_total,
               countIf(event_type = 'PushEvent') AS push_count,
@@ -358,14 +357,15 @@ async function assembleTickerLanes(): Promise<TickerLanes> {
     // aggregate does not retain actor names, so bot filtering is unavailable
     // here; the result is still bounded to the same event type and windows.
     q<{ name: string; stars: string; surge: number; spark: number[] }>(
-      `WITH recent AS (
+      `WITH (SELECT coalesce(max(hour), toStartOfHour(now())) FROM gh_repo_hourly) AS max_h,
+       recent AS (
           SELECT repo_name, sum(cnt) AS star_total,
                  reverse(groupArray(8)(cnt)) AS spark
           FROM (
             SELECT repo_name, toStartOfHour(hour) AS h, countMerge(events) AS cnt
             FROM gh_repo_hourly
             WHERE event_type = 'WatchEvent'
-              AND hour > (SELECT max(hour) FROM gh_repo_hourly) - INTERVAL 24 HOUR
+              AND hour > max_h - INTERVAL 24 HOUR
             GROUP BY repo_name, h ORDER BY repo_name, h DESC
           ) GROUP BY repo_name
        ),
@@ -375,8 +375,8 @@ async function assembleTickerLanes(): Promise<TickerLanes> {
            SELECT repo_name, toDate(hour) AS day, countMerge(events) AS cnt
            FROM gh_repo_hourly
            WHERE event_type = 'WatchEvent'
-             AND hour > (SELECT max(hour) FROM gh_repo_hourly) - INTERVAL 30 DAY
-             AND hour <= (SELECT max(hour) FROM gh_repo_hourly) - INTERVAL 24 HOUR
+             AND hour > max_h - INTERVAL 30 DAY
+             AND hour <= max_h - INTERVAL 24 HOUR
            GROUP BY repo_name, day
          )
          GROUP BY repo_name
@@ -406,7 +406,7 @@ async function assembleTickerLanes(): Promise<TickerLanes> {
     newRepos: repos.rows.map((r) => ({
       kicker: "NEW REPO",
       name: r.name,
-      metric: "born " + r.at.slice(11, 16) + " UTC",
+      metric: "born " + (r.at ? r.at.slice(11, 16) : "--:--") + " UTC",
       spark: r.spark,
       href: `https://github.com/${r.name}`,
       repoName: r.name,
@@ -1588,13 +1588,14 @@ export async function divergence(subject: string) {
         AND time > now() - INTERVAL 30 DAY AND deleted = 0 AND dead = 0
       GROUP BY day
       UNION ALL
-      SELECT toDate(created_at) AS day, count() AS c, 'gh' AS src
-      FROM raw.github_events
-      WHERE repo_name ILIKE '%${subject}%' AND created_at > now() - INTERVAL 30 DAY
+      SELECT toDate(hour) AS day, sum(code_score) AS c, 'gh' AS src
+      FROM daily_skinny_subject_hourly
+      WHERE (subject = '${subject}' OR lower(subject) = lower('${subject}') OR subject ILIKE '%${subject}%')
+        AND hour > now() - INTERVAL 30 DAY
       GROUP BY day
      )
      GROUP BY day ORDER BY day`,
-    ["raw.hackernews", "raw.github_events"]
+    ["raw.hackernews", "daily_skinny_subject_hourly"]
   );
   // zero-fill 30 days
   const byDay = new Map(rows.map((r) => [r.day, r]));
@@ -1962,6 +1963,12 @@ function devScatterSql(mergedCol: "merged_prs_7d" | "merged_prs_30d") {
         countIf(NOT is_bot AND NOT (repos = 1 AND pushes >= {megaPushThreshold: UInt32})) AS kept_count
       FROM per_actor
     ),
+    filtered AS (
+      SELECT actor, pushes, repos, commits, prs, mergedPrs
+      FROM per_actor
+      WHERE NOT is_bot
+        AND NOT (repos = 1 AND pushes >= {megaPushThreshold: UInt32})
+    ),
     -- Issue #40: GitHub-REST-enriched merged-PR counts (gh_actor_pr_stats,
     -- migration 20260721000012), fed by the refreshActorPrStats Trigger.dev job.
     -- ReplacingMergeTree(fetched_at) ORDER BY actor_login, so FINAL already
@@ -1971,42 +1978,37 @@ function devScatterSql(mergedCol: "merged_prs_7d" | "merged_prs_30d") {
     enriched AS (
       SELECT actor_login, ${mergedCol} AS merged_prs, 1 AS has_stats
       FROM gh_actor_pr_stats FINAL
+    ),
+    ranked AS (
+      SELECT
+        f.actor AS actor,
+        f.pushes AS pushes,
+        f.repos AS repos,
+        f.commits AS commits,
+        f.prs AS prs,
+        if(en.has_stats = 1, en.merged_prs, f.mergedPrs) AS mergedPrs
+      FROM filtered AS f
+      LEFT JOIN enriched AS en ON en.actor_login = f.actor
+      ORDER BY
+        (en.has_stats = 1) DESC,
+        (f.prs > 0 OR en.has_stats = 1) DESC,
+        (if(en.has_stats = 1, en.merged_prs, f.mergedPrs) + 1.0) / (f.prs + 1.0) DESC,
+        f.repos DESC,
+        f.commits DESC
+      LIMIT {limit: UInt32}
     )
     SELECT
-      p.actor AS actor,
-      p.pushes AS pushes,
-      p.repos AS repos,
-      p.commits AS commits,
-      p.prs AS prs,
-      -- BEGIN issue #40 JOIN/ranking change (reconcile with issue #41 if it
-      -- also touches this SELECT/ORDER BY): prefer the enriched merged-PR
-      -- count over the firehose-derived sum(pr_merged), which is push-dominated
-      -- and sparse (CLAUDE.md gotcha #4). en.has_stats = 1 is how we detect a
-      -- real join match, since ClickHouse defaults unmatched LEFT JOIN columns
-      -- to 0/empty rather than NULL.
-      if(en.has_stats = 1, en.merged_prs, p.mergedPrs) AS mergedPrs,
+      r.actor AS actor,
+      r.pushes AS pushes,
+      r.repos AS repos,
+      r.commits AS commits,
+      r.prs AS prs,
+      r.mergedPrs AS mergedPrs,
       m.bot_count AS bot_count,
       m.mega_pusher_count AS mega_pusher_count,
       m.kept_count AS kept_count
-    FROM per_actor AS p
+    FROM ranked AS r
     CROSS JOIN meta AS m
-    LEFT JOIN enriched AS en ON en.actor_login = p.actor
-    WHERE NOT p.is_bot
-      AND NOT (p.repos = 1 AND p.pushes >= {megaPushThreshold: UInt32})
-    -- Rank by merged-PR signal, real GitHub-REST data first. Zero-PR actors
-    -- would score a spurious 1.0 from (mergedPrs+1)/(prs+1), so gate them below
-    -- anyone with real PR activity rather than letting push-only accounts tie
-    -- a 100% merge-rate contributor. Enriched actors (en.has_stats = 1) rank
-    -- ahead of firehose-only actors since their merged-PR count is real, not a
-    -- push-dominated proxy.
-    ORDER BY
-      (en.has_stats = 1) DESC,
-      (p.prs > 0 OR en.has_stats = 1) DESC,
-      (if(en.has_stats = 1, en.merged_prs, p.mergedPrs) + 1.0) / (p.prs + 1.0) DESC,
-      p.repos DESC,
-      p.commits DESC
-    -- END issue #40 JOIN/ranking change
-    LIMIT {limit: UInt32}
   `.trim();
 }
 

@@ -39,7 +39,7 @@ export function ChatTrigger() {
         className="floating-chat-trigger"
         data-hidden={isHidden}
         onClick={handleClick}
-        aria-label={ctx.state === "open" ? "Close chat" : "Open chat"}
+        aria-label={ctx.state === "closed" ? "Open chat" : "Close chat"}
         title="Ask the terminal"
       >
         <svg width="22" height="22" viewBox="0 0 20 20" fill="none" aria-hidden="true">

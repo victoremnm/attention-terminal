@@ -47,7 +47,7 @@ export function guardReadableStream<T>(source: ReadableStream<T>): ReadableStrea
 type SendMessages = (...args: never[]) => Promise<ReadableStream<unknown>>;
 
 export function guardChatTransport<T extends { sendMessages: SendMessages }>(transport: T): T {
-  const sendMessages = transport.sendMessages;
+  const sendMessages = transport.sendMessages.bind(transport);
   const guardedSendMessages = async (...args: Parameters<T["sendMessages"]>) =>
     guardReadableStream(await sendMessages(...args));
 
