@@ -201,7 +201,7 @@ export function AnalysisDashboard({ initialData }: AnalysisDashboardProps) {
           id={TAB_IDS.models}
           role="tab"
           aria-selected={activeTab === "models"}
-          aria-controls={PANEL_IDS.models}
+          aria-controls={activeTab === "models" ? PANEL_IDS.models : undefined}
           tabIndex={activeTab === "models" ? 0 : -1}
           ref={(element) => {
             tabRefs.current.models = element;
@@ -217,7 +217,7 @@ export function AnalysisDashboard({ initialData }: AnalysisDashboardProps) {
           id={TAB_IDS.learnings}
           role="tab"
           aria-selected={activeTab === "learnings"}
-          aria-controls={PANEL_IDS.learnings}
+          aria-controls={activeTab === "learnings" ? PANEL_IDS.learnings : undefined}
           tabIndex={activeTab === "learnings" ? 0 : -1}
           ref={(element) => {
             tabRefs.current.learnings = element;
@@ -233,7 +233,7 @@ export function AnalysisDashboard({ initialData }: AnalysisDashboardProps) {
           id={TAB_IDS.runs}
           role="tab"
           aria-selected={activeTab === "runs"}
-          aria-controls={PANEL_IDS.runs}
+          aria-controls={activeTab === "runs" ? PANEL_IDS.runs : undefined}
           tabIndex={activeTab === "runs" ? 0 : -1}
           ref={(element) => {
             tabRefs.current.runs = element;
@@ -249,7 +249,7 @@ export function AnalysisDashboard({ initialData }: AnalysisDashboardProps) {
           id={TAB_IDS.events}
           role="tab"
           aria-selected={activeTab === "events"}
-          aria-controls={PANEL_IDS.events}
+          aria-controls={activeTab === "events" ? PANEL_IDS.events : undefined}
           tabIndex={activeTab === "events" ? 0 : -1}
           ref={(element) => {
             tabRefs.current.events = element;
@@ -265,7 +265,7 @@ export function AnalysisDashboard({ initialData }: AnalysisDashboardProps) {
           id={TAB_IDS.sql}
           role="tab"
           aria-selected={activeTab === "sql"}
-          aria-controls={PANEL_IDS.sql}
+          aria-controls={activeTab === "sql" ? PANEL_IDS.sql : undefined}
           tabIndex={activeTab === "sql" ? 0 : -1}
           ref={(element) => {
             tabRefs.current.sql = element;
@@ -282,7 +282,9 @@ export function AnalysisDashboard({ initialData }: AnalysisDashboardProps) {
           id={TAB_IDS["query-performance"]}
           role="tab"
           aria-selected={activeTab === "query-performance"}
-          aria-controls={PANEL_IDS["query-performance"]}
+          aria-controls={
+            activeTab === "query-performance" ? PANEL_IDS["query-performance"] : undefined
+          }
           tabIndex={activeTab === "query-performance" ? 0 : -1}
           ref={(element) => {
             tabRefs.current["query-performance"] = element;
