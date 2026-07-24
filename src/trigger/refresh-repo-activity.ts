@@ -84,8 +84,8 @@ async function autoSeedWatchlist(): Promise<number> {
 }
 
 // Hourly candidate picker: union of (a) repos on the watchlist and (b) a small
-// rolling-activity top-N from the firehose (so new hot repos enter and stale
-// ones age out). Capped at MAX_REPOS_PER_RUN.
+// rolling-activity top-N from gh_repo_actor_activity_feed (so new hot repos
+// enter and stale ones age out). Capped at MAX_REPOS_PER_RUN.
 async function pickRepos(): Promise<string[]> {
   const [watched, activity] = await Promise.all([
     selectRows<{ repo_name: string }>(
@@ -93,11 +93,10 @@ async function pickRepos(): Promise<string[]> {
     ),
     selectRows<{ repo_name: string }>(
       `SELECT repo_name,
-              uniqExactIf(actor_login, lower(actor_login) NOT LIKE '%[bot]%') AS human_actors
-       FROM raw.github_events
-       WHERE created_at > (SELECT max(created_at) FROM raw.github_events) - INTERVAL 7 DAY
-         AND event_type IN ('PushEvent', 'PullRequestEvent', 'IssuesEvent')
-         AND repo_name != ''
+              uniqExactIf(f.actor_login, coalesce(cls.actor_type, '') != 'Bot' AND (cls.actor_type IS NOT NULL OR lower(f.actor_login) NOT LIKE '%[bot]%')) AS human_actors
+       FROM gh_repo_actor_activity_feed AS f
+       LEFT JOIN gh_actor_classification cls ON cls.actor_login = f.actor_login
+       WHERE f.created_at > now() - INTERVAL 7 DAY
        GROUP BY repo_name
        ORDER BY human_actors DESC
        LIMIT ${Math.floor(MAX_REPOS_PER_RUN / 2)}`

@@ -153,8 +153,8 @@ export async function activeContributionRanking(
         sum(toUInt64(bucket.pushes > 0 AND bucket.commits > 0)) AS substantive_push_bucket_total,
         uniqExact(bucket.actor_login) AS builder_total,
         uniqExactIf(bucket.actor_login, bucket.pushes > 0) AS pusher_total,
-        uniqExactIf(bucket.actor_login, bucket.pushes > 0 AND lower(bucket.actor_login) NOT LIKE '%[bot]%') AS human_pusher_total,
-        uniqExactIf(bucket.actor_login, bucket.pushes > 0 AND lower(bucket.actor_login) LIKE '%[bot]%') AS bot_pusher_total,
+        uniqExactIf(bucket.actor_login, bucket.pushes > 0 AND coalesce(cls.actor_type, '') != 'Bot' AND (cls.actor_type IS NOT NULL OR lower(bucket.actor_login) NOT LIKE '%[bot]%')) AS human_pusher_total,
+        uniqExactIf(bucket.actor_login, bucket.pushes > 0 AND (cls.actor_type = 'Bot' OR lower(bucket.actor_login) LIKE '%[bot]%')) AS bot_pusher_total,
         sum(bucket.prs_opened) AS pr_opened_total,
         sum(bucket.prs_merged) AS pr_merged_total,
         ${forkSelectSql} AS fork_total
@@ -163,6 +163,11 @@ export async function activeContributionRanking(
         FROM gh_repo_actor_hourly
         WHERE hour > high_water - INTERVAL ${days} DAY
       ) AS bucket
+      LEFT JOIN (
+    SELECT actor_login, argMax(actor_type, fetched_at) AS actor_type
+    FROM gh_actor_classification
+    GROUP BY actor_login
+  ) cls ON cls.actor_login = bucket.actor_login
       ${forkJoinSql}
       GROUP BY repo_name
       -- Empty pushes and push-only PR noise do not qualify for push mode.
