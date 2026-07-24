@@ -248,6 +248,30 @@ describe("RenderedAnswer", () => {
     expect(container.querySelector("figure.chart.scatterplot svg")).toBeInTheDocument();
   });
 
+  it("labels scatterplot points with the repo field when no explicit encoding is provided", () => {
+    const payload: RenderPayload = {
+      type: "morphing-card",
+      visualizationType: "Scatterplot",
+      generatedAt: "2026-07-23T08:27:40.000Z",
+      chartConfig: {
+        title: "Correlation",
+        data: {
+          values: [
+            { repo_name: "alpha/repo", github_stars: 2, github_forks: 10, language: "TypeScript" },
+            { repo_name: "beta/repo", github_stars: 6, github_forks: 4, language: "Python" },
+          ],
+        },
+      },
+    } as RenderPayload;
+
+    const { container } = render(<RenderedAnswer payload={payload} />);
+    const chart = container.querySelector("figure.chart.scatterplot");
+
+    expect(chart).toBeInTheDocument();
+    expect(within(chart as HTMLElement).getByText("alpha/repo")).toBeInTheDocument();
+    expect(within(chart as HTMLElement).getByText("beta/repo")).toBeInTheDocument();
+  });
+
   it("renders a Gantt Chart morphing card", () => {
     const payload: RenderPayload = {
       type: "morphing-card",

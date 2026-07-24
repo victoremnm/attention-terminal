@@ -340,9 +340,11 @@ function RepoVelocityChart({ payload }: { payload: RepoDrilldownPayload }) {
     return <div className="repo-empty mono">not enough hourly data for a velocity chart</div>;
   }
 
+  // commits is omitted here: gh_repo_drilldown_hourly's commit_count is
+  // currently miscollected (near-always 0), so it only ever drew a flat pink
+  // line — see docs/architecture/SYSTEM-ARCHITECTURE.md's data-quality notes.
   const series = [
     { key: "pushes", label: "pushes", color: "var(--cyan)", values: rows.map((row) => row.pushes) },
-    { key: "commits", label: "commits", color: "var(--mag)", values: rows.map((row) => row.commits) },
     { key: "stars", label: "stars", color: "var(--amber)", values: rows.map((row) => row.stars) },
   ];
   const max = Math.max(...series.flatMap((item) => item.values), 1);
@@ -658,9 +660,9 @@ function RepoPulseOverview({ pulse }: { pulse: RepoDrilldownPulse }) {
 }
 
 function RepoDrilldownAnswer({ payload }: { payload: RepoDrilldownPayload }) {
+  // commits is intentionally omitted — see the note in RepoVelocityChart above.
   const kpis = [
     ["pushes", payload.kpis24h.pushes],
-    ["commits", payload.kpis24h.commits],
     ["actors", payload.kpis24h.actors],
     ["stars", payload.kpis24h.stars],
     ["forks", payload.kpis24h.forks],
@@ -850,7 +852,7 @@ function buildMorphingChart(
   const yField = typeof yEncoding?.field === "string"
     ? yEncoding.field
     : Object.keys(firstRow).find((key) => key !== xField && isFiniteNumeric(firstRow[key]));
-  const labelField = Object.keys(firstRow).find((key) => typeof firstRow[key] === "string" && key !== xField && key !== yField) ?? xField;
+  const labelField = Object.keys(firstRow).find((key) => typeof firstRow[key] === "string" && key !== yField) ?? xField;
   const allNumericFields = Object.keys(firstRow).filter((key) => isFiniteNumeric(firstRow[key]) && key !== labelField);
   // Deliberately keeps yField in the list (only xField is excluded): branches
   // that need one measure (Dot Plot/Unit Chart/Waffle) read numericFields[0],
@@ -1143,7 +1145,7 @@ function MorphingCardAnswer({ payload }: { payload: MorphingCardPayload }) {
         {payload.summary && <MarkdownText text={payload.summary} />}
         {!chart && (
           <p className="mono">
-            previewing {markType} markup · {dataValues.length.toLocaleString()} rows shown while the visualization is prepared
+            {payload.visualizationType} isn't available as a chart in this view yet · showing {dataValues.length.toLocaleString()} rows as a table below
           </p>
         )}
       </div>

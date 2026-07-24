@@ -7,6 +7,7 @@ import { analystPromptTemplate, answerReference } from "../lib/agent-prompt";
 import { ATTENTION_AGENT_MODEL, attentionRegistry, resolveAgentModel } from "../lib/agent-model";
 import { attentionTools, resetCatalogState } from "../lib/agent-tools";
 import { catalogPromptSection } from "../lib/catalog";
+import { subjectSynonymsPromptSection } from "../lib/subject-synonyms";
 import { logAgentRun } from "../lib/agent-telemetry";
 import { shouldForceRenderAnswer } from "../lib/agent-render-enforcement";
 
@@ -20,6 +21,7 @@ const systemPrompt = prompts.define({
   variables: z.object({
     answerReference: z.string(),
     catalogReference: z.string(),
+    subjectSynonyms: z.string(),
     conversationMemory: z.string(),
   }),
   content: analystPromptTemplate,
@@ -91,6 +93,7 @@ export const attentionAgent = chat.agent({
     const resolved = await systemPrompt.resolve({
       answerReference,
       catalogReference,
+      subjectSynonyms: subjectSynonymsPromptSection(),
       conversationMemory: "",
     });
     chat.prompt.set(resolved);
@@ -106,6 +109,7 @@ export const attentionAgent = chat.agent({
     const resolved = await systemPrompt.resolve({
       answerReference,
       catalogReference,
+      subjectSynonyms: subjectSynonymsPromptSection(),
       conversationMemory: summarizeMemory(agentLocal.get()),
     });
     chat.prompt.set(resolved);

@@ -72,7 +72,7 @@ describe("FloatingChat", () => {
     act(() => screen.getByTestId("btn-open").click());
     expect(screen.getByText("what's new?")).toBeInTheDocument();
     expect(screen.getByText("show me the daily skinny")).toBeInTheDocument();
-    expect(screen.getByText("compare htmx vs alpine")).toBeInTheDocument();
+    expect(screen.getByText("what type of visualizations can you make?")).toBeInTheDocument();
   });
 
   it("shows a backdrop that closes the drawer on click", () => {

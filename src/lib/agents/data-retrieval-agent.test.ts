@@ -167,6 +167,27 @@ describe("runDataRetrievalAgent", () => {
     expect(result).toMatchObject({ error: expect.stringContaining("repos") });
   });
 
+  it("rejects a ReplacingMergeTree read missing FINAL without executing it, then succeeds on retry", async () => {
+    mocks.query.mockResolvedValueOnce({
+      json: async () => [{ database: "raw", name: "hackernews", engine: "ReplacingMergeTree" }],
+    });
+    generateObjectMock
+      .mockResolvedValueOnce({ object: { query: "SELECT * FROM raw.hackernews" } } as any)
+      .mockResolvedValueOnce({ object: { query: "SELECT * FROM raw.hackernews FINAL" } } as any);
+    mocks.query.mockResolvedValueOnce({ json: async () => [{ id: 1 }] });
+
+    const result = await runDataRetrievalAgent("show me hn stories");
+
+    expect(mocks.query).toHaveBeenCalledTimes(2); // catalog fetch + the corrected FINAL query
+    expect(mocks.query).toHaveBeenLastCalledWith(
+      expect.objectContaining({ query: "SELECT * FROM raw.hackernews FINAL" })
+    );
+    const retryPrompt = generateObjectMock.mock.calls[1][0] as any;
+    const lastUserMessage = [...retryPrompt.messages].reverse().find((m: any) => m.role === "user");
+    expect(lastUserMessage.content).toContain("FINAL");
+    expect(result).toMatchObject({ rowCount: 1 });
+  });
+
   it("rejects multi-statement queries without executing them", async () => {
     mockCatalogFetch();
     generateObjectMock.mockResolvedValue({
