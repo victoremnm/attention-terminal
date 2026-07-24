@@ -17,7 +17,6 @@ function Consumer() {
       <button data-testid="ask-empty" onClick={() => ctx.ask("  ")}>ask-empty</button>
       <button data-testid="clear" onClick={() => ctx.clearPendingInput()}>clear</button>
       <button data-testid="open" onClick={() => ctx.open()}>open</button>
-      <button data-testid="minimize" onClick={() => ctx.minimize()}>minimize</button>
       <button data-testid="close" onClick={() => ctx.close()}>close</button>
       <button data-testid="toggle" onClick={() => ctx.toggle()}>toggle</button>
       <button data-testid="set-open" onClick={() => ctx.setState("open")}>set-open</button>
@@ -46,12 +45,6 @@ describe("ChatProvider", () => {
     renderProvider();
     act(() => screen.getByTestId("open").click());
     expect(screen.getByTestId("state")).toHaveTextContent("open");
-  });
-
-  it("minimize() sets state to minimized", () => {
-    renderProvider();
-    act(() => screen.getByTestId("minimize").click());
-    expect(screen.getByTestId("state")).toHaveTextContent("minimized");
   });
 
   it("close() sets state to closed", () => {
@@ -92,7 +85,7 @@ describe("ChatProvider", () => {
     expect(screen.getByTestId("pending")).toHaveTextContent("");
   });
 
-  it("setState() directly sets any state", () => {
+  it("setState() directly sets the open state", () => {
     renderProvider();
     act(() => screen.getByTestId("set-open").click());
     expect(screen.getByTestId("state")).toHaveTextContent("open");

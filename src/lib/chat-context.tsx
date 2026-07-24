@@ -2,14 +2,13 @@
 
 import { createContext, useCallback, useContext, useRef, useState } from "react";
 
-type ChatState = "closed" | "minimized" | "open";
+type ChatState = "closed" | "open";
 
 type ChatContextValue = {
   state: ChatState;
   setState: (state: ChatState) => void;
   toggle: () => void;
   open: () => void;
-  minimize: () => void;
   close: () => void;
   ask: (text: string) => void;
   pendingInput: string;
@@ -29,7 +28,6 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const open = useCallback(() => setState("open"), []);
-  const minimize = useCallback(() => setState("minimized"), []);
   const close = useCallback(() => setState("closed"), []);
 
   const ask = useCallback((text: string) => {
@@ -48,7 +46,6 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
         setState,
         toggle,
         open,
-        minimize,
         close,
         ask,
         pendingInput,

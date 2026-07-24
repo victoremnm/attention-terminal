@@ -3,7 +3,7 @@
 import { useChat } from "@ai-sdk/react";
 import { useTriggerChatTransport } from "@trigger.dev/sdk/chat/react";
 import type { UIMessage } from "ai";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { mintChatAccessToken, startChatSession } from "@/lib/chat-actions";
 import { chatErrorMessage, guardChatTransport, isClosedReadableStreamError } from "@/lib/chat-stream";
 import { getLastUserMessage } from "@/lib/chat-validation";
@@ -180,7 +180,6 @@ export function FloatingChat() {
   const [drawerWidth, setDrawerWidth] = useState(420);
   const [detached, setDetached] = useState(false);
   const [pos, setPos] = useState({ x: 0, y: 0 });
-  const minimizedPillRef = useRef<HTMLDivElement>(null);
   const drawerRef = useRef<HTMLDivElement>(null);
   const resizingRef = useRef(false);
   const draggingRef = useRef(false);
@@ -195,11 +194,6 @@ export function FloatingChat() {
     } else {
       setAnimateIn(false);
     }
-  }, [ctx.state]);
-
-  useLayoutEffect(() => {
-    if (drawerRef.current) drawerRef.current.inert = ctx.state === "minimized";
-    if (ctx.state === "minimized") minimizedPillRef.current?.focus();
   }, [ctx.state]);
 
   function startResize(e: React.PointerEvent) {
@@ -276,36 +270,18 @@ export function FloatingChat() {
 
   if (ctx.state === "closed") return null;
 
-  const isMinimized = ctx.state === "minimized";
   const drawerStyle: React.CSSProperties = detached
     ? { width: drawerWidth, left: pos.x, top: pos.y, right: "auto", height: "min(600px, 100vh)" }
     : { width: drawerWidth };
 
   return (
     <>
-      {isMinimized && (
-        <div ref={minimizedPillRef} className="floating-chat-minimized" role="button" tabIndex={0}
-          onClick={() => ctx.setState("open")}
-          onKeyDown={(e) => e.key === "Enter" && ctx.setState("open")}
-          aria-label="Open chat">
-          <span className="mono">CHAT</span>
-          <button
-            className="floating-chat-close"
-            onClick={(e) => { e.stopPropagation(); ctx.close(); }}
-            aria-label="Close chat"
-            type="button"
-          >
-            ×
-          </button>
-        </div>
-      )}
-      {!detached && !isMinimized && <div className="floating-chat-backdrop" aria-hidden="true" />}
+      {!detached && <div className="floating-chat-backdrop" aria-hidden="true" />}
       <div
         ref={drawerRef}
-        className={`floating-chat-drawer${detached ? " detached" : ""}${isMinimized ? " minimized-hidden" : ""}`}
+        className={`floating-chat-drawer${detached ? " detached" : ""}`}
         role="dialog"
         aria-label="Chat"
-        aria-hidden={isMinimized}
         style={drawerStyle}
       >
         <div className="floating-chat-resize-handle" onPointerDown={startResize} aria-hidden="true" />
@@ -324,9 +300,6 @@ export function FloatingChat() {
                 ⬈
               </button>
             )}
-            <button type="button" className="chip" onClick={() => ctx.minimize()} aria-label="Minimize chat">
-              _
-            </button>
             <button type="button" className="floating-chat-close" onClick={() => ctx.close()} aria-label="Close chat">
               ×
             </button>
