@@ -14,9 +14,6 @@ export type CatalogTableRef = { database: string; name: string; engine?: string 
 const REPLACING_ENGINE_PATTERN = /Replacing/i;
 
 export const FALLBACK_TABLES = [
-  { database: "curated", name: "task_execution_metrics", engine: "View", total_rows: "estimated", size: "N/A" },
-  { database: "curated", name: "task_health_summary", engine: "View", total_rows: "estimated", size: "N/A" },
-  { database: "cleansed", name: "github_events_cleansed", engine: "View", total_rows: "estimated", size: "N/A" },
   { database: "default", name: "gh_repo_metadata", engine: "ReplacingMergeTree", total_rows: "estimated", size: "N/A" },
   { database: "default", name: "gh_repo_daily", engine: "SummingMergeTree", total_rows: "estimated", size: "N/A" },
   { database: "default", name: "gh_repo_hourly", engine: "SummingMergeTree", total_rows: "estimated", size: "N/A" },
