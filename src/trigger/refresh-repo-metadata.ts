@@ -68,28 +68,22 @@ async function pickRepos(): Promise<string[]> {
     ),
     // Activity (issue #48, fixed in #56): rank by non-bot distinct actors
     // (collaboration signal), not push volume - ordering by sum(pushes) surfaces
-    // push-spam/data-dump repos, not genuinely prolific ones. This reads
-    // github_events directly rather than the gh_repo_daily rollup: that
-    // rollup's `actors` (migrations/20260718000008_github_repo_period_rollups.sql,
-    // gh_repo_daily_mv) is built as `uniqState(actor_login)` with no [bot]
-    // predicate, and once merged into an AggregateFunction state there's no way
-    // to exclude bots after the fact - the underlying per-actor rows are gone.
-    // A scoped 7-day scan over github_events is acceptable cost here since this
-    // is the occasional candidate-picker (runs hourly), not the hot /deck read
-    // path. uniqExactIf(...) counts only actors whose login doesn't look like a
-    // bot account; countIf(PushEvent) stays as a secondary tiebreaker. Verified
-    // (issue #56) to surface PostHog/posthog, llvm/llvm-project, elastic/kibana
-    // instead of push-spam/data-dump repos.
+    // push-spam/data-dump repos, not genuinely prolific ones. Reads from
+    // gh_repo_actor_activity_feed (populated by MV from github_events) instead
+    // of raw.github_events — the feed is a ReplacingMergeTree one-row-per-actor
+    // subset that avoids the 140M-row scan. uniqExactIf(...) counts only actors
+    // whose login doesn't look like a bot account; countIf(PushEvent) stays as a
+    // secondary tiebreaker. Verified (issue #56) to surface PostHog/posthog,
+    // llvm/llvm-project, elastic/kibana instead of push-spam/data-dump repos.
     selectRows<{ repo_name: string }>(
-      `SELECT e.repo_name,
-              uniqExactIf(e.actor_login, coalesce(cls.actor_type, '') != 'Bot' AND (cls.actor_type IS NOT NULL OR lower(e.actor_login) NOT LIKE '%[bot]%')) AS human_actors,
-              countIf(e.event_type = 'PushEvent') AS push_count
-        FROM raw.github_events AS e
-        LEFT JOIN gh_actor_classification cls ON cls.actor_login = e.actor_login
-        WHERE e.created_at > (SELECT max(created_at) FROM raw.github_events) - INTERVAL ${ACTIVITY_WINDOW_DAYS} DAY
-         AND e.event_type IN ('PushEvent', 'PullRequestEvent', 'IssuesEvent')
-         AND e.repo_name != ''
-       GROUP BY e.repo_name
+      `SELECT f.repo_name,
+              uniqExactIf(f.actor_login, coalesce(cls.actor_type, '') != 'Bot' AND (cls.actor_type IS NOT NULL OR lower(f.actor_login) NOT LIKE '%[bot]%')) AS human_actors,
+              countIf(f.event_type = 'PushEvent') AS push_count
+        FROM gh_repo_actor_activity_feed AS f
+        LEFT JOIN gh_actor_classification cls ON cls.actor_login = f.actor_login
+        WHERE f.created_at > now() - INTERVAL ${ACTIVITY_WINDOW_DAYS} DAY
+         AND f.repo_name != ''
+       GROUP BY f.repo_name
        ORDER BY human_actors DESC, push_count DESC
        LIMIT ${ACTIVITY_LIMIT}`
     ),
