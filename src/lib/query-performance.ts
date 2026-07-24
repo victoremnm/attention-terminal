@@ -62,6 +62,10 @@ function toNumber(value: unknown): number {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+function isAttentionLogComment(logComment: string): boolean {
+  return logComment === "attn" || logComment.startsWith("attn | ");
+}
+
 function emptyQueryPerformancePayload(start: number): QueryPerformancePayload {
   return {
     rows: [],
@@ -141,7 +145,7 @@ export async function fetchQueryPerformanceData(): Promise<QueryPerformancePaylo
     FROM system.query_log
     WHERE event_date >= today() - 1
       AND type = 'QueryFinish'
-      AND startsWith(log_comment, 'attn')
+      AND (log_comment = 'attn' OR startsWith(log_comment, 'attn | '))
     ORDER BY event_time DESC
     LIMIT 30
   `.trim();
@@ -158,7 +162,9 @@ export async function fetchQueryPerformanceData(): Promise<QueryPerformancePaylo
 
   const rows: QueryPerformanceRow[] = rawRows.flatMap((row) => {
     const query = String(row.query ?? "");
-    const parsedLogComment = parseLogComment(typeof row.log_comment === "string" ? row.log_comment : "");
+    const logComment = typeof row.log_comment === "string" ? row.log_comment : "";
+    if (!isAttentionLogComment(logComment)) return [];
+    const parsedLogComment = parseLogComment(logComment);
     if (!parsedLogComment.isAttentionQuery) return [];
     const hits = analyzeQueryAntipatterns(query);
     const antipatterns = hits.map((hit) => hit.id);

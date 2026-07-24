@@ -65,15 +65,15 @@ describe("query-performance", () => {
     });
   });
 
-  it("returns only attention-tagged query log rows", async () => {
+  it("accepts exact attention tags and rejects near-prefix log comments", async () => {
     mocks.query.mockResolvedValue({
       json: async () => [
         {
           event_time: "2026-07-24 00:00:00",
-          query_id: "attention-query",
+          query_id: "bare-attention-query",
           query_type: "QueryFinish",
-          log_comment: "attn | tool=runReadOnlyQuery | qid=attention-query",
-          query: "SELECT secret FROM attention_data",
+          log_comment: "attn",
+          query: "SELECT secret FROM bare_attention_data",
           query_duration_ms: "100",
           read_rows: "10",
           read_bytes: "20",
@@ -82,10 +82,46 @@ describe("query-performance", () => {
         },
         {
           event_time: "2026-07-24 00:00:01",
-          query_id: "unrelated-query",
+          query_id: "tagged-attention-query",
           query_type: "QueryFinish",
-          log_comment: "",
-          query: "SELECT secret FROM unrelated_data",
+          log_comment: "attn | tool=runReadOnlyQuery | qid=tagged-attention-query",
+          query: "SELECT secret FROM attention_data",
+          query_duration_ms: "100",
+          read_rows: "10",
+          read_bytes: "20",
+          result_rows: "1",
+          memory_usage: "30",
+        },
+        {
+          event_time: "2026-07-24 00:00:02",
+          query_id: "attention-dashboard-query",
+          query_type: "QueryFinish",
+          log_comment: "attention-dashboard",
+          query: "SELECT secret FROM dashboard_data",
+          query_duration_ms: "200",
+          read_rows: "20",
+          read_bytes: "40",
+          result_rows: "2",
+          memory_usage: "60",
+        },
+        {
+          event_time: "2026-07-24 00:00:03",
+          query_id: "near-prefix-query",
+          query_type: "QueryFinish",
+          log_comment: "attnish | tool=runReadOnlyQuery",
+          query: "SELECT secret FROM near_prefix_data",
+          query_duration_ms: "200",
+          read_rows: "20",
+          read_bytes: "40",
+          result_rows: "2",
+          memory_usage: "60",
+        },
+        {
+          event_time: "2026-07-24 00:00:04",
+          query_id: "missing-delimiter-query",
+          query_type: "QueryFinish",
+          log_comment: "attn|tool=runReadOnlyQuery",
+          query: "SELECT secret FROM malformed_data",
           query_duration_ms: "200",
           read_rows: "20",
           read_bytes: "40",
@@ -97,10 +133,13 @@ describe("query-performance", () => {
 
     const payload = await fetchQueryPerformanceData();
 
-    expect(payload.rows).toHaveLength(1);
-    expect(payload.rows[0]?.query_id).toBe("attention-query");
-    expect(payload.rows[0]?.query).toBe("SELECT secret FROM attention_data");
-    expect(String(mocks.query.mock.calls[0]?.[0]?.query)).toContain("startsWith(log_comment, 'attn')");
+    expect(payload.rows.map((row) => row.query_id)).toEqual([
+      "bare-attention-query",
+      "tagged-attention-query",
+    ]);
+    expect(String(mocks.query.mock.calls[0]?.[0]?.query)).toContain(
+      "(log_comment = 'attn' OR startsWith(log_comment, 'attn | '))",
+    );
   });
 
   it("returns the empty payload when required query log metadata is unavailable", async () => {
