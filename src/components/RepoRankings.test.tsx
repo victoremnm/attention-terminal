@@ -45,6 +45,9 @@ function activeRow(overrides: Partial<ActiveContributionRow> = {}): ActiveContri
     botPushers: 1,
     prsOpened: 5,
     prsMerged: 2,
+    forks: 3,
+    prVelocity: 7,
+    activeBuilders: 4,
     activityScore: 500,
     branchScope: "unknown",
     dependencyUpdateAttribution: "unknown",
@@ -140,18 +143,42 @@ describe("RepoRankings", () => {
     await findRepoRow("acme/widgets");
 
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Active (commits)" }));
+      fireEvent.click(screen.getByRole("button", { name: /Top Commits/i }));
     });
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
     const [calledUrl] = fetchMock.mock.calls[0];
     const url = new URL(String(calledUrl), "http://localhost");
     expect(url.pathname).toBe("/api/trending-active");
-    expect(url.searchParams.get("sort")).toBe("commits");
+    expect(url.searchParams.get("sort")).toBe("top_commits");
 
     await findRepoRow("acme/widgets");
     expect(screen.queryByText("Previous")).not.toBeInTheDocument();
     expect(screen.getByText(/not paginated/i)).toBeInTheDocument();
+  });
+
+  it("switching to Top Forks, Top Pushes, PR Velocity, and Active Builders tabs sends proper sort query", async () => {
+    renderWithChat(<RepoRankings windows={seedWindows()} />);
+    await findRepoRow("acme/widgets");
+
+    const modes = [
+      { name: /Top Forks/i, sort: "top_forks" },
+      { name: /Top Pushes/i, sort: "top_pushes" },
+      { name: /PR Velocity/i, sort: "pr_velocity" },
+      { name: /Active Builders/i, sort: "active_builders" },
+    ];
+
+    for (const m of modes) {
+      fetchMock.mockClear();
+      await act(async () => {
+        fireEvent.click(screen.getByRole("button", { name: m.name }));
+      });
+      await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+      const [calledUrl] = fetchMock.mock.calls[0];
+      const url = new URL(String(calledUrl), "http://localhost");
+      expect(url.pathname).toBe("/api/trending-active");
+      expect(url.searchParams.get("sort")).toBe(m.sort);
+    }
   });
 
   it("clicking a measure header toggles sort direction and re-queries the server", async () => {
@@ -277,7 +304,7 @@ describe("RepoRankings", () => {
     fireEvent.change(minStarsInput, { target: { value: "9999" } });
 
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Active (commits)" }));
+      fireEvent.click(screen.getAllByRole("button", { name: /Active \(commits\)|Top Commits/i })[0]!);
     });
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
 
