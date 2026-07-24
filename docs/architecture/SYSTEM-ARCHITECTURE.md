@@ -164,28 +164,28 @@ Chat is not a Next.js API route — there is no `/api/chat` handler in this repo
 ```mermaid
 sequenceDiagram
     autonumber
-    participant Client as Chat Client
-    participant Agent as attentionAgent (chat.agent)
-    participant Catalog as catalogPromptSection() / sql-catalog-guard
-    participant Model as streamText (attentionTools)
+    participant Client as "Chat Client"
+    participant Agent as "attentionAgent (chat.agent)"
+    participant Catalog as "catalogPromptSection()"
+    participant Model as "streamText (attentionTools)"
 
     Client->>Agent: onBoot (worker cold start)
     Agent->>Catalog: resetCatalogState()
-    Note over Agent: init per-worker conversation memory (recentAnswers)
+    Note over Agent: init per-worker conversation memory
 
     Client->>Agent: onChatStart (turn 0)
-    Agent->>Catalog: catalogPromptSection() — live system.tables snapshot
-    Agent->>Agent: resolve system prompt (catalog + answer reference)
+    Agent->>Catalog: live system.tables snapshot
+    Agent->>Agent: resolve system prompt
 
     Client->>Agent: onTurnStart (turn >= 1)
-    Agent->>Catalog: re-fetch catalog, re-resolve prompt w/ prior-turn memory
+    Agent->>Catalog: re-fetch catalog with prior-turn memory
 
     Client->>Model: run({ messages, tools })
-    Model->>Model: stopWhen 15 steps; prepareStep forces renderAnswer near budget
+    Model->>Model: stopWhen 15 steps, prepareStep
     Model-->>Client: streamed tool calls + final answer
 
     Client->>Agent: onTurnComplete
-    Agent->>Agent: record rendered answer type/subject for next turn's memory
+    Agent->>Agent: record answer for next turn memory
 ```
 
 ### 3.2 Tool registry and query-execution paths
