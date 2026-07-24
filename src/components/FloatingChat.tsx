@@ -5,6 +5,7 @@ import { useTriggerChatTransport } from "@trigger.dev/sdk/chat/react";
 import type { UIMessage } from "ai";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { mintChatAccessToken, startChatSession } from "@/lib/chat-actions";
+import { guardChatTransport, isClosedReadableStreamError } from "@/lib/chat-stream";
 import {
   clampDrawerWidth,
   clampDetachedPosition,
@@ -86,16 +87,19 @@ function AttentionChatOverlay({
           break;
         case "stream-error":
           disarmWatchdog();
+          if (event.error && isClosedReadableStreamError(event.error)) break;
           setFault(`stream error: ${event.error?.message}`);
           break;
       }
     }, []),
   });
 
+  const safeTransport = useMemo(() => guardChatTransport(transport), [transport]);
+
   const { messages, sendMessage, stop, status, error, regenerate } = useChat({
     id: chatId,
     messages: initialMessages,
-    transport,
+    transport: safeTransport,
   });
   const [input, setInput] = useState("");
   const busy = status === "submitted" || status === "streaming";
