@@ -141,7 +141,7 @@ export async function actorLeaderboard(window: "24h" | "7d" = "24h"): Promise<Ac
   const humanQuery =
     window === "24h"
       ? `
-    WITH toStartOfHour(now()) AS high_water
+    WITH (SELECT coalesce(max(hour), toStartOfHour(now())) FROM gh_repo_hourly) AS high_water
     SELECT
       actor_login,
       toString(count()) AS events,
@@ -195,7 +195,7 @@ export async function actorLeaderboard(window: "24h" | "7d" = "24h"): Promise<Ac
   const botQuery =
     window === "24h"
       ? `
-    WITH toStartOfHour(now()) AS high_water
+    WITH (SELECT coalesce(max(hour), toStartOfHour(now())) FROM gh_repo_hourly) AS high_water
     SELECT
       actor_login,
       toString(count()) AS events,
@@ -253,22 +253,23 @@ export async function actorLeaderboard(window: "24h" | "7d" = "24h"): Promise<Ac
 async function assembleTickerLanes(): Promise<TickerLanes> {
   const [repos, forks, shipping, stars, stories, actors] = await Promise.all([
     q<{ name: string; at: string; spark: number[] }>(
-      // Window anchored to wall clock / hour boundary
-      `SELECT repo_name AS name, max(h) AS at,
+      // Window anchored to cheap gh_repo_hourly watermark or wall clock fallback
+      `WITH (SELECT coalesce(max(hour), toStartOfHour(now())) FROM gh_repo_hourly) AS high_water
+       SELECT repo_name AS name, max(h) AS at,
               groupArray(6)(cnt) AS spark
        FROM (
          SELECT repo_name, toStartOfHour(created_at) AS h, count() AS cnt
          FROM raw.github_events
          WHERE event_type = 'CreateEvent'
            AND ref_type = 'repository'
-           AND created_at > toStartOfHour(now()) - INTERVAL 6 HOUR
+           AND created_at > high_water - INTERVAL 6 HOUR
          GROUP BY repo_name, h ORDER BY repo_name, h
        ) GROUP BY repo_name ORDER BY at DESC LIMIT 20`,
-      ["raw.github_events"]
+      ["raw.github_events", "gh_repo_hourly"]
     ),
     q<{ name: string; forks: string; stars: string; pushes: string; prs: string; issues: string; spark: number[] }>(
       `WITH
-         toStartOfHour(now()) AS max_h,
+         (SELECT coalesce(max(hour), toStartOfHour(now())) FROM gh_repo_hourly) AS max_h,
          per_repo_event AS (
            SELECT repo_name, event_type, countMerge(events) AS event_count
            FROM gh_repo_hourly
@@ -325,7 +326,7 @@ async function assembleTickerLanes(): Promise<TickerLanes> {
       spark: number[];
     }>(
       `WITH
-         (SELECT max(created_at) FROM gh_repo_activity_feed) AS max_time
+         (SELECT coalesce(max(created_at), now()) FROM gh_repo_activity_feed) AS max_time
        SELECT repo_name AS name,
               sum(commits) AS commit_total,
               countIf(event_type = 'PushEvent') AS push_count,
@@ -356,7 +357,7 @@ async function assembleTickerLanes(): Promise<TickerLanes> {
     // aggregate does not retain actor names, so bot filtering is unavailable
     // here; the result is still bounded to the same event type and windows.
     q<{ name: string; stars: string; surge: number; spark: number[] }>(
-      `WITH toStartOfHour(now()) AS max_h,
+      `WITH (SELECT coalesce(max(hour), toStartOfHour(now())) FROM gh_repo_hourly) AS max_h,
        recent AS (
           SELECT repo_name, sum(cnt) AS star_total,
                  reverse(groupArray(8)(cnt)) AS spark

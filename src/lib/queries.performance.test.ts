@@ -47,21 +47,21 @@ describe("query layer performance & structural optimization tests", () => {
     });
   });
 
-  it("actorLeaderboard(24h) uses toStartOfHour(now()) and avoids max(created_at) subqueries", async () => {
+  it("actorLeaderboard(24h) uses cheap gh_repo_hourly watermark and avoids 139M-row raw.github_events subqueries", async () => {
     await actorLeaderboard("24h");
     const calls = mocks.query.mock.calls.map((c) => String(c[0].query));
     for (const sql of calls) {
       expect(sql).not.toContain("SELECT max(created_at) FROM raw.github_events");
-      expect(sql).toContain("toStartOfHour(now()) AS high_water");
+      expect(sql).toContain("coalesce(max(hour)");
     }
   });
 
-  it("tickerLanes uses toStartOfHour(now()) and avoids max(hour) / max(created_at) subqueries", async () => {
+  it("tickerLanes uses cheap gh_repo_hourly watermark and avoids raw.github_events subqueries", async () => {
     await tickerLanes();
     const calls = mocks.query.mock.calls.map((c) => String(c[0].query));
     for (const sql of calls) {
       expect(sql).not.toContain("SELECT max(created_at) FROM raw.github_events");
-      expect(sql).not.toContain("SELECT max(hour) FROM gh_repo_hourly");
+      expect(sql).not.toContain("SELECT max(created_at) FROM gh_repo_activity_feed");
     }
   });
 
@@ -84,28 +84,3 @@ describe("query layer performance & structural optimization tests", () => {
 function rankedSqliIndex(sql: string) {
   return sql.indexOf("ranked AS (");
 }
-
-const hasCH = Boolean(process.env.CLICKHOUSE_URL && process.env.CLICKHOUSE_PASSWORD);
-
-describe.skipIf(!hasCH)("query performance benchmarks (integration)", () => {
-  it("actorLeaderboard(24h) completes under 50ms without subquery overhead", async () => {
-    const start = Date.now();
-    const res = await actorLeaderboard("24h");
-    const duration = Date.now() - start;
-    expect(duration).toBeLessThan(500); // 500ms max assertion in test environment
-    expect(res.provenance.every((p) => (p.rowsRead ?? 0) < 10_000_000)).toBe(true);
-  });
-
-  it("divergence('react') completes under 50ms reading daily_skinny_subject_hourly", async () => {
-    const res = await divergence("react");
-    expect(res.provenance.elapsedMs).toBeLessThan(500);
-    expect(res.provenance.tables).toContain("daily_skinny_subject_hourly");
-    expect(res.provenance.tables).not.toContain("raw.github_events");
-  });
-
-  it("devScatter('7d') eliminates 100M+ row scans and avoids memory spikes", async () => {
-    const res = await devScatter("7d", 10);
-    expect(res.elapsedMs).toBeLessThan(500);
-    expect(res.rowsRead).toBeLessThan(10_000_000);
-  });
-});

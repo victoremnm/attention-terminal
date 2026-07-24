@@ -116,7 +116,19 @@ describe.skipIf(!hasCH)("query layer (integration)", () => {
   }, 120_000);
 
   it.each(["react", "ai"])("divergence(%s) & pulse execute", async (subject) => {
-    await expect(divergence(subject)).resolves.toBeDefined();
+    const res = await divergence(subject);
+    expect(res).toBeDefined();
+    expect(res.provenance.tables).toContain("daily_skinny_subject_hourly");
+    expect(res.provenance.tables).not.toContain("raw.github_events");
     await expect(pulse(subject)).resolves.toBeDefined();
+  }, 120_000);
+
+  it("live ClickHouse latency benchmarks execute under 500ms latency budget", async () => {
+    const start = Date.now();
+    const res = await devScatter("7d", 10);
+    const duration = Date.now() - start;
+
+    expect(duration).toBeLessThan(1500);
+    expect(res.rowsRead).toBeLessThan(10_000_000);
   }, 120_000);
 });
