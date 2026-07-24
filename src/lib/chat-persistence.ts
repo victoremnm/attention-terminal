@@ -23,6 +23,14 @@ const DEFAULT_SESSION: FloatingChatSession = {
   position: { x: 0, y: 0 },
 };
 
+export function getSafeLocalStorage(): Storage | null {
+  try {
+    return window.localStorage;
+  } catch {
+    return null;
+  }
+}
+
 export function loadChatVisibility(storage: MinimalStorage | undefined | null): ChatVisibilityState {
   if (!storage) return "closed";
   try {
@@ -93,6 +101,17 @@ export function createFallbackChatId(): string {
 export function clampDrawerWidth(input: unknown): number {
   const value = typeof input === "number" && Number.isFinite(input) ? input : DEFAULT_SESSION.drawerWidth;
   return Math.min(720, Math.max(320, value));
+}
+
+export function clampDetachedPosition(
+  position: { x: number; y: number },
+  drawerWidth: number,
+  viewport: { width: number; height: number },
+): { x: number; y: number } {
+  return {
+    x: Math.max(0, Math.min(Math.max(0, viewport.width - drawerWidth), position.x)),
+    y: Math.max(0, Math.min(Math.max(0, viewport.height - 48), position.y)),
+  };
 }
 
 function sanitizePosition(input: unknown): { x: number; y: number } {

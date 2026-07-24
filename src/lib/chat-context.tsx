@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
-import { loadChatVisibility, saveChatVisibility, type ChatVisibilityState } from "./chat-persistence";
+import { getSafeLocalStorage, loadChatVisibility, saveChatVisibility, type ChatVisibilityState } from "./chat-persistence";
 
 type ChatContextValue = {
   state: ChatVisibilityState;
@@ -24,11 +24,13 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
   const sendMessageRef = useRef<((text: string) => void) | null>(null);
 
   useEffect(() => {
-    setState(loadChatVisibility(window.localStorage));
+    const storage = getSafeLocalStorage();
+    setState(loadChatVisibility(storage));
   }, []);
 
   useEffect(() => {
-    saveChatVisibility(window.localStorage, state);
+    const storage = getSafeLocalStorage();
+    saveChatVisibility(storage, state);
   }, [state]);
 
   const toggle = useCallback(() => {

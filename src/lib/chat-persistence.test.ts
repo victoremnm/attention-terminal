@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   clampDrawerWidth,
+  clampDetachedPosition,
   loadChatVisibility,
   loadFloatingChatSession,
   saveChatVisibility,
@@ -55,5 +56,10 @@ describe("chat-persistence", () => {
     expect(clampDrawerWidth(200)).toBe(320);
     expect(clampDrawerWidth(500)).toBe(500);
     expect(clampDrawerWidth(999)).toBe(720);
+  });
+
+  it("clamps detached position to the viewport", () => {
+    expect(clampDetachedPosition({ x: 1200, y: 900 }, 420, { width: 1000, height: 700 })).toEqual({ x: 580, y: 652 });
+    expect(clampDetachedPosition({ x: -10, y: -20 }, 420, { width: 1000, height: 700 })).toEqual({ x: 0, y: 0 });
   });
 });

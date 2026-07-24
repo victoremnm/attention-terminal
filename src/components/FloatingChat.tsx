@@ -7,7 +7,9 @@ import { useEffect, useRef, useState } from "react";
 import { mintChatAccessToken, startChatSession } from "@/lib/chat-actions";
 import {
   clampDrawerWidth,
+  clampDetachedPosition,
   createFallbackChatId,
+  getSafeLocalStorage,
   loadFloatingChatSession,
   saveFloatingChatSession,
 } from "@/lib/chat-persistence";
@@ -189,14 +191,20 @@ export function FloatingChat() {
 
   useEffect(() => {
     try {
-      const stored = loadFloatingChatSession(window.localStorage);
+      const storage = getSafeLocalStorage();
+      const stored = loadFloatingChatSession(storage);
       if (stored) {
         setChatId(stored.chatId || fallbackChatIdRef.current);
         setInitialMessages(stored.messages);
         setCurrentMessages(stored.messages);
         setDetached(stored.detached);
         setDrawerWidth(clampDrawerWidth(stored.drawerWidth));
-        setPos(stored.position);
+        setPos(
+          clampDetachedPosition(stored.position, clampDrawerWidth(stored.drawerWidth), {
+            width: window.innerWidth,
+            height: window.innerHeight,
+          }),
+        );
       }
     } catch {
       // localStorage can be unavailable or blocked; the chat still works.
@@ -284,7 +292,7 @@ export function FloatingChat() {
   useEffect(() => {
     if (!restored) return;
     try {
-      saveFloatingChatSession(window.localStorage, {
+      saveFloatingChatSession(getSafeLocalStorage(), {
         chatId,
         messages: currentMessages,
         detached,
@@ -348,11 +356,13 @@ export function FloatingChat() {
           </div>
         </header>
         <div className="floating-chat-drawer-body">
-          <AttentionChatOverlay
-            chatId={chatId}
-            initialMessages={initialMessages}
-            onMessagesChange={setCurrentMessages}
-          />
+          {restored && (
+            <AttentionChatOverlay
+              chatId={chatId}
+              initialMessages={initialMessages}
+              onMessagesChange={setCurrentMessages}
+            />
+          )}
         </div>
       </div>
     </>
