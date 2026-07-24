@@ -6,7 +6,7 @@ import { VisualizationTypeSchema } from "../render-payload";
 export async function runVisualizationMappingAgent(intent: string, metadata: Record<string, any>) {
   const { object } = await generateObject({
     model: openai("gpt-4o"),
-    system: `You are the Visualization Mapping Agent. Your sole objective is to map the statistical properties of the data and the semantic intent of the user's query against a codified taxonomy of visualization principles.
+    instructions: `You are the Visualization Mapping Agent. Your sole objective is to map the statistical properties of the data and the semantic intent of the user's query against a codified taxonomy of visualization principles.
     You must output a configuration payload dictating the exact chart type, the data axes mappings, and specific stylistic overrides.
 
     The client can only render these chartTypes as an actual chart — never choose anything outside this list, no matter how well it fits the data conceptually, because it will only ever show a plain data table instead:

@@ -97,6 +97,35 @@ describe("sql-catalog-guard", () => {
         "WITH gh_repo_metadata AS (SELECT * FROM default.gh_repo_metadata FINAL) SELECT * FROM gh_repo_metadata";
       expect(requireFinalOnReplacingTables(query)).toEqual([]);
     });
+
+    it("recognizes FINAL after an alias (FROM t AS m FINAL)", () => {
+      registerCatalogTables([{ database: "default", name: "gh_repo_metadata", engine: "ReplacingMergeTree" }]);
+      const query = "SELECT * FROM default.gh_repo_metadata AS m FINAL LEFT JOIN other_table AS o ON m.id = o.id";
+      expect(requireFinalOnReplacingTables(query)).toEqual([]);
+    });
+
+    it("flags FINAL placed before an alias (FROM t FINAL AS m)", () => {
+      registerCatalogTables([{ database: "default", name: "gh_repo_metadata", engine: "ReplacingMergeTree" }]);
+      // ClickHouse rejects `FROM t FINAL AS m` — FINAL must come after the alias.
+      const query = "SELECT * FROM default.gh_repo_metadata FINAL AS m LEFT JOIN other_table AS o ON m.id = o.id";
+      expect(requireFinalOnReplacingTables(query)).toEqual(["default.gh_repo_metadata"]);
+    });
+
+    it("handles the JOIN+FINAL bug from production (reported on gh_repo_metadata + gh_repo_daily)", () => {
+      registerCatalogTables([
+        { database: "default", name: "gh_repo_metadata", engine: "ReplacingMergeTree" },
+        { database: "default", name: "gh_repo_daily", engine: "SummingMergeTree" },
+      ]);
+      // This SQL was syntactically valid per the guard but ClickHouse rejected it,
+      // because FINAL came before the alias. After the fix, the guard either accepts
+      // `AS m FINAL` or flags `FINAL AS m` — both are correct behaviors.
+      const goodQuery = `
+        SELECT m.repo_name
+        FROM default.gh_repo_metadata AS m FINAL
+        LEFT JOIN default.gh_repo_daily AS d ON d.repo_name = m.repo_name
+      `;
+      expect(requireFinalOnReplacingTables(goodQuery)).toEqual([]);
+    });
   });
 
   describe("extractTableCandidates", () => {

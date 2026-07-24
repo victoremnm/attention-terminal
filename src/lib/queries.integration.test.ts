@@ -13,8 +13,7 @@ import {
 
 const hasCH = Boolean(process.env.CLICKHOUSE_URL && process.env.CLICKHOUSE_PASSWORD);
 
-// Executes real SQL so syntax errors (e.g. the `FINAL AS m` bug that reached
-// prod) fail the suite. Skipped when creds are absent.
+// Executes real SQL so syntax errors fail the suite. Skipped when creds are absent.
 describe.skipIf(!hasCH)("query layer (integration)", () => {
   const windows: RepoWindow[] = ["1d", "7d", "30d", "td"];
 
