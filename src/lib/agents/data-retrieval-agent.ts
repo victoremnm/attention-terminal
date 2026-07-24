@@ -62,14 +62,12 @@ type CatalogTable = { database: string; name: string; engine: string };
 
 async function loadCatalog(): Promise<{ tables: CatalogTable[]; referenceText: string }> {
   try {
-    const result = await getClickHouse().query({
-      query: LIST_TABLES_SQL,
-      format: "JSONEachRow",
-      query_params: { limit: TABLE_LIST_LIMIT },
-      abort_signal: AbortSignal.timeout(CATALOG_TIMEOUT_MS),
-      clickhouse_settings: { readonly: "2", max_execution_time: 5 },
+    const { rows: tables } = await executeTaggedJsonEachRowQuery<CatalogTable>(getClickHouse(), LIST_TABLES_SQL, {
+      queryParams: { limit: TABLE_LIST_LIMIT },
+      abortSignal: AbortSignal.timeout(CATALOG_TIMEOUT_MS),
+      maxExecutionTime: 5,
+      logComment: { toolName: "runDataRetrieval", surface: "catalog" },
     });
-    const tables = await result.json<CatalogTable>();
     registerCatalogTables(tables);
     return { tables, referenceText: formatCatalogReference(tables) };
   } catch {
