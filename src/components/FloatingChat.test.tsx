@@ -138,6 +138,18 @@ describe("FloatingChat", () => {
     expect(document.querySelector(".floating-chat-minimized")).toBeInTheDocument();
   });
 
+  it("moves focus to the minimized pill and makes the hidden drawer inert", () => {
+    renderWithControls();
+    act(() => screen.getByTestId("btn-open").click());
+    screen.getByPlaceholderText("ask about tech attention...").focus();
+
+    act(() => screen.getByRole("button", { name: "Minimize chat" }).click());
+
+    expect(document.activeElement).toBe(document.querySelector(".floating-chat-minimized"));
+    expect(document.querySelector(".floating-chat-drawer")).toHaveAttribute("aria-hidden", "true");
+    expect((document.querySelector(".floating-chat-drawer") as HTMLElement).inert).toBe(true);
+  });
+
   it("closes when the close button is clicked", () => {
     renderWithControls();
     act(() => screen.getByTestId("btn-open").click());

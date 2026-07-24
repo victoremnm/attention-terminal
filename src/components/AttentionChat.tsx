@@ -5,6 +5,7 @@ import { useTriggerChatTransport } from "@trigger.dev/sdk/chat/react";
 import type { UIMessage } from "ai";
 import { useEffect, useRef, useState } from "react";
 import { mintChatAccessToken, startChatSession } from "@/lib/chat-actions";
+import { hasUserMessage } from "@/lib/chat-validation";
 import { RenderPayloadSchema } from "@/lib/render-payload";
 import type { attentionAgent } from "@/trigger/attention-agent";
 import { MarkdownText } from "./MarkdownText";
@@ -72,6 +73,8 @@ export function AttentionChat() {
 
   const { messages, sendMessage, stop, status, error, regenerate } = useChat({ transport });
   const [input, setInput] = useState("");
+  const [retrying, setRetrying] = useState(false);
+  const retryingRef = useRef(false);
   const busy = status === "submitted" || status === "streaming";
   const faultText = fault ?? (status === "error" ? (error?.message ?? "chat request failed") : null);
 
@@ -84,9 +87,23 @@ export function AttentionChat() {
   }
 
   async function retry() {
+    if (retryingRef.current || busy) return;
+    if (!hasUserMessage(messages)) {
+      setFault("there is no user message to retry");
+      return;
+    }
+
+    retryingRef.current = true;
+    setRetrying(true);
     setFault(null);
-    await stop();
-    await regenerate();
+    try {
+      await regenerate();
+    } catch (retryError) {
+      setFault(`retry failed: ${retryError instanceof Error ? retryError.message : "unknown error"}`);
+    } finally {
+      retryingRef.current = false;
+      setRetrying(false);
+    }
   }
 
   return (
@@ -115,7 +132,7 @@ export function AttentionChat() {
       {faultText && (
         <div className="agent-fault mono" role="alert">
           <span>! {faultText}</span>
-          <button type="button" className="chip" onClick={() => void retry()}>retry</button>
+          <button type="button" className="chip" disabled={retrying || busy} onClick={() => void retry()}>retry</button>
         </div>
       )}
 
