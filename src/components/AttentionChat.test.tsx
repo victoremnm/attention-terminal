@@ -24,7 +24,7 @@ function message(role: "user" | "assistant") {
 
 describe("AttentionChat retry", () => {
   beforeEach(() => {
-    chatMock.useTriggerChatTransport.mockReturnValue({});
+    chatMock.useTriggerChatTransport.mockReturnValue({ sendMessages: vi.fn() });
   });
 
   afterEach(() => {

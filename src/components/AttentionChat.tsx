@@ -3,8 +3,9 @@
 import { useChat } from "@ai-sdk/react";
 import { useTriggerChatTransport } from "@trigger.dev/sdk/chat/react";
 import type { UIMessage } from "ai";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { mintChatAccessToken, startChatSession } from "@/lib/chat-actions";
+import { guardChatTransport, isClosedReadableStreamError } from "@/lib/chat-stream";
 import { hasUserMessage } from "@/lib/chat-validation";
 import { RenderPayloadSchema } from "@/lib/render-payload";
 import type { attentionAgent } from "@/trigger/attention-agent";
@@ -65,13 +66,16 @@ export function AttentionChat() {
           break;
         case "stream-error":
           disarmWatchdog();
+          if (isClosedReadableStreamError(event.error)) break;
           setFault(`stream error: ${event.error.message}`);
           break;
       }
     },
   });
 
-  const { messages, sendMessage, stop, status, error, regenerate } = useChat({ transport });
+  const safeTransport = useMemo(() => guardChatTransport(transport), [transport]);
+
+  const { messages, sendMessage, stop, status, error, regenerate } = useChat({ transport: safeTransport });
   const [input, setInput] = useState("");
   const [retrying, setRetrying] = useState(false);
   const retryingRef = useRef(false);
