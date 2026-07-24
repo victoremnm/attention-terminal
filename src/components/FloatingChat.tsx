@@ -5,18 +5,7 @@ import { useTriggerChatTransport } from "@trigger.dev/sdk/chat/react";
 import type { UIMessage } from "ai";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { mintChatAccessToken, startChatSession } from "@/lib/chat-actions";
-<<<<<<< HEAD
 import { guardChatTransport, isClosedReadableStreamError } from "@/lib/chat-stream";
-import {
-  clampDrawerWidth,
-  clampDetachedPosition,
-  createFallbackChatId,
-  getSafeLocalStorage,
-  loadFloatingChatSession,
-  saveFloatingChatSession,
-} from "@/lib/chat-persistence";
-=======
->>>>>>> origin/main
 import { RenderPayloadSchema } from "@/lib/render-payload";
 import type { attentionAgent } from "@/trigger/attention-agent";
 import { MarkdownText } from "./MarkdownText";
