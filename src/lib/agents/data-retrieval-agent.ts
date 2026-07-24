@@ -1,4 +1,4 @@
-import { generateObject, type ModelMessage } from "ai";
+import { generateObject } from "ai";
 import { z } from "zod";
 import { openai } from "@ai-sdk/openai";
 import { createClient } from "@clickhouse/client";
@@ -106,18 +106,16 @@ export async function runDataRetrievalAgent(intent: string): Promise<
 > {
   const { referenceText } = await loadCatalog();
 
-  const messages: ModelMessage[] = [
-    {
-      role: "system",
-      content: `You are the Data Retrieval Agent. Your job is to translate a user's semantic intent into a single optimized read-only ClickHouse SQL query. Only SELECT statements are allowed. Always use explicit UNION ALL or UNION DISTINCT instead of bare UNION.
+  const instructions = `You are the Data Retrieval Agent. Your job is to translate a user's semantic intent into a single optimized read-only ClickHouse SQL query. Only SELECT statements are allowed. Always use explicit UNION ALL or UNION DISTINCT instead of bare UNION.
 
 Only reference tables from this catalog — never invent a table or column name:
 ${referenceText}
 
-Any table marked "(ReplacingMergeTree -- requires FINAL)" can hold duplicate/stale-version rows until a background merge runs -- always add FINAL immediately after that table's name (e.g. FROM hackernews FINAL) or the result will contain the same logical row more than once.
+Any table marked "(ReplacingMergeTree -- requires FINAL)" can hold duplicate/stale-version rows until a background merge runs -- always add FINAL after the table name (and after any alias, e.g. FROM hackernews FINAL or FROM gh_repo_metadata AS m FINAL) or the result will contain the same logical row more than once.
 
-If you are unsure whether a column exists on a table, prefer a simpler query over guessing a column name.`,
-    },
+If you are unsure whether a column exists on a table, prefer a simpler query over guessing a column name.`;
+
+  const messages: { role: "user" | "assistant"; content: string }[] = [
     { role: "user", content: `Intent: ${intent}` },
   ];
 
@@ -133,6 +131,7 @@ If you are unsure whether a column exists on a table, prefer a simpler query ove
 
     const { object } = await generateObject({
       model: openai("gpt-4o"),
+      instructions,
       messages,
       schema: querySchema,
     });
@@ -153,7 +152,7 @@ If you are unsure whether a column exists on a table, prefer a simpler query ove
 
     const missingFinal = requireFinalOnReplacingTables(query);
     if (missingFinal.length > 0) {
-      lastError = `Table(s) missing FINAL: ${missingFinal.join(", ")}. These are ReplacingMergeTree tables and can contain duplicate/stale-version rows without it -- add FINAL immediately after the table name (e.g. FROM ${missingFinal[0]} FINAL).`;
+      lastError = `Table(s) missing FINAL: ${missingFinal.join(", ")}. These are ReplacingMergeTree tables and can contain duplicate/stale-version rows without it -- add FINAL after the alias (e.g. FROM ${missingFinal[0]} AS m FINAL). FINAL must come after any alias, never before it.`;
       continue;
     }
 
