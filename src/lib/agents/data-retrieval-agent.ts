@@ -13,6 +13,7 @@ import {
   registerCatalogTables,
   requireCatalogedTables,
   requireFinalOnReplacingTables,
+  requireGroupedRollupTables,
 } from "../sql-catalog-guard";
 
 let clickhouse: ReturnType<typeof createClient> | undefined;
@@ -124,8 +125,9 @@ CORE TABLE COLUMNS (Use EXACT column names):
   Columns: repo_name (String), owner (String), description (String), language (String), topics (Array(String)), github_stars (UInt64), fetched_at (DateTime).
   NOTE: To search repo descriptions or topics, query or JOIN default.gh_repo_metadata FINAL on repo_name.
 
-- default.gh_repo_daily:
+- default.gh_repo_daily & default.gh_actor_daily:
   Columns: day (Date), repo_name (String), pushes (UInt32), commits (UInt32), stars (UInt32), forks (UInt32), prs_opened (UInt32), prs_merged (UInt32).
+  NOTE: gh_repo_daily stores ONE ROW PER DAY. When querying across a time range (e.g. day >= today() - 7), you MUST use GROUP BY repo_name and aggregate metrics with SUM(stars), SUM(pushes), SUM(commits), etc. Never SELECT repo_name, stars directly without GROUP BY repo_name, or duplicate daily rows for the same repo will be returned!
 
 - raw.hackernews & default.hackernews (ReplacingMergeTree -- requires FINAL):
   Columns: id (UInt64), by (String), time (DateTime), title (String), url (String), score (UInt32), type (String).
@@ -173,6 +175,12 @@ If you are unsure whether a column exists on a table, prefer a simpler query ove
     const missingFinal = requireFinalOnReplacingTables(query);
     if (missingFinal.length > 0) {
       lastError = `Table(s) missing FINAL: ${missingFinal.join(", ")}. These are ReplacingMergeTree tables and can contain duplicate/stale-version rows without it -- add FINAL after the alias (e.g. FROM ${missingFinal[0]} AS m FINAL). FINAL must come after any alias, never before it.`;
+      continue;
+    }
+
+    const missingGroup = requireGroupedRollupTables(query);
+    if (missingGroup.length > 0) {
+      lastError = `Rollup table(s) missing GROUP BY: ${missingGroup.join(", ")}. Periodic rollup tables store one row per day/hour -- querying across a time range without GROUP BY produces duplicate rows per entity. Add GROUP BY repo_name (or actor_login) and aggregate metrics with SUM(stars), SUM(pushes), etc.`;
       continue;
     }
 

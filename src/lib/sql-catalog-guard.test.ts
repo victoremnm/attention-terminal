@@ -4,6 +4,7 @@ import {
   registerCatalogTables,
   requireCatalogedTables,
   requireFinalOnReplacingTables,
+  requireGroupedRollupTables,
   resetCatalogState,
 } from "./sql-catalog-guard";
 
@@ -128,12 +129,20 @@ describe("sql-catalog-guard", () => {
     });
   });
 
-  describe("extractTableCandidates", () => {
-    it("ignores CTE names", () => {
-      const candidates = extractTableCandidates(
-        "WITH recent AS (SELECT 1) SELECT * FROM recent JOIN github_events ON 1=1"
-      );
-      expect(candidates).toEqual(["github_events"]);
+  describe("requireGroupedRollupTables", () => {
+    it("flags queries that read gh_repo_daily without GROUP BY", () => {
+      const sql = "SELECT repo_name, stars FROM default.gh_repo_daily WHERE day >= today() - 7";
+      expect(requireGroupedRollupTables(sql)).toEqual(["default.gh_repo_daily"]);
+    });
+
+    it("passes queries that include GROUP BY repo_name", () => {
+      const sql = "SELECT repo_name, SUM(stars) FROM default.gh_repo_daily WHERE day >= today() - 7 GROUP BY repo_name";
+      expect(requireGroupedRollupTables(sql)).toEqual([]);
+    });
+
+    it("does not flag non-rollup tables without GROUP BY", () => {
+      const sql = "SELECT repo_name FROM raw.github_events WHERE created_at >= now() - INTERVAL 1 HOUR";
+      expect(requireGroupedRollupTables(sql)).toEqual([]);
     });
   });
 });
