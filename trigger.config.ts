@@ -5,6 +5,14 @@ import { OTLPLogExporter } from "@opentelemetry/exporter-logs-otlp-http";
 import { OTLPMetricExporter as OTLPMetricProtoExporter } from "@opentelemetry/exporter-metrics-otlp-proto";
 import { OTLPMetricExporter as OTLPMetricHttpExporter } from "@opentelemetry/exporter-metrics-otlp-http";
 
+function resolveSignalUrl(rawUrl: string, signal: "logs" | "traces" | "metrics"): string {
+  const cleanBase = rawUrl
+    .replace(/\/+$/, "")
+    .replace(/\/v1\/(traces|logs|metrics)$/, "")
+    .replace(/\/v1$/, "");
+  return `${cleanBase}/v1/${signal}`;
+}
+
 function getTelemetryExporters() {
   const logExporters: any[] = [];
   const traceExporters: any[] = [];
@@ -19,21 +27,21 @@ function getTelemetryExporters() {
 
     logExporters.push(
       new OTLPLogExporter({
-        url: process.env.CLICKHOUSE_OTLP_LOGS_URL || `${chOtlpUrl}/v1/logs`,
+        url: process.env.CLICKHOUSE_OTLP_LOGS_URL || resolveSignalUrl(chOtlpUrl, "logs"),
         headers: chHeaders,
       })
     );
 
     traceExporters.push(
       new OTLPTraceExporter({
-        url: process.env.CLICKHOUSE_OTLP_TRACES_URL || `${chOtlpUrl}/v1/traces`,
+        url: process.env.CLICKHOUSE_OTLP_TRACES_URL || resolveSignalUrl(chOtlpUrl, "traces"),
         headers: chHeaders,
       })
     );
 
     metricExporters.push(
       new OTLPMetricProtoExporter({
-        url: process.env.CLICKHOUSE_OTLP_METRICS_URL || `${chOtlpUrl}/v1/metrics`,
+        url: process.env.CLICKHOUSE_OTLP_METRICS_URL || resolveSignalUrl(chOtlpUrl, "metrics"),
         headers: chHeaders,
       })
     );
