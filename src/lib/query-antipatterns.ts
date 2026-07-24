@@ -120,9 +120,21 @@ function findLeadingWildcardLike(sql: string): AntipatternHit | null {
     // Grab the operand just before the LIKE — a column reference or a
     // function(col) call. Best-effort, for the dashboard evidence string.
     const beforeRe = /([A-Za-z_][\w.]*|\w+\(\s*[A-Za-z_][\w.]*\s*\))\s*$/i;
-    const prefix = sql.slice(0, m.index);
+    // `NOT LIKE` leaves the NOT keyword immediately before the operator.
+    const prefix = sql.slice(0, m.index).replace(/\bNOT\s*$/i, "");
     const operandMatch = prefix.match(beforeRe);
     const operand = operandMatch ? operandMatch[1] : "<col>";
+    // ClickHouse can use the lower(actor_login) token index for the documented
+    // bot-account filter, including qualified actor_login references in rollups.
+    // Keep this exception exact so unrelated leading-wildcard searches remain
+    // blocked, and do not exempt ILIKE (which bypasses the index).
+    if (
+      m[1].toUpperCase() === "LIKE" &&
+      pattern === "%[bot]%" &&
+      /^lower\(\s*(?:[A-Za-z_][\w$]*\.)?actor_login\s*\)$/i.test(operand)
+    ) {
+      continue;
+    }
     return {
       id: "leading-wildcard-like",
       severity: "P1",

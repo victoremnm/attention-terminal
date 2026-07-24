@@ -92,6 +92,14 @@ describe("query-antipatterns — known-good curated queries (zero false positive
                  GROUP BY repo_name LIMIT 20`;
     expect(hitIds(sql)).toEqual([]);
   });
+
+  it.each([
+    "lower(actor_login) LIKE '%[bot]%'",
+    "lower(actor_login) NOT LIKE '%[bot]%'",
+    "lower(bucket.actor_login) LIKE '%[bot]%'",
+  ])("allows documented bot predicate: %s", (predicate) => {
+    expect(hitIds(`SELECT actor_login FROM gh_actor_daily WHERE day >= now() - INTERVAL 1 DAY AND ${predicate}`)).toEqual([]);
+  });
 });
 
 describe("query-antipatterns — per-rule positive coverage", () => {
@@ -105,6 +113,20 @@ describe("query-antipatterns — per-rule positive coverage", () => {
   it("leading-wildcard-like (P1) — ILIKE with leading %", () => {
     const hits = analyzeQueryAntipatterns(`SELECT * FROM x WHERE name ILIKE '%foo%'`);
     expect(hits.some((h) => h.id === "leading-wildcard-like")).toBe(true);
+  });
+
+  it("still rejects non-bot leading-wildcard LIKE predicates", () => {
+    const hits = analyzeQueryAntipatterns(
+      `SELECT title FROM hackernews WHERE lower(title) LIKE '%htmx%'`
+    );
+    expect(hits.some((h) => h.id === "leading-wildcard-like" && h.severity === "P1")).toBe(true);
+  });
+
+  it("still rejects an unindexed actor bot LIKE predicate", () => {
+    const hits = analyzeQueryAntipatterns(
+      `SELECT actor_login FROM gh_actor_daily WHERE actor_login LIKE '%[bot]%'`
+    );
+    expect(hits.some((h) => h.id === "leading-wildcard-like" && h.severity === "P1")).toBe(true);
   });
 
   it("function-wrapped-predicate (P1) — lower(time) or toString(created_at) in WHERE", () => {
