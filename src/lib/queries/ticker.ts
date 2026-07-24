@@ -93,7 +93,11 @@ async function assembleTickerLanes(): Promise<TickerLanes> {
                 + countIf(event_type = 'IssuesEvent' AND action = 'opened') AS events,
               [] AS spark
        FROM gh_repo_activity_feed
-        LEFT JOIN gh_actor_classification cls ON cls.actor_login = gh_repo_activity_feed.actor_login
+        LEFT JOIN (
+    SELECT actor_login, argMax(actor_type, fetched_at) AS actor_type
+    FROM gh_actor_classification
+    GROUP BY actor_login
+  ) cls ON cls.actor_login = gh_repo_activity_feed.actor_login
         WHERE created_at > max_time - INTERVAL 24 HOUR
           AND event_type IN ('PushEvent', 'PullRequestEvent', 'IssuesEvent', 'ForkEvent')
           AND coalesce(cls.actor_type, '') != 'Bot' AND (cls.actor_type IS NOT NULL OR lower(gh_repo_activity_feed.actor_login) NOT LIKE '%[bot]%')

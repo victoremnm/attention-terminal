@@ -76,7 +76,7 @@ describe("actorLeaderboard", () => {
 
     const [humanCall, botCall] = mocks.query.mock.calls.map((call) => call[0]);
     expect(String(humanCall.query)).toContain("FROM raw.github_events AS e");
-    expect(String(humanCall.query)).toContain("LEFT JOIN gh_actor_classification cls ON cls.actor_login = e.actor_login");
+    expect(String(humanCall.query)).toContain("LEFT JOIN (\n    SELECT actor_login, argMax(actor_type, fetched_at) AS actor_type\n    FROM gh_actor_classification\n    GROUP BY actor_login\n  ) cls ON cls.actor_login = e.actor_login");
     expect(String(humanCall.query)).toContain("coalesce(cls.actor_type, '') != 'Bot'");
     expect(String(botCall.query)).toContain("(cls.actor_type = 'Bot' OR");
     expect(String(botCall.query)).toContain("LIMIT 10");

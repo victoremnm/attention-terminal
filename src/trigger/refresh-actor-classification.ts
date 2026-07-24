@@ -107,17 +107,16 @@ export const refreshActorClassification = schedules.task({
       const results = await Promise.all(
         batch.map(async (c: CandidateRow) => {
           if (/\[bot\]/.test(c.actor_login)) {
-            return { actor_login: c.actor_login, actor_type: "Bot" };
+            return { actor_login: c.actor_login, actor_type: "Bot" as const };
           }
           apiCalls++;
           const actorType = await fetchActorType(c.actor_login);
-          return {
-            actor_login: c.actor_login,
-            actor_type: actorType ?? "User",
-          };
+          if (!actorType) return null;
+          return { actor_login: c.actor_login, actor_type: actorType };
         })
       );
       for (const r of results) {
+        if (!r) continue;
         rows.push({ actor_login: r.actor_login, actor_type: r.actor_type, fetched_at: now });
       }
     }

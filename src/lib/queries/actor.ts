@@ -36,7 +36,11 @@ export async function actorLeaderboard(window: "24h" | "7d" = "24h"): Promise<Ac
         )
       ) AS score
     FROM raw.github_events AS e
-    LEFT JOIN gh_actor_classification cls ON cls.actor_login = e.actor_login
+    LEFT JOIN (
+    SELECT actor_login, argMax(actor_type, fetched_at) AS actor_type
+    FROM gh_actor_classification
+    GROUP BY actor_login
+  ) cls ON cls.actor_login = e.actor_login
     WHERE e.created_at > high_water - INTERVAL 24 HOUR
       AND coalesce(cls.actor_type, '') != 'Bot' AND (cls.actor_type IS NOT NULL OR lower(e.actor_login) NOT LIKE '%[bot]%')
     GROUP BY e.actor_login
@@ -62,7 +66,11 @@ export async function actorLeaderboard(window: "24h" | "7d" = "24h"): Promise<Ac
         )
       ) AS score
     FROM gh_actor_daily AS d
-    LEFT JOIN gh_actor_classification cls ON cls.actor_login = d.actor_login
+    LEFT JOIN (
+    SELECT actor_login, argMax(actor_type, fetched_at) AS actor_type
+    FROM gh_actor_classification
+    GROUP BY actor_login
+  ) cls ON cls.actor_login = d.actor_login
     WHERE d.day >= ${dailyWindow}
       AND coalesce(cls.actor_type, '') != 'Bot' AND (cls.actor_type IS NOT NULL OR lower(d.actor_login) NOT LIKE '%[bot]%')
     GROUP BY d.actor_login
@@ -83,7 +91,11 @@ export async function actorLeaderboard(window: "24h" | "7d" = "24h"): Promise<Ac
       toString(countIf(e.event_type = 'PullRequestEvent' AND e.pr_merged = 1)) AS prs_merged,
       toString(round(count(), 1)) AS score
     FROM raw.github_events AS e
-    LEFT JOIN gh_actor_classification cls ON cls.actor_login = e.actor_login
+    LEFT JOIN (
+    SELECT actor_login, argMax(actor_type, fetched_at) AS actor_type
+    FROM gh_actor_classification
+    GROUP BY actor_login
+  ) cls ON cls.actor_login = e.actor_login
     WHERE e.created_at > high_water - INTERVAL 24 HOUR
       AND (cls.actor_type = 'Bot' OR lower(e.actor_login) LIKE '%[bot]%')
     GROUP BY e.actor_login
@@ -100,7 +112,11 @@ export async function actorLeaderboard(window: "24h" | "7d" = "24h"): Promise<Ac
       toString(sum(d.prs_merged)) AS prs_merged,
       toString(round(countMerge(d.events), 1)) AS score
     FROM gh_actor_daily AS d
-    LEFT JOIN gh_actor_classification cls ON cls.actor_login = d.actor_login
+    LEFT JOIN (
+    SELECT actor_login, argMax(actor_type, fetched_at) AS actor_type
+    FROM gh_actor_classification
+    GROUP BY actor_login
+  ) cls ON cls.actor_login = d.actor_login
     WHERE d.day >= ${dailyWindow}
       AND (cls.actor_type = 'Bot' OR lower(d.actor_login) LIKE '%[bot]%')
     GROUP BY d.actor_login
@@ -170,7 +186,11 @@ function devScatterSql(mergedCol: "merged_prs_7d" | "merged_prs_30d") {
         ad.prs,
         ad.mergedPrs
       FROM actor_days AS ad
-      LEFT JOIN gh_actor_classification cls ON cls.actor_login = ad.actor_login
+      LEFT JOIN (
+    SELECT actor_login, argMax(actor_type, fetched_at) AS actor_type
+    FROM gh_actor_classification
+    GROUP BY actor_login
+  ) cls ON cls.actor_login = ad.actor_login
     ),
     meta AS (
       SELECT

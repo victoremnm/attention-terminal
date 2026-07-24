@@ -163,7 +163,11 @@ export async function activeContributionRanking(
         FROM gh_repo_actor_hourly
         WHERE hour > high_water - INTERVAL ${days} DAY
       ) AS bucket
-      LEFT JOIN gh_actor_classification cls ON cls.actor_login = bucket.actor_login
+      LEFT JOIN (
+    SELECT actor_login, argMax(actor_type, fetched_at) AS actor_type
+    FROM gh_actor_classification
+    GROUP BY actor_login
+  ) cls ON cls.actor_login = bucket.actor_login
       ${forkJoinSql}
       GROUP BY repo_name
       -- Empty pushes and push-only PR noise do not qualify for push mode.

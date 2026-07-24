@@ -452,7 +452,11 @@ export async function repoDrilldown(repoName: string): Promise<RepoDrilldownPayl
            FROM actor_totals AS at
             FULL OUTER JOIN release_totals AS rt ON at.actor = rt.actor
           ) AS actors
-          LEFT JOIN gh_actor_classification cls ON cls.actor_login = actors.actor
+          LEFT JOIN (
+    SELECT actor_login, argMax(actor_type, fetched_at) AS actor_type
+    FROM gh_actor_classification
+    GROUP BY actor_login
+  ) cls ON cls.actor_login = actors.actor
           WHERE commit_total > 0 OR pr_opened_total > 0 OR pr_merged_total > 0 OR issues_opened_total > 0 OR releases_total > 0
           ORDER BY activity_score DESC, actor
           LIMIT 8`,
@@ -510,7 +514,11 @@ export async function repoDrilldown(repoName: string): Promise<RepoDrilldownPayl
            FROM actor_totals AS at
             FULL OUTER JOIN release_totals AS rt ON at.actor = rt.actor
           ) AS actors
-          LEFT JOIN gh_actor_classification cls ON cls.actor_login = actors.actor
+          LEFT JOIN (
+    SELECT actor_login, argMax(actor_type, fetched_at) AS actor_type
+    FROM gh_actor_classification
+    GROUP BY actor_login
+  ) cls ON cls.actor_login = actors.actor
           WHERE commit_total > 0 OR pr_opened_total > 0 OR pr_merged_total > 0 OR issues_opened_total > 0 OR releases_total > 0
           ORDER BY activity_score DESC, actor
           LIMIT 8`,
