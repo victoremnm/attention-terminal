@@ -7,7 +7,11 @@
 // repeat the fallback logic.
 
 export function classificationJoin(tableAlias: string): string {
-  return `LEFT JOIN gh_actor_classification cls ON cls.actor_login = ${tableAlias}.actor_login`;
+  return `LEFT JOIN (
+    SELECT actor_login, argMax(actor_type, fetched_at) AS actor_type
+    FROM gh_actor_classification
+    GROUP BY actor_login
+  ) cls ON cls.actor_login = ${tableAlias}.actor_login`;
 }
 
 export function notBotFilter(tableAlias: string): string {
