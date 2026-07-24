@@ -10,7 +10,6 @@
     "@ai-sdk/react": "^4.0.35",
     "@clickhouse/client": "^1.23.1",
     "@opentelemetry/exporter-logs-otlp-http": "^0.218.0",
-    "@opentelemetry/exporter-metrics-otlp-http": "^0.218.0",
     "@opentelemetry/exporter-metrics-otlp-proto": "^0.218.0",
     "@opentelemetry/exporter-trace-otlp-http": "^0.218.0",
     "@trigger.dev/react-hooks": "^4.5.5",

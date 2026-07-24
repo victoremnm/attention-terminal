@@ -137,28 +137,29 @@ SELECT
 FROM internal.trigger_task_spans
 GROUP BY run_id, task_identifier, environment_type;
 
--- Priority 1: Curated task execution metrics (Rich Statistics: Counts, Avg, Min, Max, Quartiles P25/P50/P75, IQR, P95, P99)
+-- Priority 1: Curated task execution metrics (7-day window using AggregatingMergeTree to prevent raw table full scans)
 CREATE VIEW IF NOT EXISTS curated.task_execution_metrics AS
 SELECT
-    toStartOfMinute(timestamp) AS minute,
+    hour AS timestamp,
     task_identifier,
     metric_name,
     environment_type,
-    count() AS sample_count,
-    avg(value) AS avg_value,
-    min(value) AS min_value,
-    max(value) AS max_value,
-    quantile(0.50)(value) AS median_value,
-    quantile(0.25)(value) AS p25_value,
-    quantile(0.75)(value) AS p75_value,
-    (quantile(0.75)(value) - quantile(0.25)(value)) AS iqr_value,
-    quantile(0.95)(value) AS p95_value,
-    quantile(0.99)(value) AS p99_value
-FROM internal.trigger_task_metrics
-WHERE timestamp >= now() - INTERVAL 7 DAY
-GROUP BY minute, task_identifier, metric_name, environment_type;
+    sum(sample_count) AS sample_count,
+    sum(sum_value) / sum(sample_count) AS avg_value,
+    min(min_value) AS min_value,
+    max(max_value) AS max_value,
+    quantilesExactWeighted(0.25, 0.50, 0.75, 0.95, 0.99)(quantiles_state) AS quantiles_array,
+    quantiles_array[1] AS p25_value,
+    quantiles_array[2] AS median_value,
+    quantiles_array[3] AS p75_value,
+    (quantiles_array[3] - quantiles_array[1]) AS iqr_value,
+    quantiles_array[4] AS p95_value,
+    quantiles_array[5] AS p99_value
+FROM internal.trigger_task_metrics_hourly
+WHERE hour >= now() - INTERVAL 7 DAY
+GROUP BY hour, task_identifier, metric_name, environment_type;
 
--- Hourly Curated Metrics View for Long-Term (30-day) Dashboard Queries
+-- Priority 1: Hourly Curated Metrics View for Long-Term (30-day) Dashboard Queries
 CREATE VIEW IF NOT EXISTS curated.task_execution_metrics_hourly AS
 SELECT
     hour,
