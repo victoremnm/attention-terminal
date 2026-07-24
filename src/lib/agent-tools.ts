@@ -94,23 +94,18 @@ export const listTables = tool({
   execute: async () => {
     const t0 = Date.now();
     try {
-      const result = await getTableListClickHouse().query({
-        query: LIST_TABLES_SQL,
-        format: "JSONEachRow",
-        query_params: { limit: TABLE_LIST_LIMIT },
-        abort_signal: AbortSignal.timeout(TABLE_LIST_TIMEOUT_MS),
-        clickhouse_settings: {
-          readonly: "2",
-          max_execution_time: 5,
-        },
-      });
-      const tables = (await result.json()) as Array<{
+      const { rows: tables } = await executeTaggedJsonEachRowQuery<{
         database: string;
         name: string;
         engine: string;
         total_rows: string;
         size: string;
-      }>;
+      }>(getTableListClickHouse(), LIST_TABLES_SQL, {
+        queryParams: { limit: TABLE_LIST_LIMIT },
+        abortSignal: AbortSignal.timeout(TABLE_LIST_TIMEOUT_MS),
+        maxExecutionTime: 5,
+        logComment: { toolName: "listTables", surface: "catalog" },
+      });
       const elapsedMs = Date.now() - t0;
       registerCatalogTables(tables);
       return {
@@ -151,24 +146,23 @@ export const describeTable = tool({
         error: `Unknown table ${normalized}. Call listTables first, then describe a table that listTables returned.`,
       };
     }
-    const result = await getClickHouse().query({
-      query: database
-        ? "DESCRIBE TABLE {database: Identifier}.{name: Identifier}"
-        : "DESCRIBE TABLE {name: Identifier}",
-      query_params: { database, name },
-      format: "JSONEachRow",
-      clickhouse_settings: {
-        readonly: "2",
-        max_execution_time: 10,
-      },
-    });
-    const columns = (await result.json()) as Array<{
+    const { rows: columns } = await executeTaggedJsonEachRowQuery<{
       name: string;
       type: string;
       default_type?: string;
       default_expression?: string;
       comment?: string;
-    }>;
+    }>(
+      getClickHouse(),
+      database
+        ? "DESCRIBE TABLE {database: Identifier}.{name: Identifier}"
+        : "DESCRIBE TABLE {name: Identifier}",
+      {
+        queryParams: { database, name },
+        maxExecutionTime: 10,
+        logComment: { toolName: "describeTable", surface: "catalog" },
+      },
+    );
     registerTableSchema(catalogKey, columns.map((column) => `${column.name}:${column.type}`));
     registerTableSchema(name, columns.map((column) => `${column.name}:${column.type}`));
     return { columns };
