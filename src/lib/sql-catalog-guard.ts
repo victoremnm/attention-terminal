@@ -14,14 +14,18 @@ export type CatalogTableRef = { database: string; name: string; engine?: string 
 const REPLACING_ENGINE_PATTERN = /Replacing/i;
 
 export const FALLBACK_TABLES = [
-  { database: "raw", name: "github_events", engine: "MergeTree", total_rows: "estimated", size: "N/A" },
+  { database: "curated", name: "task_execution_metrics", engine: "View", total_rows: "estimated", size: "N/A" },
+  { database: "curated", name: "task_health_summary", engine: "View", total_rows: "estimated", size: "N/A" },
+  { database: "cleansed", name: "github_events_cleansed", engine: "View", total_rows: "estimated", size: "N/A" },
   { database: "default", name: "gh_repo_metadata", engine: "ReplacingMergeTree", total_rows: "estimated", size: "N/A" },
   { database: "default", name: "gh_repo_daily", engine: "SummingMergeTree", total_rows: "estimated", size: "N/A" },
   { database: "default", name: "gh_repo_hourly", engine: "SummingMergeTree", total_rows: "estimated", size: "N/A" },
   { database: "default", name: "gh_actor_daily", engine: "SummingMergeTree", total_rows: "estimated", size: "N/A" },
   { database: "default", name: "gh_repo_activity_feed", engine: "MergeTree", total_rows: "estimated", size: "N/A" },
   { database: "default", name: "gh_repo_analysis", engine: "ReplacingMergeTree", total_rows: "estimated", size: "N/A" },
-  { database: "default", name: "subagent_runs", engine: "MergeTree", total_rows: "estimated", size: "N/A" },
+  { database: "raw", name: "github_events", engine: "MergeTree", total_rows: "estimated", size: "N/A" },
+  { database: "internal", name: "trigger_task_logs", engine: "MergeTree", total_rows: "estimated", size: "N/A" },
+  { database: "internal", name: "subagent_runs", engine: "View", total_rows: "estimated", size: "N/A" },
 ];
 
 export const TABLE_LIST_LIMIT = 50;
@@ -30,7 +34,16 @@ export const LIST_TABLES_SQL = `
   SELECT database, name, engine, total_rows, formatReadableSize(total_bytes) AS size
   FROM system.tables
   WHERE database NOT IN ('system', 'information_schema', 'INFORMATION_SCHEMA')
-  ORDER BY database, name
+  ORDER BY
+    CASE database
+      WHEN 'curated' THEN 1
+      WHEN 'cleansed' THEN 2
+      WHEN 'default' THEN 3
+      WHEN 'raw' THEN 4
+      WHEN 'internal' THEN 5
+      ELSE 6
+    END,
+    name
   LIMIT {limit: UInt32}
 `.trim();
 
