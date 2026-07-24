@@ -163,10 +163,8 @@ export async function dailyDigest(noiseFloor = 0): Promise<DigestPayload> {
 
   const clusters = [...bySubject.entries()]
     .map(([subject, subjectRows]) => ({ subject, subjectRows, topic: topics.find((candidate) => candidate.subject === subject) }))
-    // daily_skinny_subject_hourly hardcodes its own subject matching independently of
-    // daily_skinny_taxonomy, so it can still emit subjects (e.g. this project's own
-    // self-referential "Attention Terminal") that the taxonomy deliberately excludes.
-    // Only surface clusters the taxonomy recognizes.
+    // Keep this as a guard for legacy or manually inserted rollup rows whose
+    // subject is no longer present in the current taxonomy.
     .filter(({ topic }) => topic !== undefined)
     .map(({ subject, subjectRows, topic }) => {
       const recent = subjectRows.filter((row) => row.age === 0);

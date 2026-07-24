@@ -35,7 +35,7 @@ describe("dailyDigest", () => {
     q.mockReset();
   });
 
-  it("drops subjects with no matching taxonomy entry (e.g. self-referential 'Attention Terminal') while keeping taxonomy-backed subjects", async () => {
+  it("drops legacy subjects with no matching taxonomy entry while keeping taxonomy-backed subjects", async () => {
     q.mockImplementation(async (_sql: string, tables: string[]) => {
       if (tables[0] === "daily_skinny_taxonomy") {
         return { rows: taxonomyRows, provenance: {} };
@@ -45,9 +45,8 @@ describe("dailyDigest", () => {
           // Taxonomy-backed subject: has a matching daily_skinny_taxonomy row.
           activityRow({ subject: "ClickHouse", age: 0, talk_threads: "50", code_score: "5" }),
           activityRow({ subject: "ClickHouse", age: 1, talk_threads: "1", code_score: "1" }),
-          // Self-referential subject the MV can still emit (its own multiIf() matching is
-          // independent of the taxonomy table) but that daily_skinny_taxonomy intentionally
-          // excludes -- must not surface in the digest.
+          // Legacy/unmapped subject that daily_skinny_taxonomy intentionally excludes
+          // -- must not surface in the digest.
           activityRow({ subject: "Attention Terminal", age: 0, talk_threads: "50", code_score: "5" }),
           activityRow({ subject: "Attention Terminal", age: 1, talk_threads: "1", code_score: "1" }),
         ],

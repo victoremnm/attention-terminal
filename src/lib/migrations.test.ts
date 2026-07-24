@@ -19,6 +19,21 @@ describe("Goose Migrations & Skipping Index Verification", () => {
     }
   });
 
+  it("rewires Daily Skinny rollups through the ranked taxonomy and backfills before recreating MVs", async () => {
+    const migration = await fs.readFile(
+      path.join(migrationsDir(), "20260724000002_daily_skinny_taxonomy_mv.sql"),
+      "utf-8"
+    );
+
+    expect(migration).not.toContain("multiIf(");
+    expect(migration.match(/FROM daily_skinny_taxonomy FINAL/g)).toHaveLength(4);
+    expect(migration.match(/INNER JOIN/g)).toHaveLength(4);
+    expect(migration.match(/argMin\(display_name, rank\)/g)).toHaveLength(4);
+    expect(migration.indexOf("TRUNCATE TABLE daily_skinny_subject_hourly")).toBeLessThan(
+      migration.indexOf("CREATE MATERIALIZED VIEW")
+    );
+  });
+
   it("verifies goose migration status via scripts/migrate.sh status", () => {
     try {
       const output = execSync("./scripts/migrate.sh status", {
@@ -60,3 +75,7 @@ describe("Goose Migrations & Skipping Index Verification", () => {
     }
   });
 });
+
+function migrationsDir() {
+  return path.join(process.cwd(), "migrations");
+}
