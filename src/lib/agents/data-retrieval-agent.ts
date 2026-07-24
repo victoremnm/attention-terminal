@@ -16,6 +16,8 @@ import {
   requireFinalOnReplacingTables,
 } from "../sql-catalog-guard";
 
+export { normalizeUnionQuery } from "../query-execution";
+
 let clickhouse: ReturnType<typeof createClient> | undefined;
 
 function getClickHouse() {
