@@ -40,6 +40,20 @@ describe("extractDiscussionThemes", () => {
     expect(memoryTheme?.representativeCommentIds).toEqual([1, 2, 3]);
   });
 
+  it("orders themes by boosted phrase score", () => {
+    const comments = [
+      { id: 1, text: "Database enables reliable analytics today." },
+      { id: 2, text: "Database supports reliable deployments now." },
+      { id: 3, text: "Database powers reliable systems everywhere." },
+      { id: 4, text: "The query planner improves performance for complex workloads." },
+      { id: 5, text: "A query planner helps optimize distributed systems." },
+    ];
+
+    const themes = extractDiscussionThemes(comments);
+
+    expect(themes[0]?.label).toBe("query planner");
+  });
+
   it("suppresses story title tokens from dominating extracted themes", () => {
     const comments = [
       { id: 1, text: "ClickHouse performance is incredible for large scale analytics." },

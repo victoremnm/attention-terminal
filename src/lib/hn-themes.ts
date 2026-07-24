@@ -99,7 +99,7 @@ export function extractDiscussionThemes(
     }
   }
 
-  const candidateThemes: HnTheme[] = [];
+  const candidateThemes: Array<{ theme: HnTheme; score: number }> = [];
   const totalCount = validComments.length;
 
   for (const [phrase, ids] of phraseMatches.entries()) {
@@ -114,19 +114,27 @@ export function extractDiscussionThemes(
     const score = count * (wordCount > 1 ? 2.5 : 1.0);
 
     candidateThemes.push({
-      label: phrase,
-      count,
-      coverage,
-      representativeCommentIds: Array.from(ids).slice(0, 3),
-      confidence,
+      theme: {
+        label: phrase,
+        count,
+        coverage,
+        representativeCommentIds: Array.from(ids).slice(0, 3),
+        confidence,
+      },
+      score,
     });
   }
 
-  // Deduplicate overlapping phrases (prefer longer or higher coverage phrases)
-  candidateThemes.sort((a, b) => b.count - a.count || b.label.length - a.label.length);
+  // Deduplicate overlapping phrases after score-based ordering.
+  candidateThemes.sort(
+    (a, b) =>
+      b.score - a.score ||
+      b.theme.count - a.theme.count ||
+      b.theme.label.length - a.theme.label.length
+  );
 
   const deduplicated: HnTheme[] = [];
-  for (const candidate of candidateThemes) {
+  for (const { theme: candidate } of candidateThemes) {
     const isSubset = deduplicated.some(
       (existing) =>
         existing.label.includes(candidate.label) || candidate.label.includes(existing.label)
