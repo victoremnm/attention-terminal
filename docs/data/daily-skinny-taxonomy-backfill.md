@@ -1,15 +1,30 @@
--- +goose Up
--- Rewire Daily Skinny rollups to the data-driven taxonomy from
--- 20260723000002_daily_skinny_taxonomy.sql. Materialized views only process
--- source rows inserted after they are created, so replace the old views,
--- then create the new views. Existing target rows remain available as a
--- legacy-compatible transitional state until the manual rebuild in
--- docs/data/daily-skinny-taxonomy-backfill.md is run with ingestion paused.
+# Daily Skinny taxonomy backfill
 
-DROP VIEW IF EXISTS daily_skinny_hn_hourly_mv;
-DROP VIEW IF EXISTS daily_skinny_gh_hourly_mv;
+Migration `20260724000002_daily_skinny_taxonomy_mv.sql` changes future
+Hacker News and GitHub inserts to use `daily_skinny_taxonomy`. It deliberately
+does not truncate or backfill `daily_skinny_subject_hourly` while ingestion is
+live. Existing rows remain available as a legacy-compatible transitional state.
 
-CREATE MATERIALIZED VIEW IF NOT EXISTS daily_skinny_hn_hourly_mv TO daily_skinny_subject_hourly AS
+Run this procedure only during a maintenance window:
+
+1. Pause both the Hacker News and GitHub ingestion jobs. Do not continue until
+   both writers are stopped.
+2. Run the following statements as one controlled maintenance operation. The
+   30-day bounds follow the original Daily Skinny backfill window, and the
+   aggregate expressions match `daily_skinny_subject_hourly`.
+3. Confirm both ingestion jobs are still paused until the statements finish.
+4. Resume both ingestion jobs. The recreated materialized views will process
+   new source inserts using the current taxonomy.
+
+Do not run these statements while either source writer is live. The target is
+an additive `AggregatingMergeTree`; truncating it during concurrent inserts can
+lose rows, and concurrent inserts between the truncate and the backfill can
+produce an incomplete or inconsistent rebuild.
+
+```sql
+TRUNCATE TABLE daily_skinny_subject_hourly;
+
+INSERT INTO daily_skinny_subject_hourly
 SELECT
     hour,
     subject,
@@ -37,6 +52,8 @@ FROM
         WHERE type = 'story'
           AND deleted = 0
           AND dead = 0
+          AND time >= (SELECT max(time) FROM hackernews) - INTERVAL 30 DAY
+          AND title != ''
     ) AS stories
     INNER JOIN
     (
@@ -50,7 +67,7 @@ FROM
 WHERE subject != ''
 GROUP BY hour, subject;
 
-CREATE MATERIALIZED VIEW IF NOT EXISTS daily_skinny_gh_hourly_mv TO daily_skinny_subject_hourly AS
+INSERT INTO daily_skinny_subject_hourly
 SELECT
     hour,
     subject,
@@ -82,7 +99,8 @@ FROM
             pr_merged,
             commit_count
         FROM github_events
-        WHERE repo_name != ''
+        WHERE created_at >= (SELECT max(created_at) FROM github_events) - INTERVAL 30 DAY
+          AND repo_name != ''
     ) AS events
     INNER JOIN
     (
@@ -95,7 +113,4 @@ FROM
 )
 WHERE subject != ''
 GROUP BY hour, subject;
-
--- +goose Down
-DROP VIEW IF EXISTS daily_skinny_hn_hourly_mv;
-DROP VIEW IF EXISTS daily_skinny_gh_hourly_mv;
+```

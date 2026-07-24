@@ -19,19 +19,21 @@ describe("Goose Migrations & Skipping Index Verification", () => {
     }
   });
 
-  it("rewires Daily Skinny rollups through the ranked taxonomy and backfills before recreating MVs", async () => {
+  it("rewires Daily Skinny rollups through the ranked taxonomy without a live backfill", async () => {
     const migration = await fs.readFile(
       path.join(migrationsDir(), "20260724000002_daily_skinny_taxonomy_mv.sql"),
       "utf-8"
     );
 
     expect(migration).not.toContain("multiIf(");
-    expect(migration.match(/FROM daily_skinny_taxonomy FINAL/g)).toHaveLength(4);
-    expect(migration.match(/INNER JOIN/g)).toHaveLength(4);
-    expect(migration.match(/argMin\(display_name, rank\)/g)).toHaveLength(4);
-    expect(migration.indexOf("TRUNCATE TABLE daily_skinny_subject_hourly")).toBeLessThan(
-      migration.indexOf("CREATE MATERIALIZED VIEW")
-    );
+    expect(migration).not.toContain("TRUNCATE TABLE daily_skinny_subject_hourly");
+    expect(migration).not.toContain("INSERT INTO daily_skinny_subject_hourly");
+    expect(migration.match(/FROM daily_skinny_taxonomy FINAL/g)).toHaveLength(2);
+    expect(migration.match(/INNER JOIN/g)).toHaveLength(2);
+    expect(migration.match(/argMin\(display_name, rank\)/g)).toHaveLength(2);
+    expect(migration).toContain("docs/data/daily-skinny-taxonomy-backfill.md");
+    expect(migration).toContain("daily_skinny_hn_hourly_mv");
+    expect(migration).toContain("daily_skinny_gh_hourly_mv");
   });
 
   it("verifies goose migration status via scripts/migrate.sh status", () => {
