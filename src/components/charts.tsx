@@ -42,33 +42,107 @@ function axisDays(days: string[], n = 4): { i: number; label: string }[] {
   return out;
 }
 
-export function DualLine({ days, a, b, aLabel, bLabel }: {
-  days: string[]; a: number[]; b: number[]; aLabel: string; bLabel: string;
+export function DualLine({
+  days,
+  a,
+  b,
+  aLabel,
+  bLabel,
+  enhanced = false,
+  area = false,
+  band = false,
+  peak = false,
+  endpoints = false,
+  maxGuide = false,
+}: {
+  days: string[];
+  a: number[];
+  b: number[];
+  aLabel: string;
+  bLabel: string;
+  // Enhanced chart idiom (Answer spec v1 / design doc 4b): opt-in so the
+  // bare 2-polyline form stays the default for non-divergence callers.
+  enhanced?: boolean;
+  area?: boolean;     // faint cyan area fill under the `a` series
+  band?: boolean;     // shaded magenta divergence band between `a` and `b`
+  peak?: boolean;     // labeled peak marker at the max-gap bucket
+  endpoints?: boolean; // endpoint dots on both series
+  maxGuide?: boolean; // "30d max" label top-left at the 1.0 gridline
 }) {
+  if (!enhanced) {
+    area = band = peak = endpoints = maxGuide = false;
+  }
   const W = 640, H = 200, padL = 8, padR = 8, padT = 12, padB = 22;
   const iw = W - padL - padR, ih = H - padT - padB;
+  const x = (i: number) => padL + (i / (days.length - 1)) * iw;
   const norm = (xs: number[]) => {
     const max = Math.max(...xs, 1);
     return xs.map((v) => v / max);
   };
-  const line = (xs: number[]) =>
-    norm(xs)
-      .map((v, i) => `${(padL + (i / (xs.length - 1)) * iw).toFixed(1)},${(padT + ih - v * ih).toFixed(1)}`)
-      .join(" ");
+  const na = norm(a);
+  const nb = norm(b);
+  const y = (v: number) => padT + ih - v * ih;
+  const pts = (xs: number[]) => xs.map((xs_v, i) => `${x(i).toFixed(1)},${y(xs_v).toFixed(1)}`).join(" ");
+  const aPts = pts(na);
+  const bPts = pts(nb);
+  const gridStroke = "var(--grid-line)";
+  const axisStroke = "var(--axis-stroke)";
+  const labelFill = "var(--text-secondary)";
+  // Area fill under `a`, closed back to the baseline at both ends.
+  const areaPts = `${x(0).toFixed(1)},${y(0).toFixed(1)} ${aPts} ${x(days.length - 1).toFixed(1)},${y(0).toFixed(1)}`;
+  // Shaded divergence band between the two normalized series (polygon from a
+  // forward then b back), clipped to the plot area.
+  const bandPts = `${na.map((v, i) => `${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(" ")} ${nb
+    .map((v, i) => `${x(days.length - 1 - i).toFixed(1)},${y(v).toFixed(1)}`)
+    .join(" ")}`;
+  // Peak = max divergence bucket where `a` outruns `b` (talk peaks above code).
+  let peakIdx = -1;
+  if (peak) {
+    let maxGap = -Infinity;
+    for (let i = 0; i < na.length; i++) {
+      const gap = na[i] - nb[i];
+      if (gap > maxGap) {
+        maxGap = gap;
+        peakIdx = i;
+      }
+    }
+    if (!Number.isFinite(na[peakIdx] ?? -Infinity) || (na[peakIdx] ?? 0) <= (nb[peakIdx] ?? 0)) {
+      peakIdx = -1; // no talk-above-code peak to label
+    }
+  }
+  const peakX = peakIdx >= 0 ? x(peakIdx) : 0;
+  const peakY = peakIdx >= 0 ? y(na[peakIdx]) : 0;
   return (
-    <figure className="chart">
+    <figure className={`chart${enhanced ? " chart-enhanced" : ""}`}>
       <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`${aLabel} vs ${bLabel}, normalized, 30 days`}>
         {[0.5, 1].map((t) => (
           <line key={t} x1={padL} x2={W - padR} y1={padT + ih - t * ih} y2={padT + ih - t * ih}
-                stroke="var(--line)" strokeWidth="1" />
+                stroke={gridStroke} strokeWidth="1" />
         ))}
-        <line x1={padL} x2={W - padR} y1={padT + ih} y2={padT + ih} stroke="var(--line)" strokeWidth="1" />
+        <line x1={padL} x2={W - padR} y1={padT + ih} y2={padT + ih} stroke={axisStroke} strokeWidth="1" />
+        {maxGuide && (
+          <text x={padL + 2} y={padT + 8} fontSize="9" fill={labelFill} className="mono" textAnchor="start">30d max</text>
+        )}
         {axisDays(days).map(({ i, label }) => (
-          <text key={i} x={padL + (i / (days.length - 1)) * iw} y={H - 6}
-                fontSize="9.5" fill="var(--muted)" textAnchor="middle" className="mono">{label}</text>
+          <text key={i} x={x(i)} y={H - 6}
+                fontSize="9.5" fill={labelFill} textAnchor="middle" className="mono">{label}</text>
         ))}
-        <polyline points={line(a)} fill="none" stroke="var(--cyan)" strokeWidth="2" strokeLinejoin="round" />
-        <polyline points={line(b)} fill="none" stroke="var(--mag)" strokeWidth="2" strokeLinejoin="round" />
+        {area && <polygon className="ch-area" points={areaPts} fill="var(--cyan)" fillOpacity="0.10" />}
+        {band && <polygon className="ch-band" points={bandPts} fill="var(--mag)" fillOpacity="0.13" />}
+        <polyline className="ch-line d2" points={bPts} fill="none" stroke="var(--mag)" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
+        <polyline className="ch-line" points={aPts} fill="none" stroke="var(--cyan)" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
+        {peak && peakIdx >= 0 && (
+          <g className="ch-peak">
+            <line x1={peakX} x2={peakX} y1={peakY} y2={padT + ih} stroke="var(--cyan)" strokeWidth="1" strokeDasharray="2 2" opacity="0.55" />
+            <text x={peakX} y={Math.max(peakY - 5, padT + 9)} fontSize="9.5" fill="var(--cyan)" textAnchor="middle" className="mono">peak</text>
+          </g>
+        )}
+        {endpoints && (
+          <>
+            <circle className="ch-dot" cx={x(days.length - 1)} cy={y(na[na.length - 1])} r="3" fill="var(--cyan)" />
+            <circle className="ch-dot" cx={x(days.length - 1)} cy={y(nb[nb.length - 1])} r="3" fill="var(--mag)" />
+          </>
+        )}
       </svg>
       <figcaption className="legend">
         <span><i className="swatch" style={{ background: "var(--cyan)" }} /> {aLabel}</span>

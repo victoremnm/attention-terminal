@@ -1,6 +1,6 @@
 import { prompts } from "@trigger.dev/sdk";
 import { chat } from "@trigger.dev/sdk/ai";
-import { stepCountIs, streamText } from "ai";
+import { hasToolCall, stepCountIs, streamText } from "ai";
 import { z } from "zod";
 import { attentionTelemetry, ensureAiSdkTelemetry } from "../lib/ai-telemetry";
 import { analystPromptTemplate, answerReference } from "../lib/agent-prompt";
@@ -139,7 +139,7 @@ export const attentionAgent = chat.agent({
       model,
       messages,
       tools,
-      stopWhen: stepCountIs(15),
+      stopWhen: [stepCountIs(15), hasToolCall("renderAnswer")],
       abortSignal: signal,
       prepareStep: ({ steps, stepNumber }) => {
         const toolNamesCalledSoFar = steps.flatMap((step) =>

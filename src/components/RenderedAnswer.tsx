@@ -69,10 +69,11 @@ function CopyBtn({ payload }: { payload: RenderPayload }) {
   );
 }
 
-function CopyableAnswer({ payload, showCopy = true, children }: { payload: RenderPayload; showCopy?: boolean; children: React.ReactNode }) {
+function CopyableAnswer({ payload, showCopy = true, question, children }: { payload: RenderPayload; showCopy?: boolean; question?: string; children: React.ReactNode }) {
   return (
     <div className="agent-answer-wrapper">
       {showCopy && <CopyBtn payload={payload} />}
+      {question && <p className="agent-question-echo">{question}</p>}
       {children}
     </div>
   );
@@ -284,7 +285,8 @@ function DivergenceAnswer({ payload }: { payload: DivergencePayload }) {
     <div className="agent-answer">
       <div className="agent-answer-head mono">{payload.subject}</div>
       <VerdictBadge verdict={payload.verdict} />
-      <DualLine days={payload.days} a={payload.talk} b={payload.code} aLabel="talk · HN" bLabel="code · GH" />
+      <DualLine days={payload.days} a={payload.talk} b={payload.code} aLabel="talk · HN" bLabel="code · GH"
+        enhanced area band peak endpoints maxGuide />
       <p className="agent-caption">{payload.caption}</p>
       <FreshnessBadge freshness={payload.freshness} />
     </div>
@@ -699,13 +701,24 @@ function RepoDrilldownAnswer({ payload }: { payload: RepoDrilldownPayload }) {
         </div>
       )}
       <div className="repo-kpis">
-        {kpis.map(([label, value]) => (
-          <div key={label} className="repo-kpi">
-            <b className="mono">{compact(value)}</b>
-            <span className="mono">{label} 24h</span>
-          </div>
-        ))}
+        {kpis
+          .filter(([, value]) => value > 0)
+          .map(([label, value]) => (
+            <div key={label} className="repo-kpi">
+              <b className="mono">{compact(value)}</b>
+              <span className="mono">{label} 24h</span>
+            </div>
+          ))}
       </div>
+      {(() => {
+        const zeroKpis = kpis.filter(([, value]) => value === 0);
+        if (zeroKpis.length === 0) return null;
+        return (
+          <p className="repo-kpi-fold mono">
+            {zeroKpis.map(([label]) => label).join(" · ")} · 0 · 24h
+          </p>
+        );
+      })()}
       <RepoVelocityChart payload={payload} />
       {payload.analysis && (
         <div className="repo-analysis">
@@ -1259,7 +1272,7 @@ function TableAnswer({ payload }: { payload: TablePayload }) {
   );
 }
 
-export function RenderedAnswer({ payload, showCopy = true }: { payload: RenderPayload; showCopy?: boolean }) {
+export function RenderedAnswer({ payload, showCopy = true, question }: { payload: RenderPayload; showCopy?: boolean; question?: string }) {
   let answer: React.ReactNode;
   if (payload.type === "digest") answer = <DigestAnswer payload={payload} />;
   else if (payload.type === "ticker") answer = <TickerAnswer payload={payload} />;
@@ -1271,5 +1284,5 @@ export function RenderedAnswer({ payload, showCopy = true }: { payload: RenderPa
   else if (payload.type === "table") answer = <TableAnswer payload={payload} />;
   else answer = <MatrixAnswer payload={payload} />;
 
-  return <CopyableAnswer payload={payload} showCopy={showCopy}>{answer}</CopyableAnswer>;
+  return <CopyableAnswer payload={payload} showCopy={showCopy} question={question}>{answer}</CopyableAnswer>;
 }

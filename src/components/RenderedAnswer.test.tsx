@@ -702,4 +702,87 @@ describe("RenderedAnswer table payload", () => {
     expect(screen.getByText("1,500")).toBeInTheDocument();
     expect(screen.queryByText(/previewing/)).not.toBeInTheDocument();
   });
+
+  describe("Answer spec v1 — enhanced DualLine (4b)", () => {
+    const divergencePayload: RenderPayload = {
+      type: "divergence",
+      subject: "htmx",
+      verdict: { state: "DIVERGENT", metric: 2.4, metricLabel: "talk/code spread", rule: "7d avg >= 3x prior-23d avg" },
+      days: ["2026-07-01", "2026-07-08", "2026-07-15", "2026-07-22", "2026-07-29"],
+      talk: [1, 3, 5, 8, 10],
+      code: [1, 1, 2, 2, 3],
+      caption: "Chatter is outrunning shipping — reads as hype, not adoption.",
+    };
+
+    it("renders the enhanced chart idiom (area, band, peak, endpoint dots, maxGuide)", () => {
+      const { container } = render(<RenderedAnswer payload={divergencePayload} />);
+      const fig = container.querySelector("figure.chart.chart-enhanced");
+      expect(fig).toBeInTheDocument();
+      // area fill + divergence band polygons
+      expect(container.querySelectorAll("figure.chart-enhanced svg polygon.ch-area").length).toBe(1);
+      expect(container.querySelectorAll("figure.chart-enhanced svg polygon.ch-band").length).toBe(1);
+      // two endpoint dots (one per series)
+      expect(container.querySelectorAll("figure.chart-enhanced svg circle.ch-dot").length).toBe(2);
+      // peak marker group with a "peak" label
+      expect(container.querySelector("figure.chart-enhanced svg g.ch-peak")).not.toBeNull();
+      expect(screen.getByText("peak")).toBeInTheDocument();
+      // 30d max guide
+      expect(screen.getByText("30d max")).toBeInTheDocument();
+      // two lines (cyan talk + magenta code)
+      expect(container.querySelectorAll("figure.chart-enhanced svg polyline.ch-line").length).toBe(2);
+    });
+
+    it("still renders the verdict + caption (anatomy steps 2 + 4)", () => {
+      render(<RenderedAnswer payload={divergencePayload} />);
+      expect(screen.getByText("DIVERGENT")).toBeInTheDocument();
+      expect(screen.getByText("Chatter is outrunning shipping — reads as hype, not adoption.")).toBeInTheDocument();
+    });
+
+    it("echoes the question as a › prompt when the `question` prop is supplied (anatomy step 1)", () => {
+      render(<RenderedAnswer payload={divergencePayload} question="is htmx hype or real?" />);
+      const echo = screen.getByText(/is htmx hype or real\?/);
+      expect(echo.className).toContain("agent-question-echo");
+    });
+  });
+
+  describe("Answer spec v1 — fold all-zero KPIs (2a preview)", () => {
+    function repoDrilldown(kpis24h: Record<string, number>): RenderPayload {
+      return {
+        type: "repo-drilldown",
+        repoName: "langgenius/dify",
+        generatedAt: new Date().toISOString(),
+        metadata: { description: "x", language: "Python", topics: [], githubStars: 0, githubForks: 0, openIssues: 0 },
+        kpis24h: {
+          pushes: 0, commits: 0, distinctCommits: 0, forks: 0, stars: 0,
+          issuesOpened: 0, prsOpened: 0, prsMerged: 0, actors: 0, ...kpis24h,
+        },
+        velocity: [],
+        topActors24h: [],
+        feed: [],
+        query: { sql: "SELECT 1", rowsRead: 0, elapsedMs: 0 },
+      } as RenderPayload;
+    }
+
+    it("folds an all-zero KPI strip to one muted chip line", () => {
+      const { container } = render(<RenderedAnswer payload={repoDrilldown({})} />);
+      // No nonzero KPI tiles when every KPI is zero.
+      expect(container.querySelectorAll(".repo-kpi").length).toBe(0);
+      // And exactly one muted fold-chip summarizing the flat window.
+      const fold = container.querySelector(".repo-kpi-fold");
+      expect(fold).not.toBeNull();
+      expect(fold?.textContent ?? "").toMatch(/0 · 24h$/);
+    });
+
+    it("keeps nonzero KPIs as tiles and folds the remaining zeros to a chip", () => {
+      const { container } = render(<RenderedAnswer payload={repoDrilldown({ pushes: 15, actors: 14 })} />);
+      // 2 nonzero KPIs render as tiles (pushes, actors).
+      expect(container.querySelectorAll(".repo-kpi").length).toBe(2);
+      // The remaining 5 all-zero KPIs (stars, forks, PRs, merged, issues) fold to the chip.
+      const fold = container.querySelector(".repo-kpi-fold");
+      expect(fold).not.toBeNull();
+      expect(fold?.textContent ?? "").toContain("stars");
+      expect(fold?.textContent ?? "").toContain("issues");
+      expect(fold?.textContent ?? "").toMatch(/0 · 24h$/);
+    });
+  });
 });
