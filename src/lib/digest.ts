@@ -268,6 +268,7 @@ export async function threadInsights(subjectId: string): Promise<HnThreadInsight
     details.observedReplies.map((reply) => ({ id: reply.id, text: reply.text })),
     details.evidence.story.title,
     5,
+    topic.tokens,
   );
   return HnThreadInsightsSchema.parse({ evidence: details.evidence, themes });
 }

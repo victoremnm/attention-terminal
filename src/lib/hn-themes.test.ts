@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { extractDiscussionThemes, stripHtml } from "./hn-themes";
+import { extractDiscussionThemes, HN_THEME_EXTRACTION_LIMITS, stripHtml } from "./hn-themes";
 
 describe("stripHtml", () => {
   it("removes HTML tags and decodes common entities", () => {
@@ -10,6 +10,11 @@ describe("stripHtml", () => {
   it("strips pre and code blocks safely", () => {
     const raw = "Check this snippet: <pre>const x = 10;</pre> and continue.";
     expect(stripHtml(raw)).toBe("Check this snippet: and continue.");
+  });
+
+  it("removes quoted blocks and encoded URL text before theme extraction", () => {
+    const raw = "<blockquote>&gt; quoted reply</blockquote><p>Actual comment with https:&#x2F;&#x2F;github.com&#x2F;org&#x2F;repo</p>";
+    expect(stripHtml(raw)).toBe("Actual comment with");
   });
 });
 
@@ -81,5 +86,68 @@ describe("extractDiscussionThemes", () => {
 
     const themes = extractDiscussionThemes(comments);
     expect(themes).toEqual([]); // only 2 valid comments >= 10 chars
+  });
+
+  it("deduplicates reinserted comment rows before calculating coverage", () => {
+    const comments = [
+      { id: 1, text: "The query planner is fast." },
+      { id: 1, text: "The query planner is still fast after an update." },
+      { id: 2, text: "We rely on the query planner for production workloads." },
+      { id: 3, text: "The query planner handles our workload well." },
+    ];
+
+    const theme = extractDiscussionThemes(comments).find((item) => item.label === "query planner");
+    expect(theme?.count).toBe(3);
+    expect(theme?.coverage).toBe(1);
+    expect(theme?.representativeCommentIds).toEqual([1, 2, 3]);
+  });
+
+  it("suppresses configured taxonomy tokens as standalone themes", () => {
+    const comments = [
+      { id: 1, text: "Agents make the workflow easier to automate." },
+      { id: 2, text: "Agents are useful when the workflow is reproducible." },
+      { id: 3, text: "Agents help teams keep the workflow observable." },
+    ];
+
+    const themes = extractDiscussionThemes(comments, undefined, 5, ["agents", "workflow"]);
+    expect(themes.find((theme) => theme.label === "agents")).toBeUndefined();
+    expect(themes.find((theme) => theme.label === "workflow")).toBeUndefined();
+  });
+
+  it("keeps extraction bounded even when callers provide a large sample", () => {
+    const comments = Array.from({ length: 150 }, (_, index) => ({
+      id: index + 1,
+      text: `${"repeated phrase ".repeat(200)} ${index}`,
+    }));
+
+    const themes = extractDiscussionThemes(comments, undefined, 100);
+    expect(themes.length).toBeLessThanOrEqual(HN_THEME_EXTRACTION_LIMITS.maxThemes);
+    expect(themes.every((theme) => theme.label.split(" ").length <= HN_THEME_EXTRACTION_LIMITS.maxPhraseWords)).toBe(true);
+  });
+
+  it("keeps the full valid-comment denominator when the byte sample is truncated", () => {
+    const comments = [
+      { id: 1, text: "The query planner is fast." },
+      { id: 2, text: "We rely on the query planner every day." },
+      { id: 3, text: "The query planner handles our workload." },
+      { id: 4, text: "x".repeat(HN_THEME_EXTRACTION_LIMITS.maxInputBytes) },
+    ];
+
+    const theme = extractDiscussionThemes(comments).find((item) => item.label === "query planner");
+    expect(theme?.count).toBe(3);
+    expect(theme?.coverage).toBe(0.75);
+  });
+
+  it("does not emit URL fragments or generic filler as themes", () => {
+    const comments = [
+      { id: 1, text: "The implementation uses https:&#x2F;&#x2F;github.com&#x2F;acme and improves request latency." },
+      { id: 2, text: "This implementation uses https:&#x2F;&#x2F;github.com&#x2F;acme to reduce request latency." },
+      { id: 3, text: "Our implementation uses https:&#x2F;&#x2F;github.com&#x2F;acme for predictable request latency." },
+    ];
+
+    const themes = extractDiscussionThemes(comments);
+    expect(themes.some((theme) => /x2f|github|com|uses/.test(theme.label))).toBe(false);
+    expect(themes.every((theme) => !theme.label.split(" ").some((word) => ["uses", "from", "the"].includes(word)))).toBe(true);
+    expect(themes.some((theme) => theme.label === "request latency")).toBe(true);
   });
 });
