@@ -19,6 +19,39 @@ describe("Goose Migrations & Skipping Index Verification", () => {
     }
   });
 
+  it("keeps the HN taxonomy MV predicate compatible with ClickHouse", async () => {
+    const migration = await fs.readFile(
+      path.join(process.cwd(), "migrations", "20260726000008_fix_hn_taxonomy_token_boundaries.sql"),
+      "utf-8"
+    );
+
+    expect(migration).toContain("replaceRegexpAll(lower(h.title), '[^a-z0-9]+', ' ')");
+    expect(migration).toContain("concat(' ', tok, ' ')");
+    expect(migration).not.toContain("position(lower(h.title), tok)");
+    expect(migration).not.toContain("hasToken(lower(h.title), tok)");
+    expect(migration).toContain("daily_skinny_hn_hourly_mv");
+  });
+
+  it("keeps the taxonomy backfill on whole-token matching", async () => {
+    const script = await fs.readFile(
+      path.join(process.cwd(), "scripts/backfills/backfill-daily-skinny-taxonomy.ts"),
+      "utf-8"
+    );
+
+    expect(script).toContain("replaceRegexpAll(lower(h.title), '[^a-z0-9]+', ' ')");
+    expect(script).toContain("concat(' ', tok, ' ')");
+    expect(script).not.toContain("position(lower(h.title), tok)");
+  });
+
+  it("keeps the HN watermark table in the migration chain", async () => {
+    const migration = await fs.readFile(
+      path.join(process.cwd(), "migrations", "20260726000007_restore_hn_ingest_watermark.sql"),
+      "utf-8"
+    );
+
+    expect(migration).toContain("CREATE TABLE IF NOT EXISTS default.ingest_watermark");
+  });
+
   it("verifies goose migration status via scripts/migrate.sh status", () => {
     try {
       const output = execSync("./scripts/migrate.sh status", {

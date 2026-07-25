@@ -18,32 +18,33 @@ describe("actorLeaderboard", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.ensureTablesExist.mockResolvedValue(undefined);
-    mocks.query.mockImplementation(async ({ query }: { query: string }) => ({
-      json: async () =>
-        query.includes("cls.actor_type IS NOT NULL")
-          ? [
-              {
-                actor_login: "alice",
-                events: "11",
-                repos: "4",
-                pushes: "6",
-                prs_opened: "2",
-                prs_merged: "1",
-                score: "37.5",
-              },
-            ]
-          : [
-              {
-                actor_login: "bot[bot]",
-                events: "19",
-                repos: "7",
-                pushes: "19",
-                prs_opened: "0",
-                prs_merged: "0",
-                score: "19",
-              },
-            ],
-    }));
+    mocks.query
+      .mockResolvedValueOnce({
+        json: async () => [
+          {
+            actor_login: "alice",
+            events: "11",
+            repos: "4",
+            pushes: "6",
+            prs_opened: "2",
+            prs_merged: "1",
+            score: "37.5",
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        json: async () => [
+          {
+            actor_login: "bot[bot]",
+            events: "19",
+            repos: "7",
+            pushes: "19",
+            prs_opened: "0",
+            prs_merged: "0",
+            score: "19",
+          },
+        ],
+      });
   });
 
   it("queries gh_actor_daily for humans and bots and coerces numeric values", async () => {
