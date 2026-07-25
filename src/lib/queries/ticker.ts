@@ -16,7 +16,7 @@ async function assembleTickerLanes(): Promise<TickerLanes> {
            AND ref_type = 'repository'
            AND created_at > high_water - INTERVAL 6 HOUR
          GROUP BY repo_name, h ORDER BY repo_name, h
-       ) GROUP BY repo_name ORDER BY at DESC LIMIT 20`,
+       ) GROUP BY repo_name ORDER BY at DESC LIMIT 24`,
       ["raw.github_events", "gh_repo_hourly"]
     ),
     q<{ name: string; forks: string; stars: string; pushes: string; prs: string; issues: string; spark: number[] }>(
@@ -62,7 +62,7 @@ async function assembleTickerLanes(): Promise<TickerLanes> {
        LEFT JOIN fork_spark fs ON p.repo_name = fs.repo_name
        ORDER BY p.pr_count * 5 + p.issue_count * 3 + p.push_count * 2 + least(p.fork_count, 20) DESC,
                 p.fork_count DESC
-       LIMIT 20`,
+       LIMIT 24`,
       ["gh_repo_hourly"]
     ),
     q<{
@@ -106,7 +106,7 @@ async function assembleTickerLanes(): Promise<TickerLanes> {
        ORDER BY commit_total * 4 + closed_pr_count * 5 + pr_count * 3
                 + least(push_count, commit_total) * 2 + actor_count * 2 DESC,
                 commit_total DESC
-       LIMIT 20`,
+       LIMIT 24`,
       ["gh_repo_activity_feed"]
     ),
     q<{ name: string; stars: string; surge: number; spark: number[] }>(
@@ -140,7 +140,7 @@ async function assembleTickerLanes(): Promise<TickerLanes> {
               r.spark AS spark
        FROM recent r LEFT ANY JOIN base b ON r.repo_name = b.repo_name
        GROUP BY r.repo_name, r.star_total, r.spark
-       ORDER BY r.star_total DESC LIMIT 20`,
+       ORDER BY r.star_total DESC LIMIT 24`,
       ["gh_repo_hourly"]
     ),
     q<{ id: number; name: string; score: number; velocity: number }>(
@@ -149,7 +149,7 @@ async function assembleTickerLanes(): Promise<TickerLanes> {
        FROM raw.hackernews FINAL
        WHERE type = 'story' AND time > now() - INTERVAL 6 HOUR
          AND score >= 10 AND deleted = 0 AND dead = 0
-       ORDER BY velocity DESC LIMIT 20`,
+       ORDER BY velocity DESC LIMIT 24`,
       ["raw.hackernews"]
     ),
     actorLeaderboard("24h").catch(() => undefined),
