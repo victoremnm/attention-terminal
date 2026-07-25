@@ -128,18 +128,6 @@ SELECT
                             event_type)))))))) AS payload_summary
 FROM default.github_events_firehose;
 
--- Backfill from existing default.github_events (no dead columns)
-INSERT INTO default.github_events_firehose
-    (event_id, event_type, actor_login, actor_avatar, repo_name, owner, created_at,
-     action, ref_type, number, title, payload)
-SELECT
-    event_id, event_type, actor_login, '' AS actor_avatar,
-    repo_name, owner, created_at,
-    action, ref_type, number, title,
-    '' AS payload
-FROM default.github_events
-SETTINGS max_insert_threads = 4, max_block_size = 500000;
-
 -- +goose Down
 DROP VIEW IF EXISTS curated.event_timeline_mv;
 DROP TABLE IF EXISTS curated.event_timeline;

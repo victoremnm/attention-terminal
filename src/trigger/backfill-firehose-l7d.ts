@@ -1,6 +1,8 @@
 import { logger, metadata, task, tags } from "@trigger.dev/sdk";
 import { clickhouse, logIngest, selectRows } from "../lib/clickhouse";
 
+const MAX_FILES_PER_RUN = 24;
+
 function hourKey(d: Date): string {
   return `${d.toISOString().slice(0, 10)}-${d.getUTCHours()}`;
 }
@@ -20,6 +22,7 @@ export const backfillFirehoseL7D = task({
   run: async () => {
     await tags.add("ingest");
 
+    // Skip hours already in ingest_log (from previous runs)
     const done = new Set(
       (
         await selectRows<{ chunk_key: string }>(
@@ -28,14 +31,37 @@ export const backfillFirehoseL7D = task({
       ).map((r) => r.chunk_key)
     );
 
+    // Also skip hours that already have data in the firehose table
+    // (from the migration backfill or previous ingest runs)
+    const existing = new Set(
+      (
+        await selectRows<{ hour: string }>(
+          `SELECT DISTINCT toString(toStartOfHour(created_at)) AS hour
+           FROM default.github_events_firehose
+           WHERE created_at > now() - INTERVAL 7 DAY`
+        )
+      ).map((r) => r.hour)
+    );
+
     // Backfill last 7 days of GH Archive files
     const until = new Date(Date.now() - 60 * 60 * 1000);
     const from = new Date(until.getTime() - 7 * 24 * 60 * 60 * 1000);
 
     let loaded = 0;
     for (const hour of candidateHours(from, until)) {
+      if (loaded >= MAX_FILES_PER_RUN) break;
       const key = hourKey(hour);
       if (done.has(key)) continue;
+
+      // Normalize to hour start for comparison
+      const hourStart = new Date(hour);
+      hourStart.setUTCMinutes(0, 0, 0);
+      const hourKeyNorm = hourStart.toISOString().slice(0, 19).replace("T", " ");
+      if (existing.has(hourKeyNorm)) {
+        logger.log("Hour already has data in firehose, skipping", { key, hourKeyNorm });
+        await logIngest({ source: "firehose", chunk_key: key, rows_ingested: 0 });
+        continue;
+      }
 
       const url = `https://data.gharchive.org/${key}.json.gz`;
       try {
@@ -78,7 +104,7 @@ export const backfillFirehoseL7D = task({
       }
 
       const [{ rows }] = await selectRows<{ rows: string }>(
-        `SELECT count() AS rows FROM default.github_events_firehose WHERE toStartOfHour(created_at) = toDateTime(${Math.floor(hour.getTime() / 1000)})`
+        `SELECT count() AS rows FROM default.github_events_firehose WHERE toStartOfHour(created_at) = toDateTime('${hourKeyNorm}')`
       );
       await logIngest({ source: "firehose", chunk_key: key, rows_ingested: Number(rows) });
       loaded += 1;
@@ -86,6 +112,9 @@ export const backfillFirehoseL7D = task({
       logger.log("Backfilled firehose hour", { key, rows: Number(rows) });
     }
 
+    if (loaded === 0) {
+      metadata.set("backfill", { source: "firehose", filesLoaded: 0 });
+    }
     return { filesLoaded: loaded };
   },
 });
