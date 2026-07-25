@@ -19,6 +19,17 @@ describe("Goose Migrations & Skipping Index Verification", () => {
     }
   });
 
+  it("keeps the HN taxonomy MV predicate compatible with ClickHouse", async () => {
+    const migration = await fs.readFile(
+      path.join(process.cwd(), "migrations", "20260726000006_fix_hn_taxonomy_token_matching.sql"),
+      "utf-8"
+    );
+
+    expect(migration).toContain("arrayExists(tok -> position(lower(h.title), tok) > 0, t.hn_tokens)");
+    expect(migration).not.toContain("hasToken(lower(h.title), tok)");
+    expect(migration).toContain("daily_skinny_hn_hourly_mv");
+  });
+
   it("verifies goose migration status via scripts/migrate.sh status", () => {
     try {
       const output = execSync("./scripts/migrate.sh status", {
