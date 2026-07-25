@@ -1,21 +1,9 @@
 -- +goose Up
 -- Fix: the firehose table was created with the old schema (dead columns
--- commit_count, distinct_commit_count, pr_merged, labels). Drop and recreate
--- with the correct schema (no dead columns, actor_avatar present).
+-- commit_count, distinct_commit_count, pr_merged, labels). Use
+-- CREATE OR REPLACE to atomically swap to the correct schema.
 
--- Drop everything (reverse order)
-DROP VIEW IF EXISTS curated.event_timeline_mv;
-DROP TABLE IF EXISTS curated.event_timeline;
-DROP VIEW IF EXISTS curated.event_volume_daily_mv;
-DROP TABLE IF EXISTS curated.event_volume_daily;
-DROP VIEW IF EXISTS curated.event_volume_hourly_mv;
-DROP TABLE IF EXISTS curated.event_volume_hourly;
-DROP VIEW IF EXISTS cleansed.github_events_stg_firehose;
-DROP VIEW IF EXISTS raw.github_events_firehose;
-DROP TABLE IF EXISTS default.github_events_firehose;
-
--- Recreate with correct schema (no dead columns)
-CREATE TABLE IF NOT EXISTS default.github_events_firehose
+CREATE OR REPLACE TABLE default.github_events_firehose
 (
     event_id      UInt64,
     event_type    LowCardinality(String),
@@ -34,10 +22,10 @@ ENGINE = MergeTree
 ORDER BY (event_type, repo_name, created_at)
 TTL created_at + INTERVAL 30 DAY;
 
-CREATE VIEW IF NOT EXISTS raw.github_events_firehose AS
+CREATE OR REPLACE VIEW raw.github_events_firehose AS
 SELECT * FROM default.github_events_firehose;
 
-CREATE VIEW IF NOT EXISTS cleansed.github_events_stg_firehose AS
+CREATE OR REPLACE VIEW cleansed.github_events_stg_firehose AS
 SELECT
     event_id,
     event_type,
