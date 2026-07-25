@@ -93,9 +93,13 @@ async function pickRepos(): Promise<string[]> {
     ),
     selectRows<{ repo_name: string }>(
       `SELECT repo_name,
-              uniqExactIf(f.actor_login, coalesce(cls.actor_type, '') != 'Bot' AND (cls.actor_type IS NOT NULL OR lower(f.actor_login) NOT LIKE '%[bot]%')) AS human_actors
-       FROM gh_repo_actor_activity_feed AS f
-       LEFT JOIN gh_actor_classification cls ON cls.actor_login = f.actor_login
+               uniqExactIf(f.actor_login, coalesce(cls.actor_type, '') != 'Bot' AND (cls.actor_type != '' OR lower(f.actor_login) NOT LIKE '%[bot]%')) AS human_actors
+        FROM gh_repo_actor_activity_feed AS f
+        LEFT JOIN (
+    SELECT actor_login, argMax(actor_type, fetched_at) AS actor_type
+    FROM gh_actor_classification
+    GROUP BY actor_login
+  ) cls ON cls.actor_login = f.actor_login
        WHERE f.created_at > now() - INTERVAL 7 DAY
        GROUP BY repo_name
        ORDER BY human_actors DESC

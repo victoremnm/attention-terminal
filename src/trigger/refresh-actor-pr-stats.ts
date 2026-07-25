@@ -132,8 +132,12 @@ async function pickActors(): Promise<string[]> {
            AND actor_login != ''
          GROUP BY actor_login
        ) AS cr
-       LEFT JOIN gh_actor_classification cls ON cls.actor_login = cr.actor_login
-       WHERE NOT (coalesce(cls.actor_type, '') = 'Bot' OR (cls.actor_type IS NULL AND cr.is_bot))
+        LEFT JOIN (
+    SELECT actor_login, argMax(actor_type, fetched_at) AS actor_type
+    FROM gh_actor_classification
+    GROUP BY actor_login
+  ) cls ON cls.actor_login = cr.actor_login
+        WHERE NOT (cls.actor_type = 'Bot' OR (cls.actor_type = '' AND cr.is_bot))
          AND NOT (cr.repos = 1 AND cr.pushes >= ${MEGA_PUSHER_THRESHOLD_30D})
        ORDER BY cr.prs DESC, cr.pushes DESC
        LIMIT ${MAX_ACTORS_PER_RUN * 4}`
