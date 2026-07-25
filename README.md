@@ -38,9 +38,23 @@ Secrets live in 1Password (Personal vault) and are mirrored into `.env` (gitigno
 ```bash
 npm run dev              # start the Next.js app
 npm test                 # run the vitest suite
+npm run test:migrations:local # run all Goose migrations in disposable OSS ClickHouse
 npm run log-telemetry    # flush subagent telemetry from the local spool to ClickHouse
 npx trigger.dev@latest dev   # start the local task runner
 ```
+
+`npm run test:migrations:local` starts `clickhouse/clickhouse-server:26.2`,
+validates and applies the complete `migrations/` chain, prints the resulting
+ClickHouse objects, and removes the container on exit. It never reads `.env`
+or connects to ClickHouse Cloud. The local-only source-schema fixture in
+`scripts/local-clickhouse-source-schema.sql` supplies the legacy
+`default.hackernews` and `default.github_events` tables that production had
+before this repository's migration history began. Set
+`KEEP_CLICKHOUSE_CONTAINER=1` to inspect a failed container manually; the
+runner prints its local native endpoint without printing the password. A
+non-zero result is intentional when Goose finds a migration-order or
+ClickHouse-version incompatibility: the failing migration and endpoint are
+left visible for inspection.
 
 Tasks live in `src/trigger/`. Import from `@trigger.dev/sdk` (never `@trigger.dev/sdk/v3`, never `client.defineJob`).
 The chat agent lives at `src/trigger/attention-agent.ts` and uses Trigger.dev `chat.agent()` with scoped session tokens minted by `src/lib/chat-actions.ts`.

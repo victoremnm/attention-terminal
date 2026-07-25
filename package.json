@@ -48,6 +48,7 @@
     "start": "next start",
     "release": "semantic-release",
     "test": "vitest run",
+    "test:migrations:local": "./scripts/test-migrations-local.sh",
     "log-telemetry": "tsx scripts/log-session-telemetry.ts",
     "review-prs": "tsx scripts/review-open-prs.ts"
   }
