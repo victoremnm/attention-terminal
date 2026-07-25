@@ -21,7 +21,7 @@ describe("Goose Migrations & Skipping Index Verification", () => {
 
   it("keeps the HN taxonomy MV predicate compatible with ClickHouse", async () => {
     const migration = await fs.readFile(
-      path.join(process.cwd(), "migrations", "20260726000006_fix_hn_taxonomy_token_matching.sql"),
+      path.join(process.cwd(), "migrations", "20260726000008_fix_hn_taxonomy_token_boundaries.sql"),
       "utf-8"
     );
 
