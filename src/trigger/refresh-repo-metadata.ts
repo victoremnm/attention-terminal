@@ -77,10 +77,14 @@ async function pickRepos(): Promise<string[]> {
     // llvm/llvm-project, elastic/kibana instead of push-spam/data-dump repos.
     selectRows<{ repo_name: string }>(
       `SELECT f.repo_name,
-              uniqExactIf(f.actor_login, coalesce(cls.actor_type, '') != 'Bot' AND (cls.actor_type IS NOT NULL OR lower(f.actor_login) NOT LIKE '%[bot]%')) AS human_actors,
-              countIf(f.event_type = 'PushEvent') AS push_count
+               uniqExactIf(f.actor_login, coalesce(cls.actor_type, '') != 'Bot' AND (cls.actor_type != '' OR lower(f.actor_login) NOT LIKE '%[bot]%')) AS human_actors,
+               countIf(f.event_type = 'PushEvent') AS push_count
         FROM gh_repo_actor_activity_feed AS f
-        LEFT JOIN gh_actor_classification cls ON cls.actor_login = f.actor_login
+        LEFT JOIN (
+    SELECT actor_login, argMax(actor_type, fetched_at) AS actor_type
+    FROM gh_actor_classification
+    GROUP BY actor_login
+  ) cls ON cls.actor_login = f.actor_login
         WHERE f.created_at > now() - INTERVAL ${ACTIVITY_WINDOW_DAYS} DAY
          AND f.repo_name != ''
        GROUP BY f.repo_name
