@@ -3,7 +3,7 @@ import { q, stat, valueOf } from "./core";
 import type { TickerLanes } from "./types";
 
 async function assembleTickerLanes(): Promise<TickerLanes> {
-  const [repos, forks, shipping, stars, stories] = await Promise.all([
+  const [repos, forks, shipping, stars] = await Promise.all([
     q<{ name: string; at: string; spark: number[] }>(
       `WITH (SELECT coalesce(max(hour), toStartOfHour(now())) FROM gh_repo_hourly) AS high_water
        SELECT repo_name AS name, max(h) AS at,
@@ -142,15 +142,6 @@ async function assembleTickerLanes(): Promise<TickerLanes> {
        ORDER BY r.star_total DESC LIMIT 20`,
       ["gh_repo_hourly"]
     ),
-    q<{ id: number; name: string; score: number; velocity: number }>(
-      `SELECT id, title AS name, score,
-              round(score / greatest((now() - time) / 3600, 0.5), 1) AS velocity
-       FROM raw.hackernews FINAL
-       WHERE type = 'story' AND time > now() - INTERVAL 6 HOUR
-         AND score >= 10 AND deleted = 0 AND dead = 0
-       ORDER BY velocity DESC LIMIT 20`,
-      ["raw.hackernews"]
-    ),
   ]);
 
   return {
@@ -207,14 +198,7 @@ async function assembleTickerLanes(): Promise<TickerLanes> {
       href: `https://github.com/${r.name}`,
       repoName: r.name,
     })),
-    risingStories: stories.rows.map((r) => ({
-      kicker: "RISING",
-      name: r.name,
-      metric: `${r.velocity} pts/hr`,
-      delta: `${r.score} pts`,
-      href: `https://news.ycombinator.com/item?id=${r.id}`,
-    })),
-    provenance: [repos.provenance, forks.provenance, shipping.provenance, stars.provenance, stories.provenance],
+    provenance: [repos.provenance, forks.provenance, shipping.provenance, stars.provenance],
     fetchedAt: new Date().toISOString(),
   };
 }
