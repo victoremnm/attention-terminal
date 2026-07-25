@@ -86,6 +86,7 @@ export function extractDiscussionThemes(
   const seenCommentIds = new Set<number>();
   const encoder = new TextEncoder();
   let inputBytes = 0;
+  let totalValidCommentCount = 0;
 
   for (const comment of comments) {
     if (seenCommentIds.has(comment.id)) continue;
@@ -93,9 +94,11 @@ export function extractDiscussionThemes(
 
     const cleanText = stripHtml(comment.text);
     if (cleanText.length < 10) continue;
+    totalValidCommentCount += 1;
 
     const commentBytes = encoder.encode(cleanText).byteLength;
-    if (inputBytes + commentBytes > HN_THEME_EXTRACTION_LIMITS.maxInputBytes) break;
+    if (validComments.length >= HN_THEME_EXTRACTION_LIMITS.maxComments) continue;
+    if (inputBytes + commentBytes > HN_THEME_EXTRACTION_LIMITS.maxInputBytes) continue;
 
     validComments.push({ id: comment.id, cleanText });
     inputBytes += commentBytes;
@@ -151,7 +154,7 @@ export function extractDiscussionThemes(
   }
 
   const candidateThemes: Array<{ theme: HnTheme; score: number }> = [];
-  const totalCount = validComments.length;
+  const totalCount = totalValidCommentCount;
 
   for (const [phrase, ids] of phraseMatches.entries()) {
     const count = ids.size;

@@ -125,6 +125,19 @@ describe("extractDiscussionThemes", () => {
     expect(themes.every((theme) => theme.label.split(" ").length <= HN_THEME_EXTRACTION_LIMITS.maxPhraseWords)).toBe(true);
   });
 
+  it("keeps the full valid-comment denominator when the byte sample is truncated", () => {
+    const comments = [
+      { id: 1, text: "The query planner is fast." },
+      { id: 2, text: "We rely on the query planner every day." },
+      { id: 3, text: "The query planner handles our workload." },
+      { id: 4, text: "x".repeat(HN_THEME_EXTRACTION_LIMITS.maxInputBytes) },
+    ];
+
+    const theme = extractDiscussionThemes(comments).find((item) => item.label === "query planner");
+    expect(theme?.count).toBe(3);
+    expect(theme?.coverage).toBe(0.75);
+  });
+
   it("does not emit URL fragments or generic filler as themes", () => {
     const comments = [
       { id: 1, text: "The implementation uses https:&#x2F;&#x2F;github.com&#x2F;acme and improves request latency." },
