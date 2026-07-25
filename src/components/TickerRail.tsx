@@ -181,7 +181,7 @@ export function TickerRail({ initial, ingestToken }: { initial: TickerLanes; ing
         { key: "topForked", title: "FORKED 24H" },
         { key: "shippingVelocity", title: "SHIPPING VELOCITY" },
         { key: "starBreakouts", title: "STAR BREAKOUTS" },
-        { key: "risingStories", title: "HN STORIES" },
+
       ] as const;
       for (const { key, title } of laneConfigs) {
         const cards = lanes[key] ?? [];
@@ -271,8 +271,6 @@ export function TickerRail({ initial, ingestToken }: { initial: TickerLanes; ing
       <Lane title="TOP FORKED · 24H" cards={lanes.topForked} selectedRepo={selectedRepo} loadingRepo={loadingRepo} onOpenRepo={openRepo} />
       <Lane title="SHIPPING VELOCITY · 24H" cards={lanes.shippingVelocity} selectedRepo={selectedRepo} loadingRepo={loadingRepo} onOpenRepo={openRepo} />
       <Lane title="STAR BREAKOUTS" cards={lanes.starBreakouts} selectedRepo={selectedRepo} loadingRepo={loadingRepo} onOpenRepo={openRepo} />
-      <Lane title="RISING STORIES" cards={lanes.risingStories} selectedRepo={selectedRepo} loadingRepo={loadingRepo} onOpenRepo={openRepo} />
-
       {(loadingRepo || drilldownError || drilldown) && (
         <div className="ticker-drilldown" aria-live="polite">
           {loadingRepo && <div className="agent-tool mono">rendering {loadingRepo} in background...</div>}

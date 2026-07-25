@@ -6,6 +6,15 @@ export interface HnTheme {
   confidence: number;
 }
 
+export const HN_THEME_EXTRACTION_LIMITS = {
+  maxComments: 100,
+  maxInputBytes: 120_000,
+  maxPhrases: 20_000,
+  maxThemes: 5,
+  maxPhraseWords: 3,
+  maxPhraseCharacters: 80,
+} as const;
+
 const STOP_WORDS = new Set([
   "a", "about", "above", "after", "again", "against", "all", "am", "an", "and", "any", "are", "aren't",
   "as", "at", "be", "because", "been", "before", "being", "below", "between", "both", "but", "by",
@@ -22,14 +31,18 @@ const STOP_WORDS = new Set([
   "we've", "were", "weren't", "what", "what's", "when", "when's", "where", "where's", "which", "while",
   "who", "who's", "whom", "why", "why's", "with", "won't", "would", "wouldn't", "you", "you'd", "you'll",
   "you're", "you've", "your", "yours", "yourself", "yourselves", "also", "just", "really", "even", "much",
-  "well", "get", "got", "way", "think", "make", "know", "see", "good", "use", "using", "used", "need",
+  "well", "get", "got", "way", "think", "make", "know", "see", "good", "use", "uses", "using", "used", "need",
 ]);
+
+const URL_NOISE = new Set(["com", "github", "gitlab", "http", "https", "net", "org", "www", "x2f", "x3a"]);
 
 export function stripHtml(raw: string): string {
   if (!raw) return "";
-  return raw
+  const decoded = raw
     .replace(/<pre>[\s\S]*?<\/pre>/gi, " ")
     .replace(/<code>[\s\S]*?<\/code>/gi, " ")
+    .replace(/<blockquote>[\s\S]*?<\/blockquote>/gi, " ")
+    .replace(/<\/(p|div|li|br)>/gi, "\n")
     .replace(/<[^>]+>/g, " ")
     .replace(/&quot;/g, '"')
     .replace(/&amp;/g, "&")
@@ -37,6 +50,12 @@ export function stripHtml(raw: string): string {
     .replace(/&gt;/g, ">")
     .replace(/&#x27;/g, "'")
     .replace(/&apos;/g, "'")
+    .replace(/&#x([0-9a-f]+);/gi, (_, hex: string) => String.fromCodePoint(Number.parseInt(hex, 16)))
+    .replace(/&#(\d+);/g, (_, decimal: string) => String.fromCodePoint(Number.parseInt(decimal, 10)));
+
+  return decoded
+    .replace(/(^|\n)\s*>.*$/gm, " ")
+    .replace(/(?:https?:)?\/\/\S+|www\.\S+/gi, " ")
     .replace(/\s+/g, " ")
     .trim();
 }
@@ -47,23 +66,52 @@ function tokenizeWords(text: string): string[] {
     .replace(/[^a-z0-9\s_-]/g, " ")
     .split(/\s+/)
     .map((w) => w.replace(/^[^a-z0-9]+|[^a-z0-9]+$/g, ""))
-    .filter((w) => w.length > 2);
+    .filter((w) => w.length > 2 && !URL_NOISE.has(w));
+}
+
+function phrasesOverlap(first: string, second: string): boolean {
+  const firstWords = new Set(first.split(" "));
+  const secondWords = new Set(second.split(" "));
+  const sharedWords = [...firstWords].filter((word) => secondWords.has(word)).length;
+  return sharedWords >= Math.min(firstWords.size, secondWords.size);
 }
 
 export function extractDiscussionThemes(
   comments: Array<{ id: number; text: string }>,
   storyTitle?: string,
-  maxThemes = 5
+  maxThemes: number = HN_THEME_EXTRACTION_LIMITS.maxThemes,
+  configuredSuppressedTokens: readonly string[] = [],
 ): HnTheme[] {
-  const validComments = comments
-    .map((c) => ({ id: c.id, cleanText: stripHtml(c.text) }))
-    .filter((c) => c.cleanText.length >= 10);
+  const validComments: Array<{ id: number; cleanText: string }> = [];
+  const seenCommentIds = new Set<number>();
+  const encoder = new TextEncoder();
+  let inputBytes = 0;
+  let totalValidCommentCount = 0;
+
+  for (const comment of comments) {
+    if (seenCommentIds.has(comment.id)) continue;
+    seenCommentIds.add(comment.id);
+
+    const cleanText = stripHtml(comment.text);
+    if (cleanText.length < 10) continue;
+    totalValidCommentCount += 1;
+
+    const commentBytes = encoder.encode(cleanText).byteLength;
+    if (validComments.length >= HN_THEME_EXTRACTION_LIMITS.maxComments) continue;
+    if (inputBytes + commentBytes > HN_THEME_EXTRACTION_LIMITS.maxInputBytes) continue;
+
+    validComments.push({ id: comment.id, cleanText });
+    inputBytes += commentBytes;
+    if (validComments.length >= HN_THEME_EXTRACTION_LIMITS.maxComments) break;
+  }
 
   if (validComments.length < 3) {
     return [];
   }
 
-  const suppressedTokens = new Set<string>();
+  const suppressedTokens = new Set<string>(
+    configuredSuppressedTokens.flatMap((token) => tokenizeWords(token)),
+  );
   if (storyTitle) {
     tokenizeWords(storyTitle).forEach((token) => suppressedTokens.add(token));
   }
@@ -75,18 +123,24 @@ export function extractDiscussionThemes(
     const words = tokenizeWords(comment.cleanText);
     const n = words.length;
 
-    for (let len = 1; len <= 3; len++) {
+    for (let len = 1; len <= HN_THEME_EXTRACTION_LIMITS.maxPhraseWords; len++) {
       for (let i = 0; i <= n - len; i++) {
         const phraseWords = words.slice(i, i + len);
 
-        if (phraseWords.some((w) => STOP_WORDS.has(w) && len === 1)) continue;
-        if (phraseWords[0] && STOP_WORDS.has(phraseWords[0])) continue;
-        if (phraseWords[len - 1] && STOP_WORDS.has(phraseWords[len - 1])) continue;
+        if (phraseWords.some((w) => STOP_WORDS.has(w))) continue;
 
         if (len === 1 && suppressedTokens.has(phraseWords[0])) continue;
 
         const normalized = phraseWords.join(" ");
-        if (normalized.length < 4) continue;
+        if (
+          normalized.length < 4 ||
+          normalized.length > HN_THEME_EXTRACTION_LIMITS.maxPhraseCharacters
+        ) continue;
+
+        if (
+          !phraseMatches.has(normalized) &&
+          phraseMatches.size >= HN_THEME_EXTRACTION_LIMITS.maxPhrases
+        ) continue;
 
         const matchedSet = phraseMatches.get(normalized) ?? new Set<number>();
         matchedSet.add(comment.id);
@@ -100,13 +154,16 @@ export function extractDiscussionThemes(
   }
 
   const candidateThemes: Array<{ theme: HnTheme; score: number }> = [];
-  const totalCount = validComments.length;
+  const totalCount = totalValidCommentCount;
 
   for (const [phrase, ids] of phraseMatches.entries()) {
     const count = ids.size;
-    if (count < 2) continue; // Must be present in at least 2 distinct comments
-
     const wordCount = phrase.split(" ").length;
+    // A single word needs stronger recurrence than a phrase to be useful as a
+    // discussion theme; otherwise generic words that happen to repeat twice
+    // crowd out the more explainable multi-word evidence.
+    if (count < (wordCount === 1 ? 3 : 2)) continue;
+
     const coverage = Number((count / totalCount).toFixed(2));
     const confidence = Math.min(1.0, Number((0.5 + coverage * 0.5).toFixed(2)));
 
@@ -135,14 +192,11 @@ export function extractDiscussionThemes(
 
   const deduplicated: HnTheme[] = [];
   for (const { theme: candidate } of candidateThemes) {
-    const isSubset = deduplicated.some(
-      (existing) =>
-        existing.label.includes(candidate.label) || candidate.label.includes(existing.label)
-    );
+    const isSubset = deduplicated.some((existing) => phrasesOverlap(existing.label, candidate.label));
     if (!isSubset) {
       deduplicated.push(candidate);
     }
-    if (deduplicated.length >= maxThemes) break;
+    if (deduplicated.length >= Math.min(maxThemes, HN_THEME_EXTRACTION_LIMITS.maxThemes)) break;
   }
 
   return deduplicated;

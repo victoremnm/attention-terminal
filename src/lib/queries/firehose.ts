@@ -95,7 +95,8 @@ export async function eventTimelineFeed(limit = 50): Promise<QueryResult<EventTi
       title,
       toString(number) AS number,
       payload_summary
-    FROM curated.event_timeline
+    FROM curated.event_timeline FINAL
+    WHERE created_at >= now() - INTERVAL 7 DAY
     ORDER BY created_at DESC
     LIMIT ${limit}
     `,
@@ -131,14 +132,14 @@ export async function firehoseStats(): Promise<QueryResult<FirehoseStatsRow[]>> 
   const { rows, sql, elapsedMs } = await safeQ<FirehoseStatsRow>(
     `
     SELECT
-      toString(count()) AS total_events,
+      toString(countMerge(events)) AS total_events,
       toString(uniqExact(repo_name)) AS total_repos,
-      toString(uniqExact(actor_login)) AS total_actors,
-      toString(max(created_at)) AS latest_event
-    FROM default.github_events_firehose
-    WHERE created_at > now() - INTERVAL 24 HOUR
+      toString(uniqMerge(actors)) AS total_actors,
+      toString(max(hour)) AS latest_event
+    FROM curated.event_volume_hourly
+    WHERE hour > now() - INTERVAL 24 HOUR
     `,
-    ["default.github_events_firehose"]
+    STATS_TABLES
   );
   return {
     data: rows.length > 0 ? rows : [EMPTY_STATS],
