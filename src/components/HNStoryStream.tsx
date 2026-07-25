@@ -1,5 +1,5 @@
 import { SurfaceNav } from "@/components/SurfaceNav";
-import { hnStoryFeed, type HNStoryRow } from "@/lib/queries";
+import { hnStoryStream, type HNStoryRow, type HNReplyRow } from "@/lib/queries";
 
 function safeDomain(url: string): string | null {
   try {
@@ -20,7 +20,41 @@ function HNLink({ id, children }: { id: string; children: React.ReactNode }) {
   );
 }
 
-function StoryCard({ row }: { row: HNStoryRow }) {
+function sanitizeExcerpt(text: string | null | undefined, maxLength = 200) {
+  if (!text) return "";
+  const plain = text
+    .replace(/<\/?(script|style)[^>]*>[\s\S]*?<\/?\1>/gi, " ")
+    .replace(/<[^>]*>/g, " ")
+    .replace(/&#(x[\da-f]+|\d+);/gi, (_, code: string) =>
+      String.fromCodePoint(Number(code[0].toLowerCase() === "x" ? parseInt(code.slice(1), 16) : code)),
+    )
+    .replace(/&(?:amp|lt|gt|quot|#39);/gi, (entity) => ({
+      "&amp;": "&", "&lt;": "<", "&gt;": ">", "&quot;": '"', "&#39;": "'",
+    })[entity.toLowerCase()] ?? entity)
+    .replace(/\s+/g, " ")
+    .trim();
+  return plain.length > maxLength ? `${plain.slice(0, maxLength - 1).trimEnd()}…` : plain;
+}
+
+function ReplyPreview({ reply }: { reply: HNReplyRow }) {
+  const ts = new Date(Number(reply.time) * 1000);
+  const timeStr = ts.toLocaleString([], {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+  return (
+    <div className="hn-reply-preview">
+      <span className="hn-reply-author mono">{reply.by}</span>
+      <span className="hn-reply-score mono">{reply.score} pts</span>
+      <span className="hn-reply-text">{sanitizeExcerpt(reply.text, 160)}</span>
+      <span className="hn-reply-time mono">{timeStr}</span>
+    </div>
+  );
+}
+
+function StoryCard({ row, replies }: { row: HNStoryRow; replies: HNReplyRow[] }) {
   const ts = new Date(Number(row.time) * 1000);
   const timeStr = ts.toLocaleString([], {
     month: "short",
@@ -57,12 +91,25 @@ function StoryCard({ row }: { row: HNStoryRow }) {
         <span className="hn-story-author">by {row.by}</span>
         <span className="hn-story-time">{timeStr}</span>
       </div>
+      {replies.length > 0 && (
+        <div className="hn-replies">
+          {replies.slice(0, 5).map((reply) => (
+            <ReplyPreview key={reply.id} reply={reply} />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
 
 export async function HNStoryStream() {
-  const stories = await hnStoryFeed(6, 50);
+  const { stories, replies } = await hnStoryStream(6, 50);
+  const repliesByStory = new Map<string, HNReplyRow[]>();
+  for (const reply of replies) {
+    const existing = repliesByStory.get(reply.story_id) ?? [];
+    existing.push(reply);
+    repliesByStory.set(reply.story_id, existing);
+  }
 
   return (
     <>
@@ -83,7 +130,7 @@ export async function HNStoryStream() {
               <p className="hn-empty mono">No stories in the current window.</p>
             )}
             {stories.data.map((row) => (
-              <StoryCard key={row.id} row={row} />
+              <StoryCard key={row.id} row={row} replies={repliesByStory.get(row.id) ?? []} />
             ))}
           </div>
         </section>
