@@ -25,6 +25,16 @@ function* candidateHours(from: Date, until: Date) {
   }
 }
 
+function parseHourArg(value: string): Date {
+  // Accept both ISO timestamps and YYYY-MM-DD-HH format
+  if (/^\d{4}-\d{2}-\d{2}-\d{1,2}$/.test(value)) {
+    const [datePart, hourPart] = value.split("-");
+    const [year, month, day] = datePart.split("-").map(Number);
+    return new Date(Date.UTC(year, month - 1, day, Number(hourPart)));
+  }
+  return new Date(value);
+}
+
 async function main() {
   const args = process.argv.slice(2);
   const dryRun = args.includes("--dry-run");
@@ -32,10 +42,10 @@ async function main() {
   const toIdx = args.indexOf("--to");
 
   const until = toIdx >= 0 && args[toIdx + 1]
-    ? new Date(args[toIdx + 1])
+    ? parseHourArg(args[toIdx + 1])
     : new Date(Date.now() - 60 * 60 * 1000);
   const from = fromIdx >= 0 && args[fromIdx + 1]
-    ? new Date(args[fromIdx + 1])
+    ? parseHourArg(args[fromIdx + 1])
     : new Date(until.getTime() - 7 * 24 * 60 * 60 * 1000);
 
   console.log(`Backfilling from ${from.toISOString()} to ${until.toISOString()}`);
@@ -108,7 +118,7 @@ async function main() {
       });
 
       const countResult = await client.query({
-        query: `SELECT toString(count()) AS rows FROM default.github_events_firehose WHERE toStartOfHour(created_at) = toDateTime('${hour.toISOString().slice(0, 19).replace("T", " ")}')`,
+        query: `SELECT toString(count()) AS rows FROM default.github_events_firehose WHERE toStartOfHour(created_at) = toDateTime('${hourStart.toISOString().slice(0, 19).replace("T", " ")}')`,
         format: "JSONEachRow",
       });
       const countData = await countResult.json<{ rows: string }>();

@@ -131,7 +131,7 @@ export async function firehoseStats(): Promise<QueryResult<FirehoseStatsRow[]>> 
   const { rows, sql, elapsedMs } = await safeQ<FirehoseStatsRow>(
     `
     SELECT
-      toString(sum(event_count)) AS total_events,
+      toString(count()) AS total_events,
       toString(uniqExact(repo_name)) AS total_repos,
       toString(uniqExact(actor_login)) AS total_actors,
       toString(max(created_at)) AS latest_event
