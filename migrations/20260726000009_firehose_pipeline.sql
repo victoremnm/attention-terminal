@@ -1,14 +1,15 @@
 -- +goose Up
 
 -- ============================================================
--- RAW: Full payload firehose table
+-- PHYSICAL TABLE: default.github_events_firehose
+-- MVs must read from the physical table, not a VIEW.
+-- The raw.* view provides a stable query-side name.
 -- ============================================================
-CREATE TABLE IF NOT EXISTS raw.github_events_firehose
+CREATE TABLE IF NOT EXISTS default.github_events_firehose
 (
     event_id      UInt64,
     event_type    LowCardinality(String),
     actor_login   String,
-    actor_avatar  String,
     repo_name     String,
     owner         String,
     created_at    DateTime,
@@ -26,6 +27,10 @@ ENGINE = MergeTree
 ORDER BY (event_type, repo_name, created_at)
 TTL created_at + INTERVAL 30 DAY;
 
+-- Query-side VIEW (stable name for application queries)
+CREATE VIEW IF NOT EXISTS raw.github_events_firehose AS
+SELECT * FROM default.github_events_firehose;
+
 -- ============================================================
 -- CLEANSED: View that normalizes raw firehose rows
 -- ============================================================
@@ -36,7 +41,6 @@ SELECT
     actor_login,
     cityHash64(actor_login) AS actor_id,
     toUInt8(lower(actor_login) LIKE '%[bot]%') AS is_bot,
-    actor_avatar,
     repo_name,
     owner,
     created_at,
@@ -49,7 +53,7 @@ SELECT
     title,
     labels,
     payload
-FROM raw.github_events_firehose;
+FROM default.github_events_firehose;
 
 -- ============================================================
 -- CURATED: Event volume per (repo, event_type, hour)
@@ -72,7 +76,7 @@ SELECT
     event_type,
     countState() AS events,
     uniqState(actor_login) AS actors
-FROM raw.github_events_firehose
+FROM default.github_events_firehose
 GROUP BY hour, repo_name, event_type;
 
 -- ============================================================
@@ -96,7 +100,7 @@ SELECT
     event_type,
     countState() AS events,
     uniqState(actor_login) AS actors
-FROM raw.github_events_firehose
+FROM default.github_events_firehose
 GROUP BY day, repo_name, event_type;
 
 -- ============================================================
@@ -107,7 +111,6 @@ CREATE TABLE IF NOT EXISTS curated.event_timeline
     created_at    DateTime,
     repo_name     String,
     actor_login   String,
-    actor_avatar  String,
     event_type    LowCardinality(String),
     action        LowCardinality(String),
     title         Nullable(String),
@@ -123,36 +126,36 @@ SELECT
     created_at,
     repo_name,
     actor_login,
-    actor_avatar,
     event_type,
     action,
     if(event_type = 'PullRequestEvent',
-       JSONExtractString(payload, 'pull_request', 'title'),
+       if(empty(payload) OR payload = '{}', title,
+          JSONExtractString(payload, 'pull_request', 'title')),
        if(event_type = 'IssuesEvent',
-          JSONExtractString(payload, 'issue', 'title'),
+          if(empty(payload) OR payload = '{}', title,
+             JSONExtractString(payload, 'issue', 'title')),
           if(event_type = 'ReleaseEvent',
-             JSONExtractString(payload, 'release', 'tag_name'),
-             null))) AS title,
-    toUInt32(JSONExtractUInt(payload, 'number')) AS number,
+             if(empty(payload) OR payload = '{}', title,
+                JSONExtractString(payload, 'release', 'tag_name')),
+             title))) AS title,
+    if(empty(payload) OR payload = '{}', number,
+       toUInt32(JSONExtractUInt(payload, 'number'))) AS number,
     if(event_type = 'PushEvent',
-       concat(toString(JSONExtractUInt(payload, 'size')), ' commits to ',
-              JSONExtractString(payload, 'ref')),
+       concat(toString(commit_count), ' commits to ', ref_type),
        if(event_type = 'WatchEvent', 'starred the repo',
           if(event_type = 'ForkEvent', 'forked the repo',
              if(event_type = 'PullRequestEvent',
-                concat(action, ' PR #', toString(JSONExtractUInt(payload, 'number'))),
+                concat(action, ' PR #', toString(number)),
                 if(event_type = 'IssuesEvent',
-                   concat(action, ' issue #', toString(JSONExtractUInt(payload, 'number'))),
+                   concat(action, ' issue #', toString(number)),
                    if(event_type = 'CreateEvent',
-                      concat('created ', JSONExtractString(payload, 'ref_type'), ' ',
-                             JSONExtractString(payload, 'ref')),
+                      concat('created ', ref_type, ' ', ref_type),
                       if(event_type = 'DeleteEvent',
-                         concat('deleted ', JSONExtractString(payload, 'ref_type'), ' ',
-                                JSONExtractString(payload, 'ref')),
+                         concat('deleted ', ref_type, ' ', ref_type),
                          if(event_type = 'ReleaseEvent',
-                            concat('published ', JSONExtractString(payload, 'release', 'tag_name')),
+                            concat('published ', coalesce(title, '')),
                             event_type)))))))) AS payload_summary
-FROM raw.github_events_firehose;
+FROM default.github_events_firehose;
 
 -- +goose Down
 DROP VIEW IF EXISTS curated.event_timeline_mv;
@@ -162,4 +165,5 @@ DROP TABLE IF EXISTS curated.event_volume_daily;
 DROP VIEW IF EXISTS curated.event_volume_hourly_mv;
 DROP TABLE IF EXISTS curated.event_volume_hourly;
 DROP VIEW IF EXISTS cleansed.github_events_stg_firehose;
-DROP TABLE IF EXISTS raw.github_events_firehose;
+DROP VIEW IF EXISTS raw.github_events_firehose;
+DROP TABLE IF EXISTS default.github_events_firehose;

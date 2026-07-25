@@ -31,10 +31,16 @@ export const ingestFirehose = schedules.task({
       ).map((r) => r.chunk_key)
     );
 
-    const [{ last }] = await selectRows<{ last: string }>(
-      "SELECT toUnixTimestamp(toStartOfHour(max(created_at))) AS last FROM raw.github_events_firehose"
+    // Bootstrap: if the firehose table is empty, start from the high-water
+    // of the existing default.github_events table so we don't try to fetch
+    // 1970 GH Archive files.
+    const [{ firehose_last }] = await selectRows<{ firehose_last: string }>(
+      "SELECT toUnixTimestamp(toStartOfHour(max(created_at))) AS firehose_last FROM default.github_events_firehose"
     );
-    const from = new Date((Number(last) + 3600) * 1000);
+    const from =
+      firehose_last === "0" || !firehose_last
+        ? new Date(Date.now() - 2 * 60 * 60 * 1000) // start 2h ago on first run
+        : new Date((Number(firehose_last) + 3600) * 1000);
     const until = new Date(Date.now() - 60 * 60 * 1000);
 
     let loaded = 0;
@@ -47,14 +53,13 @@ export const ingestFirehose = schedules.task({
       try {
         await clickhouse.command({
           query: `
-            INSERT INTO raw.github_events_firehose
-              (event_id, event_type, actor_login, actor_avatar, repo_name, owner, created_at,
+            INSERT INTO default.github_events_firehose
+              (event_id, event_type, actor_login, repo_name, owner, created_at,
                action, ref_type, commit_count, distinct_commit_count, pr_merged, number, title, labels, payload)
             SELECT
               toUInt64OrZero(id),
               type,
               tupleElement(actor, 'login'),
-              '',
               tupleElement(repo, 'name'),
               splitByChar('/', tupleElement(repo, 'name'))[1],
               created_at,
@@ -94,7 +99,7 @@ export const ingestFirehose = schedules.task({
       }
 
       const [{ rows }] = await selectRows<{ rows: string }>(
-        `SELECT count() AS rows FROM raw.github_events_firehose WHERE toStartOfHour(created_at) = toDateTime(${Math.floor(hour.getTime() / 1000)})`
+        `SELECT count() AS rows FROM default.github_events_firehose WHERE toStartOfHour(created_at) = toDateTime(${Math.floor(hour.getTime() / 1000)})`
       );
       await logIngest({ source: "firehose", chunk_key: key, rows_ingested: Number(rows) });
       loaded += 1;

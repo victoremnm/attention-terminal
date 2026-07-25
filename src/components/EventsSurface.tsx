@@ -101,7 +101,7 @@ export async function EventsSurface() {
 
   return (
     <>
-      <SurfaceNav active="home" />
+      <SurfaceNav active="events" />
       <main className="events-shell">
         <header className="events-head">
           <p className="skinny-kicker mono">EVENT_FIREHOSE</p>

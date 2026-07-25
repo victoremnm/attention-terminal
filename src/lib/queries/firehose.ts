@@ -5,8 +5,10 @@ const TABLES = [
   "curated.event_volume_hourly",
   "curated.event_volume_daily",
   "curated.event_timeline",
-  "raw.github_events_firehose",
+  "default.github_events_firehose",
 ];
+
+const STATS_TABLES = ["curated.event_volume_hourly"];
 
 export interface EventVolumeRow {
   repo_name: string;
@@ -19,7 +21,6 @@ export interface EventTimelineRow {
   created_at: string;
   repo_name: string;
   actor_login: string;
-  actor_avatar: string;
   event_type: string;
   action: string;
   title: string | null;
@@ -41,8 +42,28 @@ export interface FirehoseStatsRow {
   latest_event: string;
 }
 
+const EMPTY_STATS: FirehoseStatsRow = {
+  total_events: "0",
+  total_repos: "0",
+  total_actors: "0",
+  latest_event: "",
+};
+
+async function safeQ<T>(
+  sql: string,
+  tables: string[],
+  query_params?: Record<string, unknown>
+): Promise<{ rows: T[]; sql: string; elapsedMs: number }> {
+  try {
+    const { rows, provenance } = await q<T>(sql, tables, query_params);
+    return { rows, sql: provenance.sql, elapsedMs: provenance.elapsedMs };
+  } catch {
+    return { rows: [], sql: sql.trim(), elapsedMs: 0 };
+  }
+}
+
 export async function eventVolumeFeed(): Promise<QueryResult<EventVolumeRow[]>> {
-  const { rows, provenance } = await q<EventVolumeRow>(
+  const { rows, sql, elapsedMs } = await safeQ<EventVolumeRow>(
     `
     SELECT
       repo_name,
@@ -57,17 +78,16 @@ export async function eventVolumeFeed(): Promise<QueryResult<EventVolumeRow[]>> 
     `,
     TABLES
   );
-  return { data: rows, sql: provenance.sql, rowsRead: provenance.rowsRead ?? 0, elapsedMs: provenance.elapsedMs };
+  return { data: rows, sql, rowsRead: 0, elapsedMs };
 }
 
 export async function eventTimelineFeed(limit = 50): Promise<QueryResult<EventTimelineRow[]>> {
-  const { rows, provenance } = await q<EventTimelineRow>(
+  const { rows, sql, elapsedMs } = await safeQ<EventTimelineRow>(
     `
     SELECT
       toString(created_at) AS created_at,
       repo_name,
       actor_login,
-      actor_avatar,
       event_type,
       action,
       title,
@@ -79,14 +99,14 @@ export async function eventTimelineFeed(limit = 50): Promise<QueryResult<EventTi
     `,
     TABLES
   );
-  return { data: rows, sql: provenance.sql, rowsRead: provenance.rowsRead ?? 0, elapsedMs: provenance.elapsedMs };
+  return { data: rows, sql, rowsRead: 0, elapsedMs };
 }
 
 export async function eventVolumeByDay(
   repoName: string,
   days = 30
 ): Promise<QueryResult<EventVolumeByDayRow[]>> {
-  const { rows, provenance } = await q<EventVolumeByDayRow>(
+  const { rows, sql, elapsedMs } = await safeQ<EventVolumeByDayRow>(
     `
     SELECT
       toString(day) AS date,
@@ -102,21 +122,34 @@ export async function eventVolumeByDay(
     TABLES,
     { repoName }
   );
-  return { data: rows, sql: provenance.sql, rowsRead: provenance.rowsRead ?? 0, elapsedMs: provenance.elapsedMs };
+  return { data: rows, sql, rowsRead: 0, elapsedMs };
 }
 
 export async function firehoseStats(): Promise<QueryResult<FirehoseStatsRow[]>> {
-  const { rows, provenance } = await q<FirehoseStatsRow>(
+  const { rows, sql, elapsedMs } = await safeQ<FirehoseStatsRow>(
     `
     SELECT
-      toString(count()) AS total_events,
+      toString(sum(event_count)) AS total_events,
       toString(uniqExact(repo_name)) AS total_repos,
-      toString(uniqExact(actor_login)) AS total_actors,
-      toString(max(created_at)) AS latest_event
-    FROM raw.github_events_firehose
-    WHERE created_at > now() - INTERVAL 24 HOUR
+      toString(uniqExact(actor_count)) AS total_actors,
+      toString(max(hour)) AS latest_event
+    FROM (
+      SELECT
+        repo_name,
+        toString(countMerge(events)) AS event_count,
+        toString(uniqMerge(actors)) AS actor_count,
+        hour
+      FROM curated.event_volume_hourly
+      WHERE hour > now() - INTERVAL 24 HOUR
+      GROUP BY repo_name, hour
+    )
     `,
-    TABLES
+    STATS_TABLES
   );
-  return { data: rows, sql: provenance.sql, rowsRead: provenance.rowsRead ?? 0, elapsedMs: provenance.elapsedMs };
+  return {
+    data: rows.length > 0 ? rows : [EMPTY_STATS],
+    sql,
+    rowsRead: 0,
+    elapsedMs,
+  };
 }
