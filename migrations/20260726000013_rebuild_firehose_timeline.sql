@@ -106,4 +106,9 @@ RENAME TABLE curated.event_timeline_mv_rebuild TO curated.event_timeline_mv;
 DROP TABLE curated.event_timeline_rebuild;
 
 -- +goose Down
-DROP VIEW IF EXISTS curated.event_timeline_mv;
+-- Keep the corrected MV active when this migration is rolled back in
+-- isolation. Migration 12's old definition is not safe to restore because it
+-- reads the removed payload.size field, and dropping the current MV would stop
+-- timeline ingestion entirely. A future corrective migration can explicitly
+-- replace this projection if rollback of the data shape is ever required.
+SELECT 1;
