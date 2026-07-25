@@ -30,7 +30,13 @@ async function runBackfill() {
           AND h.deleted = 0
           AND h.dead = 0
           AND h.time >= (SELECT max(time) FROM hackernews) - INTERVAL {days: UInt32} DAY
-          AND arrayExists(tok -> position(lower(h.title), tok) > 0, t.hn_tokens)
+          AND arrayExists(
+            tok -> position(
+              concat(' ', replaceRegexpAll(lower(h.title), '[^a-z0-9]+', ' '), ' '),
+              concat(' ', tok, ' ')
+            ) > 0,
+            t.hn_tokens
+          )
         GROUP BY hour, h.id, h.descendants
     )
     GROUP BY hour, subject

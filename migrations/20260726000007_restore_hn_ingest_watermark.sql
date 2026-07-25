@@ -12,4 +12,5 @@ ENGINE = ReplacingMergeTree(updated_at)
 ORDER BY source;
 
 -- +goose Down
-DROP TABLE IF EXISTS default.ingest_watermark;
+-- Intentionally a no-op: the table is owned by migration 20260726000005.
+-- A repair rollback must not delete an existing cursor or break ingestion.

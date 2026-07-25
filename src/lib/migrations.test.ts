@@ -25,9 +25,22 @@ describe("Goose Migrations & Skipping Index Verification", () => {
       "utf-8"
     );
 
-    expect(migration).toContain("arrayExists(tok -> position(lower(h.title), tok) > 0, t.hn_tokens)");
+    expect(migration).toContain("replaceRegexpAll(lower(h.title), '[^a-z0-9]+', ' ')");
+    expect(migration).toContain("concat(' ', tok, ' ')");
+    expect(migration).not.toContain("position(lower(h.title), tok)");
     expect(migration).not.toContain("hasToken(lower(h.title), tok)");
     expect(migration).toContain("daily_skinny_hn_hourly_mv");
+  });
+
+  it("keeps the taxonomy backfill on whole-token matching", async () => {
+    const script = await fs.readFile(
+      path.join(process.cwd(), "scripts/backfills/backfill-daily-skinny-taxonomy.ts"),
+      "utf-8"
+    );
+
+    expect(script).toContain("replaceRegexpAll(lower(h.title), '[^a-z0-9]+', ' ')");
+    expect(script).toContain("concat(' ', tok, ' ')");
+    expect(script).not.toContain("position(lower(h.title), tok)");
   });
 
   it("keeps the HN watermark table in the migration chain", async () => {

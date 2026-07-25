@@ -2,6 +2,12 @@
 -- ClickHouse requires hasToken's token argument to be a constant. The live
 -- taxonomy-driven HN view previously passed the array lambda variable to
 -- hasToken, which caused every Hacker News insert to fail while the view ran.
+-- Normalize non-alphanumeric separators before searching so dynamic matching
+-- retains whole-token behavior ("rust" does not match "trust").
+-- Historical rows are intentionally backfilled separately: the target is an
+-- additive AggregatingMergeTree, so an in-migration INSERT would double-count
+-- existing rows. Pause the HN writer during deployment, then run the bounded
+-- taxonomy backfill in #271 with both writers paused.
 DROP VIEW IF EXISTS daily_skinny_hn_hourly_mv;
 
 CREATE MATERIALIZED VIEW IF NOT EXISTS daily_skinny_hn_hourly_mv TO daily_skinny_subject_hourly AS
@@ -26,10 +32,17 @@ FROM
     WHERE h.type = 'story'
       AND h.deleted = 0
       AND h.dead = 0
-      AND arrayExists(tok -> position(lower(h.title), tok) > 0, t.hn_tokens)
+      AND arrayExists(
+        tok -> position(
+          concat(' ', replaceRegexpAll(lower(h.title), '[^a-z0-9]+', ' '), ' '),
+          concat(' ', tok, ' ')
+        ) > 0,
+        t.hn_tokens
+      )
     GROUP BY hour, h.id, h.descendants
 )
 GROUP BY hour, subject;
 
 -- +goose Down
-DROP VIEW IF EXISTS daily_skinny_hn_hourly_mv;
+-- Keep the repaired view in place on rollback. Dropping it would remove the
+-- pre-existing ingestion pipeline without restoring a usable definition.
