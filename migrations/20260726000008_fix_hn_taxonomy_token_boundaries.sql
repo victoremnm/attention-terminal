@@ -26,7 +26,14 @@ FROM
         h.descendants,
         argMin(t.display_name, t.rank) AS subject
     FROM hackernews h
-    CROSS JOIN daily_skinny_taxonomy t
+    -- Intentional bounded dimension expansion: each story must be compared
+    -- with each tokenized subject, and the taxonomy table is a small config
+    -- dimension. Filter empty token sets before expanding the source rows.
+    CROSS JOIN (
+        SELECT display_name, rank, hn_tokens
+        FROM daily_skinny_taxonomy
+        WHERE length(hn_tokens) > 0
+    ) t
     WHERE h.type = 'story'
       AND h.deleted = 0
       AND h.dead = 0

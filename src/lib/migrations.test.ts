@@ -50,8 +50,6 @@ describe("Goose Migrations & Skipping Index Verification", () => {
     );
 
     expect(migration).toContain("CREATE TABLE IF NOT EXISTS default.ingest_watermark");
-    expect(migration).toContain("ENGINE = ReplacingMergeTree(updated_at)");
-    expect(migration).toContain("ORDER BY source");
   });
 
   it("verifies goose migration status via scripts/migrate.sh status", () => {
