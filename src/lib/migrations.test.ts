@@ -30,6 +30,17 @@ describe("Goose Migrations & Skipping Index Verification", () => {
     expect(migration).toContain("daily_skinny_hn_hourly_mv");
   });
 
+  it("keeps the HN watermark table in the migration chain", async () => {
+    const migration = await fs.readFile(
+      path.join(process.cwd(), "migrations", "20260726000007_restore_hn_ingest_watermark.sql"),
+      "utf-8"
+    );
+
+    expect(migration).toContain("CREATE TABLE IF NOT EXISTS default.ingest_watermark");
+    expect(migration).toContain("ENGINE = ReplacingMergeTree(updated_at)");
+    expect(migration).toContain("ORDER BY source");
+  });
+
   it("verifies goose migration status via scripts/migrate.sh status", () => {
     try {
       const output = execSync("./scripts/migrate.sh status", {
