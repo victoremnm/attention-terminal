@@ -42,7 +42,7 @@ export async function actorLeaderboard(window: "24h" | "7d" = "24h"): Promise<Ac
     GROUP BY actor_login
   ) cls ON cls.actor_login = e.actor_login
     WHERE e.created_at > high_water - INTERVAL 24 HOUR
-      AND coalesce(cls.actor_type, '') != 'Bot' AND (cls.actor_type IS NOT NULL OR lower(e.actor_login) NOT LIKE '%[bot]%')
+      AND (cls.actor_type IN ('User', 'Organization') OR (cls.actor_type = '' AND lower(e.actor_login) NOT LIKE '%[bot]%'))
     GROUP BY e.actor_login
     ORDER BY toFloat64(score) DESC
     LIMIT 10
@@ -72,7 +72,7 @@ export async function actorLeaderboard(window: "24h" | "7d" = "24h"): Promise<Ac
     GROUP BY actor_login
   ) cls ON cls.actor_login = d.actor_login
     WHERE d.day >= ${dailyWindow}
-      AND coalesce(cls.actor_type, '') != 'Bot' AND (cls.actor_type IS NOT NULL OR lower(d.actor_login) NOT LIKE '%[bot]%')
+      AND (cls.actor_type IN ('User', 'Organization') OR (cls.actor_type = '' AND lower(d.actor_login) NOT LIKE '%[bot]%'))
     GROUP BY d.actor_login
     ORDER BY toFloat64(score) DESC
     LIMIT 10

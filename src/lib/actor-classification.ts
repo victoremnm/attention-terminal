@@ -15,7 +15,7 @@ export function classificationJoin(tableAlias: string): string {
 }
 
 export function notBotFilter(tableAlias: string): string {
-  return `coalesce(cls.actor_type, '') != 'Bot' AND (cls.actor_type IS NOT NULL OR lower(${tableAlias}.actor_login) NOT LIKE '%[bot]%')`;
+  return `(cls.actor_type IN ('User', 'Organization') OR (cls.actor_type = '' AND lower(${tableAlias}.actor_login) NOT LIKE '%[bot]%'))`;
 }
 
 export function isBotFilter(tableAlias: string): string {
