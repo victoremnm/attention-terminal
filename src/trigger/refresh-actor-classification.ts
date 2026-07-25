@@ -85,8 +85,8 @@ export const refreshActorClassification = schedules.task({
          )
        )
        SELECT actor_login FROM stale
-       ORDER BY actor_login
-       LIMIT ${MAX_ACTORS_PER_RUN}`
+        ORDER BY lower(actor_login) LIKE '%[bot]%' DESC, actor_login
+        LIMIT ${MAX_ACTORS_PER_RUN}`
     );
 
     if (candidates.length === 0) {
