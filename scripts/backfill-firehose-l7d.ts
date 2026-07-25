@@ -27,10 +27,10 @@ function* candidateHours(from: Date, until: Date) {
 
 function parseHourArg(value: string): Date {
   // Accept both ISO timestamps and YYYY-MM-DD-HH format
-  if (/^\d{4}-\d{2}-\d{2}-\d{1,2}$/.test(value)) {
-    const [datePart, hourPart] = value.split("-");
-    const [year, month, day] = datePart.split("-").map(Number);
-    return new Date(Date.UTC(year, month - 1, day, Number(hourPart)));
+  const hourMatch = /^(\d{4})-(\d{2})-(\d{2})-(\d{1,2})$/.exec(value);
+  if (hourMatch) {
+    const [, year, month, day, hour] = hourMatch;
+    return new Date(Date.UTC(Number(year), Number(month) - 1, Number(day), Number(hour)));
   }
   return new Date(value);
 }
