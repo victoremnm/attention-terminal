@@ -8,6 +8,9 @@ import {
   freshness,
   devScatter,
   activeContributionRanking,
+  eventTimelineFeed,
+  eventVolumeFeed,
+  firehoseStats,
   type RepoWindow,
 } from "./queries";
 
@@ -126,5 +129,38 @@ describe.skipIf(!hasCH)("query layer (integration)", () => {
 
     expect(duration).toBeLessThan(1500);
     expect(res.rowsRead).toBeLessThan(10_000_000);
+  }, 120_000);
+
+  it("firehoseStats executes and returns stats shape", async () => {
+    const { data } = await firehoseStats();
+    expect(Array.isArray(data)).toBe(true);
+    expect(data.length).toBeGreaterThanOrEqual(0);
+    if (data.length > 0) {
+      expect(typeof data[0].total_events).toBe("string");
+      expect(typeof data[0].total_repos).toBe("string");
+      expect(typeof data[0].total_actors).toBe("string");
+    }
+  }, 120_000);
+
+  it("eventTimelineFeed executes and returns timeline shape", async () => {
+    const { data } = await eventTimelineFeed(10);
+    expect(Array.isArray(data)).toBe(true);
+    for (const row of data) {
+      expect(typeof row.repo_name).toBe("string");
+      expect(typeof row.actor_login).toBe("string");
+      expect(typeof row.event_type).toBe("string");
+      expect(typeof row.payload_summary).toBe("string");
+    }
+  }, 120_000);
+
+  it("eventVolumeFeed executes and returns volume shape", async () => {
+    const { data } = await eventVolumeFeed();
+    expect(Array.isArray(data)).toBe(true);
+    for (const row of data) {
+      expect(typeof row.repo_name).toBe("string");
+      expect(typeof row.event_type).toBe("string");
+      expect(typeof row.event_count).toBe("string");
+      expect(typeof row.actor_count).toBe("string");
+    }
   }, 120_000);
 });
