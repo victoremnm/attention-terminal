@@ -87,21 +87,33 @@ async function fetchItems(ids: number[]) {
 }
 
 async function fetchHnWatermark(): Promise<number> {
+  // Primary: ingest_watermark table (added in migration 20260726000005).
+  // If migration hasn't run yet, fall back to max(id) from the data table.
+  try {
+    const [row] = await selectRows<{ watermark: string }>(
+      "SELECT max(watermark) AS watermark FROM default.ingest_watermark WHERE source = 'hackernews'",
+    );
+    if (row && Number(row.watermark) > 0) return Number(row.watermark);
+  } catch {
+    // table doesn't exist yet — fall through
+  }
+
   const [row] = await selectRows<{ watermark: string }>(
-    `SELECT coalesce(
-      (SELECT max(watermark) FROM default.ingest_watermark WHERE source = 'hackernews'),
-      (SELECT max(id) FROM raw.hackernews)
-    ) AS watermark`,
+    "SELECT max(id) AS watermark FROM raw.hackernews",
   );
   return Number(row?.watermark ?? 0);
 }
 
 async function writeHnWatermark(watermark: number) {
-  await clickhouseInsert.insert({
-    table: "default.ingest_watermark",
-    values: [{ source: "hackernews", watermark }],
-    format: "JSONEachRow",
-  });
+  try {
+    await clickhouseInsert.insert({
+      table: "default.ingest_watermark",
+      values: [{ source: "hackernews", watermark }],
+      format: "JSONEachRow",
+    });
+  } catch {
+    // table may not exist yet if migration hasn't run — idempotent skip
+  }
 }
 
 // Resolve root story ID for a comment by walking its parent chain via the HN API.
