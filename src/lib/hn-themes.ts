@@ -6,6 +6,15 @@ export interface HnTheme {
   confidence: number;
 }
 
+export const HN_THEME_EXTRACTION_LIMITS = {
+  maxComments: 100,
+  maxInputBytes: 120_000,
+  maxPhrases: 20_000,
+  maxThemes: 5,
+  maxPhraseWords: 3,
+  maxPhraseCharacters: 80,
+} as const;
+
 const STOP_WORDS = new Set([
   "a", "about", "above", "after", "again", "against", "all", "am", "an", "and", "any", "are", "aren't",
   "as", "at", "be", "because", "been", "before", "being", "below", "between", "both", "but", "by",
@@ -53,17 +62,36 @@ function tokenizeWords(text: string): string[] {
 export function extractDiscussionThemes(
   comments: Array<{ id: number; text: string }>,
   storyTitle?: string,
-  maxThemes = 5
+  maxThemes: number = HN_THEME_EXTRACTION_LIMITS.maxThemes,
+  configuredSuppressedTokens: readonly string[] = [],
 ): HnTheme[] {
-  const validComments = comments
-    .map((c) => ({ id: c.id, cleanText: stripHtml(c.text) }))
-    .filter((c) => c.cleanText.length >= 10);
+  const validComments: Array<{ id: number; cleanText: string }> = [];
+  const seenCommentIds = new Set<number>();
+  const encoder = new TextEncoder();
+  let inputBytes = 0;
+
+  for (const comment of comments) {
+    if (seenCommentIds.has(comment.id)) continue;
+    seenCommentIds.add(comment.id);
+
+    const cleanText = stripHtml(comment.text);
+    if (cleanText.length < 10) continue;
+
+    const commentBytes = encoder.encode(cleanText).byteLength;
+    if (inputBytes + commentBytes > HN_THEME_EXTRACTION_LIMITS.maxInputBytes) break;
+
+    validComments.push({ id: comment.id, cleanText });
+    inputBytes += commentBytes;
+    if (validComments.length >= HN_THEME_EXTRACTION_LIMITS.maxComments) break;
+  }
 
   if (validComments.length < 3) {
     return [];
   }
 
-  const suppressedTokens = new Set<string>();
+  const suppressedTokens = new Set<string>(
+    configuredSuppressedTokens.flatMap((token) => tokenizeWords(token)),
+  );
   if (storyTitle) {
     tokenizeWords(storyTitle).forEach((token) => suppressedTokens.add(token));
   }
@@ -75,7 +103,7 @@ export function extractDiscussionThemes(
     const words = tokenizeWords(comment.cleanText);
     const n = words.length;
 
-    for (let len = 1; len <= 3; len++) {
+    for (let len = 1; len <= HN_THEME_EXTRACTION_LIMITS.maxPhraseWords; len++) {
       for (let i = 0; i <= n - len; i++) {
         const phraseWords = words.slice(i, i + len);
 
@@ -86,7 +114,15 @@ export function extractDiscussionThemes(
         if (len === 1 && suppressedTokens.has(phraseWords[0])) continue;
 
         const normalized = phraseWords.join(" ");
-        if (normalized.length < 4) continue;
+        if (
+          normalized.length < 4 ||
+          normalized.length > HN_THEME_EXTRACTION_LIMITS.maxPhraseCharacters
+        ) continue;
+
+        if (
+          !phraseMatches.has(normalized) &&
+          phraseMatches.size >= HN_THEME_EXTRACTION_LIMITS.maxPhrases
+        ) continue;
 
         const matchedSet = phraseMatches.get(normalized) ?? new Set<number>();
         matchedSet.add(comment.id);
@@ -142,7 +178,7 @@ export function extractDiscussionThemes(
     if (!isSubset) {
       deduplicated.push(candidate);
     }
-    if (deduplicated.length >= maxThemes) break;
+    if (deduplicated.length >= Math.min(maxThemes, HN_THEME_EXTRACTION_LIMITS.maxThemes)) break;
   }
 
   return deduplicated;
