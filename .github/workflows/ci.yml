@@ -28,8 +28,8 @@ jobs:
       - name: Build application
         run: npm run build
 
-  dbt:
-    name: Goose migrations and dbt parse
+  migrations:
+    name: Goose migrations
     runs-on: ubuntu-latest
 
     steps:
@@ -46,18 +46,10 @@ jobs:
       - name: Validate Goose migrations
         run: goose -dir migrations validate
 
-      - name: Use Python 3.12
-        uses: actions/setup-python@v7
-        with:
-          python-version: "3.12"
-          cache: pip
-          cache-dependency-path: requirements-dbt.txt
-
-      - name: Install dbt dependencies
-        run: python -m pip install -r requirements-dbt.txt
-
-      - name: Parse dbt project
-        run: dbt parse --profiles-dir dbt
+      - name: Apply and roll back migrations in OSS ClickHouse
+        run: ./scripts/test-migrations-local.sh
+        env:
+          RUN_MIGRATION_ROLLBACK: "1"
 
   tests:
     name: Query integration tests

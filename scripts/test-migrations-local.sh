@@ -10,6 +10,7 @@ IMAGE="${CLICKHOUSE_IMAGE:-clickhouse/clickhouse-server:26.2}"
 PASSWORD="${CLICKHOUSE_LOCAL_PASSWORD:-local-migration-test}"
 CONTAINER="${CLICKHOUSE_LOCAL_CONTAINER:-attention-terminal-migrations-${RANDOM}-${RANDOM}}"
 KEEP_CONTAINER="${KEEP_CLICKHOUSE_CONTAINER:-0}"
+RUN_MIGRATION_ROLLBACK="${RUN_MIGRATION_ROLLBACK:-0}"
 TMP_DIR=""
 PORT=""
 
@@ -95,5 +96,13 @@ echo "Inspecting migration result"
 docker exec "$CONTAINER" clickhouse-client \
   --user default --password "$PASSWORD" --format PrettyCompact \
   --query "SELECT database, name, engine FROM system.tables WHERE database IN ('default', 'raw', 'cleansed', 'curated', 'internal') ORDER BY database, name"
+
+if [[ "$RUN_MIGRATION_ROLLBACK" == "1" ]]; then
+  echo "Rolling back checked-in migrations"
+  goose --no-color -dir migrations down-to 0
+
+  echo "Rollback status"
+  goose --no-color -dir migrations status
+fi
 
 echo "Local migration smoke test passed"

@@ -1,24 +1,22 @@
 -- +goose Up
--- Compatibility view for repo drill-down / ad-hoc agent SQL.
+-- Canonical table for repo drill-down / ad-hoc agent SQL.
 --
--- The canonical GitHub source is github_events; this view exists so
--- prompt-generated queries can target a stable, explicitly named feed
--- instead of inventing a nonexistent table. Keep it as a thin projection so
--- there is no backfill burden and no duplicate storage.
-CREATE VIEW IF NOT EXISTS gh_repo_activity_feed AS
-SELECT
-    repo_name,
-    actor_login,
-    created_at,
-    event_type,
-    action,
-    commit_count,
-    distinct_commit_count,
-    pr_merged,
-    number,
-    ref_type
-FROM github_events
-WHERE repo_name != '';
+-- The materialized view and subsequent migrations populate/extend this
+-- table. Keeping the target as a table is required for incremental writes and
+-- preserves the production object type.
+CREATE TABLE IF NOT EXISTS gh_repo_activity_feed
+(
+    created_at DateTime,
+    repo_name String,
+    actor_login String,
+    event_type LowCardinality(String),
+    action LowCardinality(String),
+    commits UInt16,
+    distinct_commits UInt16,
+    pr_merged UInt8
+)
+ENGINE = MergeTree
+ORDER BY (repo_name, created_at);
 
 -- +goose Down
-DROP VIEW IF EXISTS gh_repo_activity_feed;
+DROP TABLE IF EXISTS gh_repo_activity_feed;

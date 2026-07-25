@@ -144,20 +144,33 @@ SELECT
     task_identifier,
     metric_name,
     environment_type,
-    sum(sample_count) AS sample_count,
-    sum(sum_value) / sum(sample_count) AS avg_value,
-    min(min_value) AS min_value,
-    max(max_value) AS max_value,
-    quantilesExactWeighted(0.25, 0.50, 0.75, 0.95, 0.99)(quantiles_state) AS quantiles_array,
+    sample_count,
+    total_sum / sample_count AS avg_value,
+    min_value,
+    max_value,
+    quantiles_array,
     quantiles_array[1] AS p25_value,
     quantiles_array[2] AS median_value,
     quantiles_array[3] AS p75_value,
     (quantiles_array[3] - quantiles_array[1]) AS iqr_value,
     quantiles_array[4] AS p95_value,
     quantiles_array[5] AS p99_value
-FROM internal.trigger_task_metrics_hourly
-WHERE hour >= now() - INTERVAL 7 DAY
-GROUP BY hour, task_identifier, metric_name, environment_type;
+FROM
+(
+    SELECT
+        hour,
+        task_identifier,
+        metric_name,
+        environment_type,
+        sum(sample_count) AS sample_count,
+        sum(sum_value) AS total_sum,
+        min(min_value) AS min_value,
+        max(max_value) AS max_value,
+        quantilesMerge(0.25, 0.50, 0.75, 0.95, 0.99)(quantiles_state) AS quantiles_array
+    FROM internal.trigger_task_metrics_hourly
+    WHERE hour >= now() - INTERVAL 7 DAY
+    GROUP BY hour, task_identifier, metric_name, environment_type
+);
 
 -- Priority 1: Hourly Curated Metrics View for Long-Term (30-day) Dashboard Queries
 CREATE VIEW IF NOT EXISTS curated.task_execution_metrics_hourly AS
@@ -166,20 +179,33 @@ SELECT
     task_identifier,
     metric_name,
     environment_type,
-    sum(sample_count) AS sample_count,
-    sum(sum_value) / sum(sample_count) AS avg_value,
-    min(min_value) AS min_value,
-    max(max_value) AS max_value,
-    quantilesExactWeighted(0.25, 0.50, 0.75, 0.95, 0.99)(quantiles_state) AS quantiles_array,
+    sample_count,
+    total_sum / sample_count AS avg_value,
+    min_value,
+    max_value,
+    quantiles_array,
     quantiles_array[1] AS p25_value,
     quantiles_array[2] AS median_value,
     quantiles_array[3] AS p75_value,
     (quantiles_array[3] - quantiles_array[1]) AS iqr_value,
     quantiles_array[4] AS p95_value,
     quantiles_array[5] AS p99_value
-FROM internal.trigger_task_metrics_hourly
-WHERE hour >= now() - INTERVAL 30 DAY
-GROUP BY hour, task_identifier, metric_name, environment_type;
+FROM
+(
+    SELECT
+        hour,
+        task_identifier,
+        metric_name,
+        environment_type,
+        sum(sample_count) AS sample_count,
+        sum(sum_value) AS total_sum,
+        min(min_value) AS min_value,
+        max(max_value) AS max_value,
+        quantilesMerge(0.25, 0.50, 0.75, 0.95, 0.99)(quantiles_state) AS quantiles_array
+    FROM internal.trigger_task_metrics_hourly
+    WHERE hour >= now() - INTERVAL 30 DAY
+    GROUP BY hour, task_identifier, metric_name, environment_type
+);
 
 -- 8. CLICKHOUSE ROLE-BASED ACCESS CONTROL (RBAC)
 
@@ -206,7 +232,7 @@ DROP VIEW IF EXISTS curated.task_execution_metrics;
 DROP VIEW IF EXISTS curated.task_health_summary;
 DROP VIEW IF EXISTS internal.subagent_api_events;
 DROP VIEW IF EXISTS internal.subagent_runs;
-DROP MATERIALIZED VIEW IF EXISTS internal.trigger_task_metrics_hourly_mv;
+DROP VIEW IF EXISTS internal.trigger_task_metrics_hourly_mv;
 DROP TABLE IF EXISTS internal.trigger_task_metrics_hourly;
 DROP TABLE IF EXISTS internal.trigger_task_metrics;
 DROP TABLE IF EXISTS internal.trigger_task_spans;
