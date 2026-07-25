@@ -33,29 +33,12 @@ export interface TickerCard {
   repoName?: string;
 }
 
-export interface ActorLeaderboardRow {
-  actor_login: string;
-  events: number;
-  repos: number;
-  pushes: number;
-  prs_opened: number;
-  prs_merged: number;
-  score: number;
-}
-
-export interface ActorLeaderboard {
-  humans: ActorLeaderboardRow[];
-  bots: ActorLeaderboardRow[];
-  provenance: Provenance[];
-}
-
 export interface TickerLanes {
   newRepos: TickerCard[];
   topForked: TickerCard[];
   shippingVelocity: TickerCard[];
   starBreakouts: TickerCard[];
   risingStories: TickerCard[];
-  actors: ActorLeaderboard;
   provenance: Provenance[];
   fetchedAt: string;
 }

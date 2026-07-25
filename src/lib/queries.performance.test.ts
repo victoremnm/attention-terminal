@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { actorLeaderboard, tickerLanes, divergence, devScatter } from "./queries";
+import { tickerLanes, divergence, devScatter } from "./queries";
 
 const mocks = vi.hoisted(() => ({
   query: vi.fn(),
@@ -45,15 +45,6 @@ describe("query layer performance & structural optimization tests", () => {
       }
       return { json: async () => [] };
     });
-  });
-
-  it("actorLeaderboard(24h) uses cheap gh_repo_hourly watermark and avoids 139M-row raw.github_events subqueries", async () => {
-    await actorLeaderboard("24h");
-    const calls = mocks.query.mock.calls.map((c) => String(c[0].query));
-    for (const sql of calls) {
-      expect(sql).not.toContain("SELECT max(created_at) FROM raw.github_events");
-      expect(sql).toContain("coalesce(max(hour)");
-    }
   });
 
   it("tickerLanes uses cheap gh_repo_hourly watermark and avoids raw.github_events subqueries", async () => {

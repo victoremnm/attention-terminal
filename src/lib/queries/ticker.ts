@@ -1,10 +1,9 @@
 import { unstable_cache } from "next/cache";
-import { actorLeaderboard } from "./actor";
 import { q, stat, valueOf } from "./core";
 import type { TickerLanes } from "./types";
 
 async function assembleTickerLanes(): Promise<TickerLanes> {
-  const [repos, forks, shipping, stars, stories, actors] = await Promise.all([
+  const [repos, forks, shipping, stars, stories] = await Promise.all([
     q<{ name: string; at: string; spark: number[] }>(
       `WITH (SELECT coalesce(max(hour), toStartOfHour(now())) FROM gh_repo_hourly) AS high_water
        SELECT repo_name AS name, max(h) AS at,
@@ -152,7 +151,6 @@ async function assembleTickerLanes(): Promise<TickerLanes> {
        ORDER BY velocity DESC LIMIT 20`,
       ["raw.hackernews"]
     ),
-    actorLeaderboard("24h").catch(() => undefined),
   ]);
 
   return {
@@ -216,7 +214,6 @@ async function assembleTickerLanes(): Promise<TickerLanes> {
       delta: `${r.score} pts`,
       href: `https://news.ycombinator.com/item?id=${r.id}`,
     })),
-    actors: actors ?? { humans: [], bots: [], provenance: [] },
     provenance: [repos.provenance, forks.provenance, shipping.provenance, stars.provenance, stories.provenance],
     fetchedAt: new Date().toISOString(),
   };
