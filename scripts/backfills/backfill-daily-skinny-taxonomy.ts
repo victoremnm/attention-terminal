@@ -64,7 +64,7 @@ async function runBackfill() {
     (
         SELECT
             toStartOfHour(g.created_at) AS hour,
-            g.id,
+            g.event_id,
             g.repo_name,
             g.event_type,
             g.action,
@@ -75,7 +75,7 @@ async function runBackfill() {
         CROSS JOIN daily_skinny_taxonomy t
         WHERE g.created_at >= (SELECT max(created_at) FROM github_events) - INTERVAL {days: UInt32} DAY
           AND arrayExists(pat -> lower(g.repo_name) LIKE pat, t.gh_repo_patterns)
-        GROUP BY hour, g.id, g.repo_name, g.event_type, g.action, g.pr_merged, g.commit_count
+        GROUP BY hour, g.event_id, g.repo_name, g.event_type, g.action, g.pr_merged, g.commit_count
     )
     GROUP BY hour, subject
   `;
