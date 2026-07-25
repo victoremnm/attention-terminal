@@ -21,6 +21,7 @@ export interface EventTimelineRow {
   created_at: string;
   repo_name: string;
   actor_login: string;
+  actor_avatar: string;
   event_type: string;
   action: string;
   title: string | null;
@@ -88,6 +89,7 @@ export async function eventTimelineFeed(limit = 50): Promise<QueryResult<EventTi
       toString(created_at) AS created_at,
       repo_name,
       actor_login,
+      actor_avatar,
       event_type,
       action,
       title,

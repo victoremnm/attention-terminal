@@ -54,36 +54,27 @@ export const ingestFirehose = schedules.task({
         await clickhouse.command({
           query: `
             INSERT INTO default.github_events_firehose
-              (event_id, event_type, actor_login, repo_name, owner, created_at,
-               action, ref_type, commit_count, distinct_commit_count, pr_merged, number, title, labels, payload)
+              (event_id, event_type, actor_login, actor_avatar, repo_name, owner, created_at,
+               action, ref_type, number, title, payload)
             SELECT
               toUInt64OrZero(id),
               type,
               tupleElement(actor, 'login'),
+              tupleElement(actor, 'avatar_url'),
               tupleElement(repo, 'name'),
               splitByChar('/', tupleElement(repo, 'name'))[1],
               created_at,
               JSONExtractString(payload, 'action'),
               JSONExtractString(payload, 'ref_type'),
-              toUInt16(JSONExtractUInt(payload, 'size')),
-              toUInt16(JSONExtractUInt(payload, 'distinct_size')),
-              toUInt8(JSONExtractBool(payload, 'pull_request', 'merged')),
               toUInt32(JSONExtractUInt(payload, 'number')),
               if(type = 'PullRequestEvent',
                  JSONExtractString(payload, 'pull_request', 'title'),
                  if(type = 'IssuesEvent',
                     JSONExtractString(payload, 'issue', 'title'),
                     null)),
-              if(type = 'PullRequestEvent',
-                 arrayMap(x -> JSONExtractString(x, 'name'),
-                          JSONExtractArrayRaw(payload, 'pull_request', 'labels')),
-                 if(type = 'IssuesEvent',
-                    arrayMap(x -> JSONExtractString(x, 'name'),
-                             JSONExtractArrayRaw(payload, 'issue', 'labels')),
-                    [])),
               payload
             FROM url('${url}', 'JSONEachRow',
-                     'id String, type String, actor Tuple(login String), repo Tuple(name String), payload String, created_at DateTime')
+                     'id String, type String, actor Tuple(login String, avatar_url String), repo Tuple(name String), payload String, created_at DateTime')
             SETTINGS input_format_json_read_objects_as_strings = 1,
                      input_format_json_ignore_unknown_keys_in_named_tuple = 1,
                      input_format_skip_unknown_fields = 1,
