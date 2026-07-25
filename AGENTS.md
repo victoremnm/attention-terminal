@@ -404,6 +404,28 @@ gh pr list --repo victoremnm/attention-terminal --state open --json number,title
    only after ALL blockers are resolved and CI is green. The implementation
    agent must not self-clear the label or add `lgtm`.
 
+## PR Review Wait (mandatory)
+
+After creating or updating a PR, always wait **5 minutes** before checking for review
+feedback. Automated review tools (CodeRabbit, Copilot, Claude Code Action) need time
+to post their initial reviews. Checking immediately almost always finds nothing,
+wasting a check cycle.
+
+The 5-minute window covers:
+- **CodeRabbit**: appears 5-15 min after PR creation/update
+- **Copilot**: appears 2-5 min after PR creation/update
+- **Claude Code Action**: appears 2-10 min after PR creation/update
+
+Use the wait to poll CI in parallel. After the wait, execute the
+address-feedback workflow to resolve all automated comments before
+asking for human approval.
+
+```bash
+# Wait 5 min for automated reviewers, then check
+sleep 300
+./scripts/address-feedback.sh
+```
+
 ## Skills mount (recommended)
 
 This repo's custom skills can be mounted with:

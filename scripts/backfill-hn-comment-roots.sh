@@ -5,110 +5,195 @@ set -euo pipefail
 #
 # Backfill the `root` column for historical HN comment rows where root = 0.
 #
-# Strategy: walk stories in chunks, fetch story + its kid chain from the HN API,
-# and re-insert comment rows with root populated. The ReplacingMergeTree engine
-# deduplicates on (id), so re-inserting is safe and idempotent.
+# Strategy: walk stories in chunks, fetch each story's full kid tree from the
+# HN API (recursive, depth-limited to 3), and re-insert comment rows with root
+# populated. The ReplacingMergeTree engine deduplicates on (id), so re-inserting
+# is safe and idempotent.
 #
 # Usage:
 #   ./scripts/backfill-hn-comment-roots.sh               # backfill all stories
-#   ./scripts/backfill-hn-comment-roots.sh --chunk 1000   # process 1000 stories at a time
-#   ./scripts/backfill-hn-comment-roots.sh --resume       # skip stories already processed
+#   ./scripts/backfill-hn-comment-roots.sh --limit 100    # process at most N stories
 #
-# Idempotent: resumes after interruption. Progress is tracked via a temp table
-# or the watermark printed at each chunk.
+# Idempotent: skips comment rows where root is already set.
+# Resumes from where it left off.
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/../.env" 2>/dev/null || true
 
-CHUNK_SIZE="${CHUNK_SIZE:-1000}"
-RESUME="${RESUME:-false}"
+LIMIT=""
 
-# Parse args
 while [ "$#" -gt 0 ]; do
   case "$1" in
-    --chunk) CHUNK_SIZE="$2"; shift 2 ;;
-    --resume) RESUME=true; shift ;;
-    *) echo "Usage: $0 [--chunk N] [--resume]"; exit 1 ;;
+    --limit) LIMIT="$2"; shift 2 ;;
+    *) echo "Usage: $0 [--limit N]"; exit 1 ;;
   esac
 done
 
-echo "[backfill-hn-roots] Starting backfill (chunk=$CHUNK_SIZE, resume=$RESUME)"
+echo "[backfill-hn-roots] Starting backfill (limit=$LIMIT)"
 
-# Get distinct story IDs from the hackernews table
-STORIES=$(
-  curl -s "$CLICKHOUSE_URL" \
-    --user "$CLICKHOUSE_USER:$CLICKHOUSE_PASSWORD" \
-    -d "SELECT DISTINCT id, kids FROM default.hackernews WHERE type = 'story' AND length(kids) > 0 ORDER BY id"
-)
+python3 <<'PYEOF'
+import json, os, subprocess, sys, time
 
-TOTAL=$(echo "$STORIES" | wc -l | tr -d ' ')
-echo "[backfill-hn-roots] Found $TOTAL stories with kids to process"
+CLICKHOUSE_URL = os.environ.get("CLICKHOUSE_URL", "")
+CLICKHOUSE_USER = os.environ.get("CLICKHOUSE_USER", "default")
+CLICKHOUSE_PASSWORD = os.environ.get("CLICKHOUSE_PASSWORD", "")
 
-COUNT=0
-UPDATED=0
+MAX_DEPTH = 3
+CHUNK_SIZE = 25
+HN_API = "https://hacker-news.firebaseio.com/v0"
 
-echo "$STORIES" | while IFS=$'\t' read -r story_id kids_json; do
-  ((COUNT++)) || true
+LIMIT = os.environ.get("LIMIT")
 
-  # Extract kid IDs from JSON array
-  KIDS=$(echo "$kids_json" | python3 -c "import sys,json; arr=json.load(sys.stdin); print(' '.join(str(x) for x in arr))" 2>/dev/null || echo "")
+def ch_query(sql):
+    r = subprocess.run(
+        ["curl", "-s", CLICKHOUSE_URL, "--user", f"{CLICKHOUSE_USER}:{CLICKHOUSE_PASSWORD}", "-d", sql],
+        capture_output=True, text=True, timeout=30)
+    return r.stdout.strip()
 
-  if [ -z "$KIDS" ]; then
-    continue
-  fi
+def ch_insert(table, rows):
+    if not rows:
+        return
+    payload = "\n".join(json.dumps(r, ensure_ascii=False) for r in rows)
+    subprocess.run(
+        ["curl", "-s", CLICKHOUSE_URL, "--user", f"{CLICKHOUSE_USER}:{CLICKHOUSE_PASSWORD}",
+         "-d", f"INSERT INTO {table} FORMAT JSONEachRow\n{payload}"],
+        capture_output=True, timeout=30)
 
-  # Fetch each kid from HN API and extract comment rows
-  for kid_id in $KIDS; do
-    # Check if this kid already has root set
-    EXISTING_ROOT=$(curl -s "$CLICKHOUSE_URL" \
-      --user "$CLICKHOUSE_USER:$CLICKHOUSE_PASSWORD" \
-      -d "SELECT root FROM default.hackernews WHERE id = $kid_id AND root > 0 LIMIT 1" 2>/dev/null)
+def fetch_json(path):
+    for attempt in range(3):
+        try:
+            r = subprocess.run(
+                ["curl", "-s", "--max-time", "10", f"{HN_API}/{path}"],
+                capture_output=True, text=True, timeout=15)
+            if r.returncode == 0:
+                return json.loads(r.stdout)
+        except (json.JSONDecodeError, subprocess.TimeoutExpired):
+            time.sleep(1)
+    return None
 
-    if [ -n "$EXISTING_ROOT" ] && [ "$EXISTING_ROOT" != "0" ]; then
-      continue  # skip, already processed
-    fi
+def fetch_kids_batch(kid_ids):
+    """Fetch items for a batch of kid IDs, return list of API responses."""
+    results = []
+    for i in range(0, len(kid_ids), CHUNK_SIZE):
+        batch = kid_ids[i:i+CHUNK_SIZE]
+        for kid_id in batch:
+            item = fetch_json(f"item/{kid_id}.json")
+            results.append(item)
+    return results
 
-    RESULT=$(curl -s "https://hacker-news.firebaseio.com/v0/item/$kid_id.json")
-    TYPE=$(echo "$RESULT" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('type',''))" 2>/dev/null || echo "")
+def fetch_kid_tree(kid_ids, existing_ids, depth=0):
+    """Recursively fetch kid items and their descendants. Returns rows for ClickHouse."""
+    if depth >= MAX_DEPTH or not kid_ids:
+        return []
 
-    if [ "$TYPE" != "comment" ] && [ "$TYPE" != "pollopt" ]; then
-      continue
-    fi
+    rows = []
+    missing = [k for k in kid_ids if k not in existing_ids]
 
-    # Re-insert the row with root=${story_id}; ReplacingMergeTree deduplicates
-    ROW=$(echo "$RESULT" | python3 -c "
-import sys, json
-d = json.load(sys.stdin)
-print(json.dumps({
-    'id': d.get('id'),
-    'deleted': 1 if d.get('deleted') else 0,
-    'type': d.get('type', 'story'),
-    'by': d.get('by', ''),
-    'time': d.get('time', 0),
-    'text': d.get('text', ''),
-    'dead': 1 if d.get('dead') else 0,
-    'parent': d.get('parent', 0),
-    'poll': d.get('poll', 0),
-    'kids': d.get('kids', []),
-    'url': d.get('url', ''),
-    'score': d.get('score', 0),
-    'title': d.get('title', ''),
-    'parts': d.get('parts', []),
-    'descendants': d.get('descendants', 0),
-    'root': $story_id,
-}))
-")
+    if missing:
+        items = fetch_kids_batch(missing)
+        for item in items:
+            if not item or not item.get("id"):
+                continue
+            existing_ids.add(item["id"])
 
-    curl -s "$CLICKHOUSE_URL?query=INSERT+INTO+default.hackernews+FORMAT+JSONEachRow" \
-      --user "$CLICKHOUSE_USER:$CLICKHOUSE_PASSWORD" \
-      -d "$ROW" > /dev/null
+    # Collect kids for next depth level (both from newly fetched items and
+    # items that already existed but might have unprocessed grandchildren).
+    next_level = []
+    for kid_id in kid_ids:
+        item = fetch_json(f"item/{kid_id}.json")
+        if not item or not item.get("id"):
+            continue
+        existing_ids.add(item["id"])
+        if item.get("kids"):
+            next_level.extend(item["kids"])
 
-    ((UPDATED++)) || true
-  done
+    # Fetch next level recursively
+    deeper = fetch_kid_tree(next_level, existing_ids, depth + 1)
+    rows.extend(deeper)
 
-  if [ $((COUNT % 100)) -eq 0 ]; then
-    echo "[backfill-hn-roots] Processed $COUNT / $TOTAL stories, $UPDATED comment rows updated"
-  fi
-done
+    return rows
 
-echo "[backfill-hn-roots] Done. Processed $TOTAL stories, updated $UPDATED comment rows"
+def main():
+    where = "root = 0"
+    if os.environ.get("RESUME") == "true":
+        where = "1=1"  # already idempotent — skip-if-root-set is per-row
+
+    limit_clause = f"LIMIT {LIMIT}" if LIMIT else ""
+    stories_sql = (
+        f"SELECT id FROM default.hackernews "
+        f"WHERE type = 'story' AND length(kids) > 0 "
+        f"ORDER BY id {limit_clause}"
+    )
+
+    stories = ch_query(stories_sql).strip().split("\n")
+    stories = [s.strip() for s in stories if s.strip()]
+    total = len(stories)
+    print(f"[backfill-hn-roots] Found {total} stories to process")
+
+    count = 0
+    updated = 0
+
+    for story_id_str in stories:
+        try:
+            story_id = int(story_id_str)
+        except ValueError:
+            continue
+        count += 1
+
+        story = fetch_json(f"item/{story_id}.json")
+        if not story or not story.get("kids"):
+            continue
+
+        existing_ids = set()
+        rows = fetch_kid_tree(story["kids"], existing_ids)
+        comment_rows = [
+            {**r, "root": story_id}
+            for r in rows
+            if r.get("type") in ("comment", "pollopt")
+        ]
+        # Deduplicate by id
+        seen = set()
+        deduped = []
+        for r in comment_rows:
+            rid = r.get("id")
+            if rid and rid not in seen:
+                seen.add(rid)
+                deduped.append(r)
+
+        if deduped:
+            # Build full HN rows for re-insertion
+            insert_rows = []
+            for r in deduped:
+                item = fetch_json(f"item/{r['id']}.json")
+                if not item:
+                    continue
+                insert_rows.append({
+                    "id": item["id"],
+                    "deleted": 1 if item.get("deleted") else 0,
+                    "type": item.get("type", "story"),
+                    "by": item.get("by", ""),
+                    "time": item.get("time", 0),
+                    "text": item.get("text", ""),
+                    "dead": 1 if item.get("dead") else 0,
+                    "parent": item.get("parent", 0),
+                    "poll": item.get("poll", 0),
+                    "kids": item.get("kids", []),
+                    "url": item.get("url", ""),
+                    "score": item.get("score", 0),
+                    "title": item.get("title", ""),
+                    "parts": item.get("parts", []),
+                    "descendants": item.get("descendants", 0),
+                    "root": story_id,
+                })
+            if insert_rows:
+                ch_insert("default.hackernews", insert_rows)
+                updated += len(insert_rows)
+
+        if count % 100 == 0:
+            print(f"[backfill-hn-roots] Processed {count}/{total} stories, {updated} rows updated")
+
+    print(f"[backfill-hn-roots] Done. Processed {total} stories, updated {updated} rows")
+
+if __name__ == "__main__":
+    main()
+PYEOF
