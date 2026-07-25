@@ -1,6 +1,12 @@
 import { SurfaceNav } from "@/components/SurfaceNav";
 import { hnStoryFeed, type HNStoryRow } from "@/lib/queries";
 
+function safeDomain(url: string): string | null {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch { return null; }
+}
+
 function HNLink({ id, children }: { id: string; children: React.ReactNode }) {
   return (
     <a
@@ -25,6 +31,7 @@ function StoryCard({ row }: { row: HNStoryRow }) {
   const score = Number(row.score);
   const velocity = Number(row.velocity);
   const desc = Number(row.descendants);
+  const domain = safeDomain(row.url);
 
   return (
     <div className="hn-story-card">
@@ -37,11 +44,7 @@ function StoryCard({ row }: { row: HNStoryRow }) {
         >
           {row.title}
         </a>
-        {row.url && (
-          <span className="hn-story-domain mono">
-            {new URL(row.url).hostname.replace(/^www\./, "")}
-          </span>
-        )}
+        {domain && <span className="hn-story-domain mono">{domain}</span>}
       </div>
       <div className="hn-story-meta mono">
         <span className="hn-story-score">{score} pts</span>

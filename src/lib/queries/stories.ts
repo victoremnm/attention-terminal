@@ -22,7 +22,7 @@ export async function hnStoryFeed(hours = 6, limit = 50): Promise<QueryResult<HN
        toString(score) AS score,
        toString(descendants) AS descendants,
        by,
-       toString(time) AS time,
+        toString(toUnixTimestamp(time)) AS time,
        url,
        toString(round(score / greatest((now() - toDateTime(time)) / 3600, 0.5), 1)) AS velocity
      FROM raw.hackernews FINAL
