@@ -267,7 +267,87 @@ flowchart TD
 
 ---
 
-## 5. System Design Principles Summary
+## 5. HN Comment Ingestion Pipeline
+
+The Hacker News comment ingestion pipeline (`src/trigger/ingest-hackernews.ts`) fetches stories, comments, and metadata from the HN Firebase API and persists them to ClickHouse. It runs every minute on a Trigger.dev schedule.
+
+```mermaid
+flowchart TB
+    subgraph External["HN Firebase API"]
+        MAXITEM["maxitem.json\n(global max ID)"]
+        UPDATES["updates.json\n(changed items)"]
+        ITEM_API["item/{id}.json\n(single item)"]
+    end
+
+    subgraph Ingest["ingest-hackernews (Trigger.dev, every 60s)"]
+        direction TB
+        WM["fetchHnWatermark()\n← ingest_watermark table"]
+        FETCH_SEQ["Fetch sequential:\nmaxKnown + 1 … maxKnown + 5000"]
+        FETCH_UPD["Fetch changed:\nupdates.json items ≤ maxKnown"]
+        ENRICH["enrichCommentTree()"]
+        PH1["Phase 1: resolve root\nstory IDs for comments\n(batched × FETCH_CONCURRENCY)"]
+        PH2["Phase 2: walk story\nkid chains, depth ≤ 3\n(fetch missing descendants)"]
+        PH3["Phase 3: resolve root\nfor newly fetched comments\n(batched × FETCH_CONCURRENCY)"]
+        INSERT["clickhouseInsert\n→ default.hackernews"]
+        PERSIST_WM["writeHnWatermark(seqWatermark)\n→ default.ingest_watermark"]
+        LOG["logIngest()\n→ ingest_log"]
+    end
+
+    subgraph ClickHouse["ClickHouse Tables"]
+        HN_TABLE["default.hackernews\n(ReplacingMergeTree)\n\nroot: story ID for comments\n0 for non-comments"]
+        INGEST_LOG["ingest_log\n(chunk tracking)"]
+        WM_TABLE["ingest_watermark\n(sequential HWM)"]
+    end
+
+    subgraph Consumers["Downstream Consumers"]
+        THREAD_VIS["HN thread visualization\n(#260, `hn-thread-visualization`)"]
+        THEMES["Theme extraction\n(#261, `hn-theme-extraction`)"]
+        SUMMARIES["Thread summaries\n(#108, `hn-thread-summaries`)"]
+    end
+
+    subgraph Backfill["Historical Backfill"]
+        SCRIPT["scripts/backfill-hn-comment-roots.sh\n(Python, depth ≤ 3)"]
+    end
+
+    MAXITEM --> WM
+    WM --> FETCH_SEQ
+    UPDATES --> FETCH_UPD
+    ITEM_API --> FETCH_SEQ
+    ITEM_API --> FETCH_UPD
+    ITEM_API --> ENRICH
+
+    FETCH_SEQ & FETCH_UPD --> ENRICH
+    ENRICH --> PH1 --> PH2 --> PH3
+    PH3 --> INSERT --> LOG
+    PH3 --> PERSIST_WM
+
+    ClickHouse -.->|next run| WM
+    INSERT --> HN_TABLE
+    PERSIST_WM --> WM_TABLE
+    LOG --> INGEST_LOG
+
+    HN_TABLE --> THREAD_VIS
+    HN_TABLE --> THEMES
+    HN_TABLE --> SUMMARIES
+
+    SCRIPT -->|re-insert with root| HN_TABLE
+
+    style INSERT fill:#4a9,stroke:#333
+    style WM_TABLE fill:#48b,stroke:#333
+```
+
+**Key design decisions:**
+
+| Decision | Rationale |
+| :--- | :--- |
+| **Separate watermark table** (`ingest_watermark`) | Kid-traversal items may have higher global HN IDs than the sequential batch that sourced them. Using `max(id)` from the data table would skip entire ranges. See [PR #270](https://github.com/victoremnm/attention-terminal/pull/270). |
+| **Depth-limited kid traversal** (MAX_KID_DEPTH=3) | HN threads can be arbitrarily deep (100+ levels). A hard cap bounds API calls per run and prevents hitting the 280s Trigger.dev timeout. Missing deeper comments are picked up incrementally as updates flow through `updates.json`. |
+| **Concurrent root resolution** (FETCH_CONCURRENCY=25) | Parent-chain walks are sequential HTTP calls. Batching with `Promise.all` prevents a catch-up batch of 5,000 comments from exceeding the timeout. |
+| **ReplacingMergeTree for idempotency** | Re-inserting a row with the same `(id)` is a no-op after merge. This makes the backfill script trivially idempotent — rerunning it is safe. |
+
+---
+
+## 6. System Design Principles Summary
 
 | Layer | Primary Responsibilities | Core Architectural Choice |
 | :--- | :--- | :--- |
