@@ -28,13 +28,7 @@ CREATE TABLE IF NOT EXISTS default.github_events
     repo_name String DEFAULT '',
     created_at DateTime,
     action LowCardinality(String) DEFAULT '',
-    ref_type LowCardinality(String) DEFAULT '',
-    commit_count UInt16 DEFAULT 0,
-    distinct_commit_count UInt16 DEFAULT 0,
-    pr_merged UInt8 DEFAULT 0,
-    number UInt32 DEFAULT 0,
-    title Nullable(String),
-    labels Array(String) DEFAULT []
+    number UInt32 DEFAULT 0
 )
 ENGINE = MergeTree
 ORDER BY (created_at, id);
