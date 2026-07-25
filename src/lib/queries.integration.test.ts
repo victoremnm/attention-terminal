@@ -90,7 +90,7 @@ describe.skipIf(!hasCH)("query layer (integration)", () => {
 
   it("tickerLanes executes all lanes", async () => {
     const lanes = await tickerLanes();
-    for (const key of ["newRepos", "topForked", "shippingVelocity", "starBreakouts", "risingStories"] as const) {
+    for (const key of ["newRepos", "topForked", "shippingVelocity", "starBreakouts"] as const) {
       expect(Array.isArray(lanes[key])).toBe(true);
     }
     expect(Array.isArray(lanes.provenance)).toBe(true);

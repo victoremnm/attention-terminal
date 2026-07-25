@@ -3,12 +3,15 @@ import Link from "next/link";
 export function SurfaceNav({
   active,
 }: {
-  active: "home" | "trending" | "chat" | "skinny" | "deck" | "analysis" | "events";
+  active: "home" | "trending" | "chat" | "skinny" | "deck" | "analysis" | "events" | "stories";
 }) {
   return (
     <nav className="surface-nav mono" aria-label="Attention Terminal surfaces">
       <Link href="/" aria-current={active === "home" ? "page" : undefined}>
         Live Feed
+      </Link>
+      <Link href="/stories" aria-current={active === "stories" ? "page" : undefined}>
+        Stories
       </Link>
       <Link href="/events" aria-current={active === "events" ? "page" : undefined}>
         Events

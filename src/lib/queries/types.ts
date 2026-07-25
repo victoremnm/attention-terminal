@@ -38,7 +38,6 @@ export interface TickerLanes {
   topForked: TickerCard[];
   shippingVelocity: TickerCard[];
   starBreakouts: TickerCard[];
-  risingStories: TickerCard[];
   provenance: Provenance[];
   fetchedAt: string;
 }
