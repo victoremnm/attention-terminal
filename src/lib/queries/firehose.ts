@@ -95,7 +95,7 @@ export async function eventTimelineFeed(limit = 50): Promise<QueryResult<EventTi
       title,
       toString(number) AS number,
       payload_summary
-    FROM curated.event_timeline FINAL
+    FROM curated.event_timeline
     WHERE created_at >= now() - INTERVAL 7 DAY
     ORDER BY created_at DESC
     LIMIT ${limit}
