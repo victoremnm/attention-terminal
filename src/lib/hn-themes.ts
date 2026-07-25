@@ -31,14 +31,18 @@ const STOP_WORDS = new Set([
   "we've", "were", "weren't", "what", "what's", "when", "when's", "where", "where's", "which", "while",
   "who", "who's", "whom", "why", "why's", "with", "won't", "would", "wouldn't", "you", "you'd", "you'll",
   "you're", "you've", "your", "yours", "yourself", "yourselves", "also", "just", "really", "even", "much",
-  "well", "get", "got", "way", "think", "make", "know", "see", "good", "use", "using", "used", "need",
+  "well", "get", "got", "way", "think", "make", "know", "see", "good", "use", "uses", "using", "used", "need",
 ]);
+
+const URL_NOISE = new Set(["com", "github", "gitlab", "http", "https", "net", "org", "www", "x2f", "x3a"]);
 
 export function stripHtml(raw: string): string {
   if (!raw) return "";
-  return raw
+  const decoded = raw
     .replace(/<pre>[\s\S]*?<\/pre>/gi, " ")
     .replace(/<code>[\s\S]*?<\/code>/gi, " ")
+    .replace(/<blockquote>[\s\S]*?<\/blockquote>/gi, " ")
+    .replace(/<\/(p|div|li|br)>/gi, "\n")
     .replace(/<[^>]+>/g, " ")
     .replace(/&quot;/g, '"')
     .replace(/&amp;/g, "&")
@@ -46,6 +50,12 @@ export function stripHtml(raw: string): string {
     .replace(/&gt;/g, ">")
     .replace(/&#x27;/g, "'")
     .replace(/&apos;/g, "'")
+    .replace(/&#x([0-9a-f]+);/gi, (_, hex: string) => String.fromCodePoint(Number.parseInt(hex, 16)))
+    .replace(/&#(\d+);/g, (_, decimal: string) => String.fromCodePoint(Number.parseInt(decimal, 10)));
+
+  return decoded
+    .replace(/(^|\n)\s*>.*$/gm, " ")
+    .replace(/(?:https?:)?\/\/\S+|www\.\S+/gi, " ")
     .replace(/\s+/g, " ")
     .trim();
 }
@@ -56,7 +66,14 @@ function tokenizeWords(text: string): string[] {
     .replace(/[^a-z0-9\s_-]/g, " ")
     .split(/\s+/)
     .map((w) => w.replace(/^[^a-z0-9]+|[^a-z0-9]+$/g, ""))
-    .filter((w) => w.length > 2);
+    .filter((w) => w.length > 2 && !URL_NOISE.has(w));
+}
+
+function phrasesOverlap(first: string, second: string): boolean {
+  const firstWords = new Set(first.split(" "));
+  const secondWords = new Set(second.split(" "));
+  const sharedWords = [...firstWords].filter((word) => secondWords.has(word)).length;
+  return sharedWords >= Math.min(firstWords.size, secondWords.size);
 }
 
 export function extractDiscussionThemes(
@@ -107,9 +124,7 @@ export function extractDiscussionThemes(
       for (let i = 0; i <= n - len; i++) {
         const phraseWords = words.slice(i, i + len);
 
-        if (phraseWords.some((w) => STOP_WORDS.has(w) && len === 1)) continue;
-        if (phraseWords[0] && STOP_WORDS.has(phraseWords[0])) continue;
-        if (phraseWords[len - 1] && STOP_WORDS.has(phraseWords[len - 1])) continue;
+        if (phraseWords.some((w) => STOP_WORDS.has(w))) continue;
 
         if (len === 1 && suppressedTokens.has(phraseWords[0])) continue;
 
@@ -140,9 +155,12 @@ export function extractDiscussionThemes(
 
   for (const [phrase, ids] of phraseMatches.entries()) {
     const count = ids.size;
-    if (count < 2) continue; // Must be present in at least 2 distinct comments
-
     const wordCount = phrase.split(" ").length;
+    // A single word needs stronger recurrence than a phrase to be useful as a
+    // discussion theme; otherwise generic words that happen to repeat twice
+    // crowd out the more explainable multi-word evidence.
+    if (count < (wordCount === 1 ? 3 : 2)) continue;
+
     const coverage = Number((count / totalCount).toFixed(2));
     const confidence = Math.min(1.0, Number((0.5 + coverage * 0.5).toFixed(2)));
 
@@ -171,10 +189,7 @@ export function extractDiscussionThemes(
 
   const deduplicated: HnTheme[] = [];
   for (const { theme: candidate } of candidateThemes) {
-    const isSubset = deduplicated.some(
-      (existing) =>
-        existing.label.includes(candidate.label) || candidate.label.includes(existing.label)
-    );
+    const isSubset = deduplicated.some((existing) => phrasesOverlap(existing.label, candidate.label));
     if (!isSubset) {
       deduplicated.push(candidate);
     }

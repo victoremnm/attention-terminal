@@ -11,6 +11,11 @@ describe("stripHtml", () => {
     const raw = "Check this snippet: <pre>const x = 10;</pre> and continue.";
     expect(stripHtml(raw)).toBe("Check this snippet: and continue.");
   });
+
+  it("removes quoted blocks and encoded URL text before theme extraction", () => {
+    const raw = "<blockquote>&gt; quoted reply</blockquote><p>Actual comment with https:&#x2F;&#x2F;github.com&#x2F;org&#x2F;repo</p>";
+    expect(stripHtml(raw)).toBe("Actual comment with");
+  });
 });
 
 describe("extractDiscussionThemes", () => {
@@ -118,5 +123,18 @@ describe("extractDiscussionThemes", () => {
     const themes = extractDiscussionThemes(comments, undefined, 100);
     expect(themes.length).toBeLessThanOrEqual(HN_THEME_EXTRACTION_LIMITS.maxThemes);
     expect(themes.every((theme) => theme.label.split(" ").length <= HN_THEME_EXTRACTION_LIMITS.maxPhraseWords)).toBe(true);
+  });
+
+  it("does not emit URL fragments or generic filler as themes", () => {
+    const comments = [
+      { id: 1, text: "The implementation uses https:&#x2F;&#x2F;github.com&#x2F;acme and improves request latency." },
+      { id: 2, text: "This implementation uses https:&#x2F;&#x2F;github.com&#x2F;acme to reduce request latency." },
+      { id: 3, text: "Our implementation uses https:&#x2F;&#x2F;github.com&#x2F;acme for predictable request latency." },
+    ];
+
+    const themes = extractDiscussionThemes(comments);
+    expect(themes.some((theme) => /x2f|github|com|uses/.test(theme.label))).toBe(false);
+    expect(themes.every((theme) => !theme.label.split(" ").some((word) => ["uses", "from", "the"].includes(word)))).toBe(true);
+    expect(themes.some((theme) => theme.label === "request latency")).toBe(true);
   });
 });
