@@ -6,6 +6,7 @@ const TABLES = [
   "curated.event_volume_daily",
   "curated.event_timeline",
   "default.github_events_firehose",
+  "curated.firehose_repo_signal_hourly",
 ];
 
 const STATS_TABLES = ["curated.event_volume_hourly"];
@@ -41,6 +42,22 @@ export interface FirehoseStatsRow {
   total_repos: string;
   total_actors: string;
   latest_event: string;
+}
+
+export interface FirehoseRepoSignalRow {
+  repo_name: string;
+  pushes: string;
+  forks: string;
+  stars: string;
+  prs_opened: string;
+  prs_closed: string;
+  issues_opened: string;
+  issues_closed: string;
+  releases: string;
+  branches_created: string;
+  branches_deleted: string;
+  events: string;
+  actors: string;
 }
 
 const EMPTY_STATS: FirehoseStatsRow = {
@@ -154,4 +171,36 @@ export async function firehoseStats(): Promise<QueryResult<FirehoseStatsRow[]>> 
     rowsRead: 0,
     elapsedMs,
   };
+}
+
+export async function firehoseRepoSignal(
+  hours = 24,
+  limit = 50
+): Promise<QueryResult<FirehoseRepoSignalRow[]>> {
+  const { rows, sql, elapsedMs } = await safeQ<FirehoseRepoSignalRow>(
+    `
+    SELECT
+      repo_name,
+      toString(sumSimpleState(pushes)) AS pushes,
+      toString(sumSimpleState(forks)) AS forks,
+      toString(sumSimpleState(stars)) AS stars,
+      toString(sumSimpleState(prs_opened)) AS prs_opened,
+      toString(sumSimpleState(prs_closed)) AS prs_closed,
+      toString(sumSimpleState(issues_opened)) AS issues_opened,
+      toString(sumSimpleState(issues_closed)) AS issues_closed,
+      toString(sumSimpleState(releases)) AS releases,
+      toString(sumSimpleState(branches_created)) AS branches_created,
+      toString(sumSimpleState(branches_deleted)) AS branches_deleted,
+      toString(countMerge(events)) AS events,
+      toString(uniqMerge(actors)) AS actors
+    FROM curated.firehose_repo_signal_hourly
+    WHERE hour > now() - INTERVAL {hours: UInt32} HOUR
+    GROUP BY repo_name
+    ORDER BY toUInt64(events) DESC
+    LIMIT {limit: UInt32}
+    `,
+    TABLES,
+    { hours, limit }
+  );
+  return { data: rows, sql, rowsRead: 0, elapsedMs };
 }

@@ -3,9 +3,11 @@ import {
   eventTimelineFeed,
   eventVolumeFeed,
   firehoseStats,
+  firehoseRepoSignal,
   type EventTimelineRow,
   type EventVolumeRow,
   type FirehoseStatsRow,
+  type FirehoseRepoSignalRow,
 } from "@/lib/queries";
 
 function EventTypeBadge({ type }: { type: string }) {
@@ -85,11 +87,30 @@ function StatsCards({ stats }: { stats: FirehoseStatsRow }) {
   );
 }
 
+function SignalCard({ row }: { row: FirehoseRepoSignalRow }) {
+  return (
+    <div className="signal-card">
+      <span className="mono signal-repo">{row.repo_name}</span>
+      <div className="signal-metrics">
+        {Number(row.pushes) > 0 && <span className="mono signal-metric">⊞ {row.pushes}</span>}
+        {Number(row.stars) > 0 && <span className="mono signal-metric">★ {row.stars}</span>}
+        {Number(row.forks) > 0 && <span className="mono signal-metric">⑂ {row.forks}</span>}
+        {Number(row.prs_opened) > 0 && <span className="mono signal-metric">PR+{row.prs_opened}</span>}
+        {Number(row.prs_closed) > 0 && <span className="mono signal-metric">PR-{row.prs_closed}</span>}
+        {Number(row.issues_opened) > 0 && <span className="mono signal-metric">I+{row.issues_opened}</span>}
+        {Number(row.issues_closed) > 0 && <span className="mono signal-metric">I-{row.issues_closed}</span>}
+        {Number(row.releases) > 0 && <span className="mono signal-metric">● {row.releases}</span>}
+      </div>
+    </div>
+  );
+}
+
 export async function EventsSurface() {
-  const [timeline, volume, statsResult] = await Promise.all([
+  const [timeline, volume, statsResult, signalResult] = await Promise.all([
     eventTimelineFeed(50),
     eventVolumeFeed(),
     firehoseStats(),
+    firehoseRepoSignal(24, 20),
   ]);
 
   const stats = statsResult.data[0] ?? {
@@ -112,6 +133,18 @@ export async function EventsSurface() {
         </header>
 
         <StatsCards stats={stats} />
+
+        <section className="events-section">
+          <h2 className="events-section-title mono">REPO_SIGNALS_24H</h2>
+          <div className="events-signal-grid">
+            {signalResult.data.length === 0 && (
+              <p className="events-empty mono">No signal data yet.</p>
+            )}
+            {signalResult.data.map((row, i) => (
+              <SignalCard key={row.repo_name} row={row} />
+            ))}
+          </div>
+        </section>
 
         <section className="events-section">
           <h2 className="events-section-title mono">TIMELINE</h2>
