@@ -55,8 +55,9 @@ export async function timelapseWindows(repoName: string): Promise<QueryResult<Ti
        themes,
        toString(event_count)  AS event_count,
        key_events
-     FROM curated.repo_timelapse
+     FROM curated.repo_timelapse FINAL
      WHERE repo_name = {repo:String}
+       AND window_start >= now() - INTERVAL 24 HOUR
      ORDER BY window_start DESC
      LIMIT 72`,
     TIMELAPSE_TABLES,
@@ -73,15 +74,17 @@ export async function timelapseSummary(repoName: string): Promise<QueryResult<Ti
          toString(sum(event_count)) AS total_events,
          min(window_start)        AS earliest_window,
          max(window_start)        AS latest_window
-       FROM curated.repo_timelapse
-       WHERE repo_name = {repo:String}`,
+       FROM curated.repo_timelapse FINAL
+       WHERE repo_name = {repo:String}
+         AND window_start >= now() - INTERVAL 24 HOUR`,
       TIMELAPSE_TABLES,
       { repo: repoName }
     ),
     safeQ<{ cnt: string }>(
       `SELECT toString(uniqExact(actor_login)) AS cnt
        FROM default.github_events_stream
-       WHERE repo_name = {repo:String}`,
+       WHERE repo_name = {repo:String}
+         AND created_at >= now() - INTERVAL 24 HOUR`,
       STREAM_TABLES,
       { repo: repoName }
     ),
@@ -107,12 +110,12 @@ export async function timelapseWindowEvents(
        toString(event_id)    AS event_id,
        toString(created_at)  AS created_at,
        actor_login,
-       actor_avatar_url      AS actor_avatar,
+       actor_avatar          AS actor_avatar,
        event_type,
        action,
        title,
        toString(number)      AS number,
-       payload_summary
+       payload               AS payload_summary
      FROM default.github_events_stream
      WHERE repo_name  = {repo:String}
        AND created_at >= {from:String}

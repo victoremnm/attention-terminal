@@ -32,16 +32,23 @@ export const ingestFirehose = schedules.task({
       ).map((r) => r.chunk_key)
     );
 
-    // Bootstrap: if the stream table is empty, start from the high-water
-    // of the existing default.github_events table so we don't try to fetch
-    // 1970 GH Archive files.
-    const [{ firehose_last }] = await selectRows<{ firehose_last: string }>(
-      `SELECT toUnixTimestamp(toStartOfHour(max(created_at))) AS firehose_last FROM ${STREAM_TABLE}`
+    // Derive the archive cursor from successful ingest_log entries, NOT
+    // from max(created_at) in the stream — the real-time poller writes
+    // recent timestamps that would push the cursor past unfinished hours,
+    // stalling GH Archive ingestion entirely.
+    const [logRow] = await selectRows<{ chunk_key: string }>(
+      "SELECT max(chunk_key) AS chunk_key FROM ingest_log WHERE source = 'firehose'"
     );
+    const lastKey = logRow?.chunk_key; // "2026-07-26-14" format
     const from =
-      firehose_last === "0" || !firehose_last
-        ? new Date(Date.now() - 2 * 60 * 60 * 1000) // start 2h ago on first run
-        : new Date((Number(firehose_last) + 3600) * 1000);
+      !lastKey || lastKey.startsWith("1970")
+        ? new Date(Date.now() - 2 * 60 * 60 * 1000)
+        : (() => {
+            const [datePart, hourStr] = [lastKey.slice(0, 10), lastKey.slice(11)];
+            const d = new Date(`${datePart}T${hourStr.padStart(2, "0")}:00:00Z`);
+            d.setUTCHours(d.getUTCHours() + 1);
+            return d;
+          })();
     const until = new Date(Date.now() - 60 * 60 * 1000);
 
     let loaded = 0;
