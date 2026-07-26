@@ -185,4 +185,90 @@ describe("EventTimeline", () => {
     });
     expect(firstRow).toHaveFocus();
   });
+
+  describe("eventTypeFilter", () => {
+    const filteredFeedResponse = {
+      data: [
+        {
+          event_id: "3",
+          event_type: "PushEvent",
+          action: "",
+          repo_name: "other/repo",
+          actor_login: "charlie",
+          actor_avatar: "",
+          created_at: "2026-07-26T13:00:00Z",
+          title: null,
+          number: "0",
+          payload_summary: "pushed to main",
+        },
+      ],
+    };
+
+    it("fetches from /api/events when filter is set", async () => {
+      const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+        ok: true,
+        json: async () => filteredFeedResponse,
+      } as Response);
+
+      render(<EventTimeline rows={mockRows} eventTypeFilter={["PushEvent"]} />);
+
+      await act(async () => {});
+      await vi.waitFor(() => {
+        expect(fetchSpy).toHaveBeenCalledWith(
+          expect.stringContaining("/api/events?eventType=PushEvent"),
+          expect.any(Object)
+        );
+      });
+    });
+
+    it("shows filtered rows from the API response", async () => {
+      vi.spyOn(globalThis, "fetch").mockResolvedValue({
+        ok: true,
+        json: async () => filteredFeedResponse,
+      } as Response);
+
+      render(<EventTimeline rows={mockRows} eventTypeFilter={["PushEvent"]} />);
+
+      expect(await screen.findByText("charlie")).toBeInTheDocument();
+    });
+
+    it("shows empty filter message when API returns no rows", async () => {
+      vi.spyOn(globalThis, "fetch").mockResolvedValue({
+        ok: true,
+        json: async () => ({ data: [] }),
+      } as Response);
+
+      render(<EventTimeline rows={mockRows} eventTypeFilter={["NonExistentEvent"]} />);
+
+      expect(await screen.findByText(/No events match the selected filter/)).toBeInTheDocument();
+    });
+
+    it("calls onFilterLoading callback when fetching", async () => {
+      const onFilterLoading = vi.fn();
+      vi.spyOn(globalThis, "fetch").mockResolvedValue({
+        ok: true,
+        json: async () => filteredFeedResponse,
+      } as Response);
+
+      render(
+        <EventTimeline
+          rows={mockRows}
+          eventTypeFilter={["PushEvent"]}
+          onFilterLoading={onFilterLoading}
+        />
+      );
+
+      await act(async () => {});
+      expect(onFilterLoading).toHaveBeenCalled();
+    });
+
+    it("shows initial rows when filter fetch fails", async () => {
+      vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("network failure"));
+
+      render(<EventTimeline rows={mockRows} eventTypeFilter={["PushEvent"]} />);
+
+      expect(await screen.findByText("alice")).toBeInTheDocument();
+      expect(screen.queryByText(/No events match/)).not.toBeInTheDocument();
+    });
+  });
 });

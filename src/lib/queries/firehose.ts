@@ -76,6 +76,19 @@ export interface FirehoseEventMixMonthlyRow extends FirehoseEventMixRow {
   month: string;
 }
 
+export interface EventTypeHourlyRow {
+  hour_bucket: string;
+  event_type: string;
+  event_count: string;
+  actor_count: string;
+}
+
+export interface EventTypeTotalRow {
+  event_type: string;
+  event_count: string;
+  actor_count: string;
+}
+
 const EMPTY_STATS: FirehoseStatsRow = {
   total_events: "0",
   total_repos: "0",
@@ -260,6 +273,49 @@ export async function firehoseEventMixDaily(
     `,
     EVENT_MIX_DAILY_TABLES,
     { days, limit }
+  );
+  return { data: rows, sql, rowsRead: 0, elapsedMs };
+}
+
+export async function eventTypeHourlyAggregation(
+  hours = 24
+): Promise<QueryResult<EventTypeHourlyRow[]>> {
+  const { rows, sql, elapsedMs } = await safeQ<EventTypeHourlyRow>(
+    `
+    SELECT
+      toString(toStartOfHour(hour)) AS hour_bucket,
+      event_type,
+      toString(countMerge(events)) AS event_count,
+      toString(uniqMerge(actors)) AS actor_count
+    FROM curated.firehose_event_type_action_hourly
+    WHERE hour >= now() - INTERVAL {hours: UInt32} HOUR
+    GROUP BY hour_bucket, event_type
+    ORDER BY hour_bucket ASC, toUInt64(event_count) DESC
+    `,
+    EVENT_MIX_TABLES,
+    { hours }
+  );
+  return { data: rows, sql, rowsRead: 0, elapsedMs };
+}
+
+export async function eventTypeTotals(
+  hours = 24,
+  limit = 15
+): Promise<QueryResult<EventTypeTotalRow[]>> {
+  const { rows, sql, elapsedMs } = await safeQ<EventTypeTotalRow>(
+    `
+    SELECT
+      event_type,
+      toString(countMerge(events)) AS event_count,
+      toString(uniqMerge(actors)) AS actor_count
+    FROM curated.firehose_event_type_action_hourly
+    WHERE hour >= now() - INTERVAL {hours: UInt32} HOUR
+    GROUP BY event_type
+    ORDER BY toUInt64(event_count) DESC
+    LIMIT {limit: UInt32}
+    `,
+    EVENT_MIX_TABLES,
+    { hours, limit }
   );
   return { data: rows, sql, rowsRead: 0, elapsedMs };
 }

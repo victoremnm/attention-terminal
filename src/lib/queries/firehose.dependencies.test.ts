@@ -5,6 +5,8 @@ vi.mock("./core", () => ({ q: qMock }));
 
 import {
   eventTimelineFeed,
+  eventTypeHourlyAggregation,
+  eventTypeTotals,
   eventVolumeByDay,
   eventVolumeFeed,
   firehoseRepoSignal,
@@ -24,6 +26,8 @@ describe("firehose query dependencies", () => {
     ["event mix", firehoseEventMix, ["curated.firehose_event_type_action_hourly"]],
     ["daily event mix", firehoseEventMixDaily, ["curated.firehose_event_type_action_daily"]],
     ["monthly event mix", firehoseEventMixMonthly, ["curated.firehose_event_type_action_monthly"]],
+    ["event type hourly agg", eventTypeHourlyAggregation, ["curated.firehose_event_type_action_hourly"]],
+    ["event type totals", eventTypeTotals, ["curated.firehose_event_type_action_hourly"]],
   ];
 
   it.each(queries)("checks only the %s table", async (_name, query, expectedTables) => {
