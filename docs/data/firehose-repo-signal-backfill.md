@@ -8,7 +8,7 @@ deployment and writer state.
 ## Safe sequence
 
 1. Pause the GitHub/firehose writer task and confirm it is no longer inserting.
-2. Apply Goose migrations through `20260726000015`.
+2. Apply Goose migrations through `20260726000017`.
 3. Keep the writer paused and run:
 
    ```bash
@@ -58,3 +58,21 @@ LIMIT 20;
 The event/action result should preserve empty actions for variants such as
 `PushEvent`, `CreateEvent`, `DeleteEvent`, and `PublicEvent`; it should not
 collapse the observed actioned variants into a fixed enum.
+
+### Daily/monthly parity
+
+```sql
+-- Daily totals should match the per-hour breakdown for the same window.
+SELECT day, countMerge(events) AS events
+FROM curated.firehose_event_type_action_daily
+WHERE day >= today() - 7
+GROUP BY day ORDER BY day;
+```
+
+```sql
+-- Monthly totals should cover at least the backfill window.
+SELECT month, countMerge(events) AS events
+FROM curated.firehose_event_type_action_monthly
+WHERE month >= now() - INTERVAL 3 MONTH
+GROUP BY month ORDER BY month;
+```

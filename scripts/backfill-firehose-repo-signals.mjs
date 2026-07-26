@@ -7,7 +7,7 @@ const USAGE = `Usage:
 
 Options:
   --writers-paused       Required acknowledgement that firehose writers are paused.
-  --rebuild              Truncate both aggregate targets before inserting the window.
+  --rebuild              Truncate hourly tables and drop affected partitions from daily/monthly before inserting the window.
   --cutoff <timestamp>   Exclusive UTC cutoff; defaults to ClickHouse now().
   --window-hours <n>     Number of hours before cutoff to rebuild (default: 168).
   --help                 Show this help.
@@ -70,11 +70,61 @@ async function main() {
     if (!cutoff) throw new Error("Could not determine a runtime cutoff from ClickHouse");
 
     console.log(`[firehose-backfill] cutoff=${cutoff} window_hours=${options.windowHours}`);
-    console.log("[firehose-backfill] truncating aggregate targets");
+
+    // Preflight: verify all 4 target tables exist before any destructive action.
+    const preflight = await client.query({
+      query: `
+        SELECT count() AS cnt FROM system.tables
+        WHERE database = 'curated'
+          AND name IN (
+            'firehose_repo_signal_hourly',
+            'firehose_event_type_action_hourly',
+            'firehose_event_type_action_daily',
+            'firehose_event_type_action_monthly'
+          )
+        FORMAT JSONEachRow
+      `,
+      format: "JSONEachRow",
+    }).then((r) => r.json());
+    if (!preflight[0] || preflight[0].cnt !== "4") {
+      throw new Error(
+        "One or more curated aggregate targets are missing. " +
+        "Run ./scripts/migrate.sh up through migration 00017 before backfilling."
+      );
+    }
+    console.log("[firehose-backfill] all 4 aggregate targets present");
+
+    // Truncate hourly tables (no partitioning — full rebuild of the window).
     await client.command({ query: "TRUNCATE TABLE curated.firehose_repo_signal_hourly" });
     await client.command({ query: "TRUNCATE TABLE curated.firehose_event_type_action_hourly" });
-    await client.command({ query: "TRUNCATE TABLE curated.firehose_event_type_action_daily" });
-    await client.command({ query: "TRUNCATE TABLE curated.firehose_event_type_action_monthly" });
+
+    // For monthly-partitioned tables, drop only affected partitions so older
+    // monthly states outside the backfill window are preserved.
+    const fromDt = new Date(
+      new Date(cutoff).getTime() - options.windowHours * 3600 * 1000
+    );
+    const toDt = new Date(cutoff);
+    const affectedMonths = new Set();
+    const m = new Date(fromDt.getFullYear(), fromDt.getMonth(), 1);
+    while (m < toDt) {
+      affectedMonths.add(
+        m.getFullYear() + String(m.getMonth() + 1).padStart(2, "0")
+      );
+      m.setMonth(m.getMonth() + 1);
+    }
+    for (const month of affectedMonths) {
+      for (const table of [
+        "curated.firehose_event_type_action_daily",
+        "curated.firehose_event_type_action_monthly",
+      ]) {
+        await client
+          .command({ query: `ALTER TABLE ${table} DROP PARTITION ID '${month}'` })
+          .catch((err) => {
+            if (!err.message?.includes("no partition")) throw err;
+          });
+      }
+    }
+    console.log(`[firehose-backfill] dropped ${affectedMonths.size} partition month(s) from daily+monthly`);
 
     const params = { cutoff, windowHours: options.windowHours };
     await client.command({
