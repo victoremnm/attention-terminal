@@ -28,7 +28,7 @@ function Card({
 }) {
   const [copied, setCopied] = useState(false);
   const stats = card.stats?.filter((stat) => stat.value !== "0").slice(0, 6) ?? [];
-  const actionLabel = state === "loading" ? "rendering..." : state === "selected" ? "rendered below" : undefined;
+  const actionLabel = state === "loading" ? "loading details..." : state === "selected" ? "view details" : undefined;
 
   async function handleCopyCard(event: React.MouseEvent) {
     event.stopPropagation();
@@ -70,8 +70,8 @@ function Card({
         <button
           type="button"
           className="tk-card-button"
-          aria-label={`Render live ClickHouse data for ${card.repoName}`}
-          title="Click to render this repo's live data"
+          aria-label={`Open live ClickHouse details for ${card.repoName}`}
+          title="Open this repo's details"
           onClick={() => onOpenRepo(card.repoName!)}
         >
           {inner}
@@ -169,9 +169,11 @@ export function TickerRail({ initial, ingestToken }: { initial: TickerLanes; ing
   const [lanes, setLanes] = useState(initial);
   const [selectedRepo, setSelectedRepo] = useState<string | undefined>();
   const [drilldown, setDrilldown] = useState<RepoDrilldownPayload | undefined>();
+  const [drilldownOpen, setDrilldownOpen] = useState(false);
   const [loadingRepo, setLoadingRepo] = useState<string | undefined>();
   const [drilldownError, setDrilldownError] = useState<string | undefined>();
   const [copiedTickerMd, setCopiedTickerMd] = useState(false);
+  const drilldownCloseRef = useRef<HTMLButtonElement>(null);
 
   async function handleCopyTickerMd() {
     try {
@@ -226,12 +228,23 @@ export function TickerRail({ initial, ingestToken }: { initial: TickerLanes; ing
 
   useEffect(() => () => drilldownAbort.current?.abort(), []);
 
+  useEffect(() => {
+    if (!drilldownOpen) return;
+    drilldownCloseRef.current?.focus();
+    function closeOnEscape(event: KeyboardEvent) {
+      if (event.key === "Escape") setDrilldownOpen(false);
+    }
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [drilldownOpen]);
+
   async function openRepo(repoName: string) {
     const requestId = drilldownRequest.current + 1;
     drilldownRequest.current = requestId;
     drilldownAbort.current?.abort();
     const controller = new AbortController();
     drilldownAbort.current = controller;
+    setDrilldownOpen(true);
     setSelectedRepo(repoName);
     setLoadingRepo(repoName);
     setDrilldownError(undefined);
@@ -248,6 +261,10 @@ export function TickerRail({ initial, ingestToken }: { initial: TickerLanes; ing
     } finally {
       if (drilldownRequest.current === requestId) setLoadingRepo(undefined);
     }
+  }
+
+  function closeDrilldown() {
+    setDrilldownOpen(false);
   }
 
   return (
@@ -271,12 +288,37 @@ export function TickerRail({ initial, ingestToken }: { initial: TickerLanes; ing
       <Lane title="TOP FORKED · 24H" cards={lanes.topForked} selectedRepo={selectedRepo} loadingRepo={loadingRepo} onOpenRepo={openRepo} />
       <Lane title="SHIPPING VELOCITY · 24H" cards={lanes.shippingVelocity} selectedRepo={selectedRepo} loadingRepo={loadingRepo} onOpenRepo={openRepo} />
       <Lane title="STAR BREAKOUTS" cards={lanes.starBreakouts} selectedRepo={selectedRepo} loadingRepo={loadingRepo} onOpenRepo={openRepo} />
-      {(loadingRepo || drilldownError || drilldown) && (
-        <div className="ticker-drilldown" aria-live="polite">
-          {loadingRepo && <div className="agent-tool mono">rendering {loadingRepo} in background...</div>}
-          {drilldownError && <div className="agent-fault mono" role="alert">! {drilldownError}</div>}
-          {drilldown && <RenderedAnswer payload={drilldown} />}
-        </div>
+      {drilldownOpen && (
+        <>
+          <div className="ticker-drilldown-backdrop" aria-hidden="true" />
+          <aside
+            className="ticker-drilldown-drawer"
+            role="dialog"
+            aria-modal="false"
+            aria-labelledby="ticker-drilldown-title"
+          >
+            <header className="ticker-drilldown-head">
+              <div>
+                <p id="ticker-drilldown-title" className="mono kicker">REPO DETAILS</p>
+                <p className="ticker-drilldown-repo mono">{selectedRepo}</p>
+              </div>
+              <button
+                ref={drilldownCloseRef}
+                type="button"
+                className="ticker-drilldown-close chip"
+                onClick={closeDrilldown}
+                aria-label="Close repository details"
+              >
+                Close
+              </button>
+            </header>
+            <div className="ticker-drilldown-body" aria-live="polite">
+              {loadingRepo && <div className="agent-tool mono">loading {loadingRepo} details...</div>}
+              {drilldownError && <div className="agent-fault mono" role="alert">! {drilldownError}</div>}
+              {drilldown && <RenderedAnswer payload={drilldown} />}
+            </div>
+          </aside>
+        </>
       )}
     </section>
   );
