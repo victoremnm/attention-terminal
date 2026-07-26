@@ -1,11 +1,11 @@
 import { SurfaceNav } from "@/components/SurfaceNav";
+import { EventTimeline } from "@/components/EventTimeline";
 import {
   eventTimelineFeed,
   eventVolumeFeed,
   firehoseStats,
   firehoseRepoSignal,
   firehoseEventMix,
-  type EventTimelineRow,
   type EventVolumeRow,
   type FirehoseStatsRow,
   type FirehoseRepoSignalRow,
@@ -37,19 +37,6 @@ function EventTypeBadge({ type }: { type: string }) {
     >
       {type.replace("Event", "")}
     </span>
-  );
-}
-
-function TimelineItem({ row }: { row: EventTimelineRow }) {
-  const ts = row.created_at ? new Date(row.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "";
-  return (
-    <div className="events-timeline-item">
-      <span className="mono events-timeline-time">{ts}</span>
-      <EventTypeBadge type={row.event_type} />
-      <span className="events-timeline-actor">{row.actor_login}</span>
-      <span className="events-timeline-summary">{row.payload_summary}</span>
-      <span className="mono events-timeline-repo">{row.repo_name}</span>
-    </div>
   );
 }
 
@@ -171,14 +158,7 @@ export async function EventsSurface() {
 
         <section className="events-section">
           <h2 className="events-section-title mono">TIMELINE</h2>
-          <div className="events-timeline">
-            {timeline.data.length === 0 && (
-              <p className="events-empty mono">No events ingested yet. The firehose task runs at :05 past every hour.</p>
-            )}
-            {timeline.data.map((row, i) => (
-              <TimelineItem key={`${row.created_at}-${row.repo_name}-${i}`} row={row} />
-            ))}
-          </div>
+          <EventTimeline rows={timeline.data} />
         </section>
 
         <section className="events-section">

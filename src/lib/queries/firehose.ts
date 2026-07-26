@@ -18,6 +18,7 @@ export interface EventVolumeRow {
 }
 
 export interface EventTimelineRow {
+  event_id: string;
   created_at: string;
   repo_name: string;
   actor_login: string;
@@ -118,6 +119,7 @@ export async function eventTimelineFeed(limit = 50): Promise<QueryResult<EventTi
   const { rows, sql, elapsedMs } = await safeQ<EventTimelineRow>(
     `
     SELECT
+      toString(event_id) AS event_id,
       toString(created_at) AS created_at,
       repo_name,
       actor_login,
