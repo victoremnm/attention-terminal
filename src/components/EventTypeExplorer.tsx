@@ -23,12 +23,19 @@ const COLOR_PALETTE = [
   "#f97316", "#06b6d4", "#8b5cf6", "#14b8a6",
 ];
 
-function colorFor(type: string, idx: number): string {
-  return EVENT_TYPE_COLORS[type] ?? COLOR_PALETTE[idx % COLOR_PALETTE.length];
+function colorFor(type: string): string {
+  if (EVENT_TYPE_COLORS[type]) return EVENT_TYPE_COLORS[type];
+  let hash = 0;
+  for (let i = 0; i < type.length; i++) {
+    hash = ((hash << 5) - hash) + type.charCodeAt(i);
+    hash |= 0;
+  }
+  return COLOR_PALETTE[Math.abs(hash) % COLOR_PALETTE.length];
 }
 
 function shortType(type: string): string {
-  return type.replace("Event", "").replace("PullRequest", "PR");
+  const t = type.replace("Event", "").replace("PullRequest", "PR");
+  return t.replace(/([a-z])([A-Z])/g, "$1 $2");
 }
 
 export interface HourlyRow {
@@ -128,7 +135,7 @@ export function EventTypeExplorer({
 
       <div className="events-type-legend">
         {topTypes.map((type, idx) => {
-          const color = colorFor(type, idx);
+          const color = colorFor(type);
           const isActive = selected.includes(type);
           const isHighlighted = highlighted === type;
           return (
@@ -193,7 +200,7 @@ export function EventTypeExplorer({
               <tr>
                 <th>Hour</th>
                 {topTypes.map((type, idx) => (
-                  <th key={type} style={{ color: colorFor(type, idx) }}>
+                  <th key={type} style={{ color: colorFor(type) }}>
                     {shortType(type)}
                   </th>
                 ))}
@@ -239,7 +246,7 @@ function TopTypesChart({
   highlighted: string | null;
   onHighlight: (type: string | null) => void;
 }) {
-  const padL = 60;
+  const padL = 86;
   const padR = 12;
   const chartW = TOP_TYPES_W - padL - padR;
 
@@ -248,12 +255,9 @@ function TopTypesChart({
       (s, v) => s + v,
       0
     );
-    const barW = (total / maxCount) * chartW;
+    const barW = (Math.log(total + 1) / Math.log(maxCount + 1)) * chartW;
     const y = idx * (TOP_TYPES_BAR_H + TOP_TYPES_GAP);
-    const color = colorFor(type, idx);
-    const isDimmed =
-      (highlighted !== null && highlighted !== type) ||
-      (selected.length > 0 && !selected.includes(type));
+    const color = colorFor(type);
 
     return (
       <g
@@ -261,9 +265,6 @@ function TopTypesChart({
         className="events-type-bar-group"
         onMouseEnter={() => onHighlight(type)}
         onMouseLeave={() => onHighlight(null)}
-        onClick={() => {
-          /* toggle handled by legend */
-        }}
         role="group"
         aria-label={type}
       >
@@ -275,7 +276,7 @@ function TopTypesChart({
           fill="var(--ink)"
           textAnchor="end"
           className="mono"
-          opacity={isDimmed ? 0.35 : 1}
+          opacity={1}
         >
           {shortType(type)}
         </text>
@@ -285,7 +286,7 @@ function TopTypesChart({
           width={Math.max(1, barW)}
           height={TOP_TYPES_BAR_H}
           fill={color}
-          opacity={isDimmed ? 0.15 : 0.92}
+          opacity={0.92}
           rx={3}
         />
         <text
@@ -295,7 +296,7 @@ function TopTypesChart({
           fontWeight="600"
           fill="var(--muted)"
           className="mono"
-          opacity={isDimmed ? 0.35 : 1}
+          opacity={1}
         >
           {total.toLocaleString()}
         </text>
