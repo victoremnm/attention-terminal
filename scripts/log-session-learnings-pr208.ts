@@ -1,7 +1,10 @@
 import { clickhouseInsert, ensureTablesExist } from "../src/lib/clickhouse";
 
 async function logSessionLearningsPR208() {
-  const sessionId = "ab8995fb-0b0d-4f56-8d07-85458e326eaa";
+  const sessionId = process.env.ATTENTION_SESSION_ID;
+  if (!sessionId) {
+    throw new Error("ATTENTION_SESSION_ID is required for stable telemetry deduplication");
+  }
   const now = new Date().toISOString();
 
   console.log("Ensuring ClickHouse telemetry tables exist...");
