@@ -113,7 +113,9 @@ function useHNStoryStream(initial: HNStreamResult, ingestToken?: string, include
   const [stream, setStream] = useState(initial);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [updatedAt, setUpdatedAt] = useState(() => new Date());
+  // Keep the server-rendered and first client-rendered markup identical. The
+  // localized timestamp is populated by the mount effect below.
+  const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
   const requestRef = useRef(0);
   const abortRef = useRef<AbortController | null>(null);
   const { lastIngestAt, error: realtimeError } = useIngestPulse(ingestToken);
@@ -146,6 +148,7 @@ function useHNStoryStream(initial: HNStreamResult, ingestToken?: string, include
   }, [includeReplies]);
 
   useEffect(() => {
+    setUpdatedAt(new Date());
     if (ingestKey) void refresh();
     const timer = window.setInterval(() => void refresh(), REFRESH_INTERVAL_MS);
     return () => {
@@ -171,7 +174,7 @@ function StreamStatus({
   usingPollingFallback,
   onRefresh,
 }: {
-  updatedAt: Date;
+  updatedAt: Date | null;
   refreshing: boolean;
   error: string | null;
   usingPollingFallback: boolean;
@@ -182,7 +185,11 @@ function StreamStatus({
       <span className={error ? "hn-status-stale" : "hn-status-live"}>
         {error ? "STALE" : usingPollingFallback ? "POLLING" : "LIVE"}
       </span>
-      <span>updated {updatedAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
+      <span>
+        {updatedAt
+          ? `updated ${updatedAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`
+          : "waiting for update"}
+      </span>
       {error && <span title={error}>refresh unavailable</span>}
       <button type="button" className="hn-refresh-button" onClick={onRefresh} disabled={refreshing}>
         {refreshing ? "refreshing…" : "refresh"}
