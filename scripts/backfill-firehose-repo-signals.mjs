@@ -9,7 +9,7 @@ Options:
   --writers-paused       Required acknowledgement that firehose writers are paused.
   --rebuild              Truncate all firehose aggregate targets before inserting the window.
   --cutoff <timestamp>   Exclusive UTC cutoff; defaults to ClickHouse now().
-  --window-hours <n>     Number of hours before cutoff to rebuild (default: 168; max: 8784).
+  --window-hours <n>     Number of hours before cutoff to rebuild (default: 168; max: 720).
   --help                 Show this help.
 `;
 
@@ -56,8 +56,8 @@ async function main() {
   if (!options.rebuild) {
     throw new Error("Refusing an additive backfill. Pass --rebuild so reruns replace the selected aggregate window.");
   }
-  if (!Number.isInteger(options.windowHours) || options.windowHours < 1 || options.windowHours > 24 * 366) {
-    throw new Error("--window-hours must be an integer between 1 and 8784");
+  if (!Number.isInteger(options.windowHours) || options.windowHours < 1 || options.windowHours > 24 * 30) {
+    throw new Error("--window-hours must be an integer between 1 and 720; the firehose source retains 30 days");
   }
 
   const client = createClient({
@@ -81,6 +81,23 @@ async function main() {
     if (!cutoff) throw new Error("Could not determine a runtime cutoff from ClickHouse");
 
     console.log(`[firehose-backfill] writers_paused=true rebuild=true cutoff=${cutoff} window_hours=${options.windowHours}`);
+    const sourceBounds = await client.query({
+      query: `
+        SELECT
+          minOrNull(created_at) AS source_min,
+          maxOrNull(created_at) AS source_max,
+          if(count() = 0, 0, dateDiff('hour', min(created_at), {cutoff: DateTime})) AS source_available_hours
+        FROM default.github_events_firehose
+        WHERE created_at < {cutoff: DateTime}
+      `,
+      format: "JSONEachRow",
+      query_params: { cutoff },
+    }).then((response) => response.json());
+    const bounds = sourceBounds[0] || {};
+    console.log(`[firehose-backfill] source_bounds=${JSON.stringify(bounds)}`);
+    if (bounds.source_available_hours !== undefined && Number(bounds.source_available_hours) < options.windowHours) {
+      console.warn(`[firehose-backfill] requested window exceeds retained source history; rebuilding available rows only`);
+    }
     console.log(`[firehose-backfill] truncating ${AGGREGATE_TABLES.length} aggregate targets`);
     for (const table of AGGREGATE_TABLES) {
       await client.command({ query: `TRUNCATE TABLE ${table}` });

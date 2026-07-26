@@ -20,9 +20,10 @@ deployment and writer state.
 
    The script asks ClickHouse for `now()` at execution time. An explicit UTC
    cutoff can be supplied with `--cutoff "YYYY-MM-DD HH:MM:SS"`; the selected
-   window defaults to 168 hours and can be changed with `--window-hours` (up to
-   8784 hours). Select a window that covers the monthly history you intend to
-   serve; for approximately 12 months, use `--window-hours 8784`.
+   window defaults to 168 hours and can be changed with `--window-hours` up to
+   720 hours. The raw firehose source has a 30-day TTL, so the script reports
+   the retained source bounds and warns when the requested window is wider than
+   the available history; it cannot reconstruct expired rows.
    The same cutoff and window are used for hourly, daily, and monthly event/action
    aggregates, so a run has one reproducible source window. The script truncates
    and rebuilds all four firehose aggregate targets, including the existing repo
@@ -137,3 +138,8 @@ preserved by grouping the raw `event_type` and `action` values.
 The event/action result should preserve empty actions for variants such as
 `PushEvent`, `CreateEvent`, `DeleteEvent`, and `PublicEvent`; it should not
 collapse the observed actioned variants into a fixed enum.
+
+The monthly table is currently an aggregate over the retained firehose source
+window, which may cover only one or two calendar months. Longer historical
+monthly coverage requires a durable historical source; increasing the operator
+window alone cannot recover rows removed by the source TTL.
