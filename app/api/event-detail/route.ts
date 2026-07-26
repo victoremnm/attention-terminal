@@ -58,10 +58,10 @@ export async function GET(request: Request): Promise<Response> {
         toString(created_at) AS created_at,
         payload
       FROM default.github_events_firehose
-      WHERE event_type = {eventType: String}
-        AND repo_name = {repoName: String}
-        AND created_at = parseDateTimeBestEffort({createdAt: String})
-        AND event_id = {eventId: UInt64}
+      WHERE default.github_events_firehose.event_type = {eventType: String}
+        AND default.github_events_firehose.repo_name = {repoName: String}
+        AND default.github_events_firehose.created_at = parseDateTimeBestEffort({createdAt: String})
+        AND default.github_events_firehose.event_id = {eventId: UInt64}
       LIMIT 1
       `,
       EVENT_DETAIL_TABLES,
