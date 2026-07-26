@@ -143,6 +143,15 @@ export function EventsSurface({
         <StatsCards stats={stats} />
 
         <section className="events-section">
+          <h2 className="events-section-title mono">EVENT_TYPE_EXPLORER_24H</h2>
+          <EventTypeExplorer
+            hourlyData={hourlyData}
+            onFilterChange={handleFilterChange}
+            activeEventTypes={filterEventTypes}
+          />
+        </section>
+
+        <section className="events-section">
           <h2 className="events-section-title mono">REPO_SIGNALS_24H</h2>
           <div className="events-signal-grid">
             {signalData.length === 0 && (
@@ -164,15 +173,6 @@ export function EventsSurface({
               <EventMixRow key={`${row.repo_name}-${row.event_type}-${row.action}`} row={row} />
             ))}
           </div>
-        </section>
-
-        <section className="events-section">
-          <h2 className="events-section-title mono">EVENT_TYPE_EXPLORER_24H</h2>
-          <EventTypeExplorer
-            hourlyData={hourlyData}
-            onFilterChange={handleFilterChange}
-            activeEventTypes={filterEventTypes}
-          />
         </section>
 
         <section className="events-section">

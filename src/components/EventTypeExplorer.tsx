@@ -52,7 +52,7 @@ export function EventTypeExplorer({
   const [selected, setSelected] = useState<string[]>(activeEventTypes);
   const [highlighted, setHighlighted] = useState<string | null>(null);
 
-  const { topTypes, hourlyByType, hours, maxCount } = useMemo(() => {
+  const { topTypes, hourlyByType, hours, maxCount, chartHeight } = useMemo(() => {
     const totals = new Map<string, number>();
     const byType = new Map<string, Map<string, number>>();
     const hourSet = new Set<string>();
@@ -72,16 +72,11 @@ export function EventTypeExplorer({
 
     const sortedHours = [...hourSet].sort();
 
-    let max = 1;
-    const hb = new Map<string, number>();
-    for (const row of hourlyData) {
-      const c = Number(row.event_count);
-      const prev = hb.get(row.hour_bucket) ?? 0;
-      hb.set(row.hour_bucket, prev + c);
-      max = Math.max(max, prev + c);
-    }
+    const max = Math.max(...totals.values(), 1);
+    const chartH = top.length * (TOP_TYPES_BAR_H + TOP_TYPES_GAP);
+    const chartHeight = Math.max(chartH + 30, 50);
 
-    return { topTypes: top, hourlyByType: byType, hours: sortedHours, maxCount: max };
+    return { topTypes: top, hourlyByType: byType, hours: sortedHours, maxCount: max, chartHeight };
   }, [hourlyData]);
 
   function toggleType(type: string) {
@@ -114,7 +109,7 @@ export function EventTypeExplorer({
     <div className="events-type-explorer">
       <div className="events-type-chart">
         <svg
-          viewBox={`0 0 ${TOP_TYPES_W} ${TOP_TYPES_H}`}
+          viewBox={`0 0 ${TOP_TYPES_W} ${chartHeight}`}
           role="img"
           aria-label="Event type distribution chart"
           style={{ width: "100%", height: "auto", maxWidth: TOP_TYPES_W }}
@@ -224,7 +219,8 @@ export function EventTypeExplorer({
 }
 
 const TOP_TYPES_W = 640;
-const TOP_TYPES_H = 200;
+const TOP_TYPES_BAR_H = 20;
+const TOP_TYPES_GAP = 18;
 
 function TopTypesChart({
   topTypes,
@@ -245,11 +241,7 @@ function TopTypesChart({
 }) {
   const padL = 60;
   const padR = 12;
-  const barH = 20;
-  const gap = 18;
   const chartW = TOP_TYPES_W - padL - padR;
-  const chartH = topTypes.length * (barH + gap);
-  const H = Math.max(chartH + 30, 50);
 
   return topTypes.map((type, idx) => {
     const total = [...(hourlyByType.get(type)?.values() ?? [])].reduce(
@@ -257,7 +249,7 @@ function TopTypesChart({
       0
     );
     const barW = (total / maxCount) * chartW;
-    const y = idx * (barH + gap);
+    const y = idx * (TOP_TYPES_BAR_H + TOP_TYPES_GAP);
     const color = colorFor(type, idx);
     const isDimmed =
       (highlighted !== null && highlighted !== type) ||
@@ -277,7 +269,7 @@ function TopTypesChart({
       >
         <text
           x={padL - 8}
-          y={y + barH / 2 + 4}
+          y={y + TOP_TYPES_BAR_H / 2 + 4}
           fontSize="10"
           fontWeight={selected.includes(type) ? "700" : "500"}
           fill="var(--ink)"
@@ -291,14 +283,14 @@ function TopTypesChart({
           x={padL}
           y={y}
           width={Math.max(1, barW)}
-          height={barH}
+          height={TOP_TYPES_BAR_H}
           fill={color}
           opacity={isDimmed ? 0.15 : 0.92}
           rx={3}
         />
         <text
           x={padL + Math.max(1, barW) + 6}
-          y={y + barH / 2 + 4}
+          y={y + TOP_TYPES_BAR_H / 2 + 4}
           fontSize="10"
           fontWeight="600"
           fill="var(--muted)"
