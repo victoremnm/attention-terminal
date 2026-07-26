@@ -1,7 +1,9 @@
+import { randomUUID } from "node:crypto";
+
 import { clickhouseInsert, ensureTablesExist } from "../src/lib/clickhouse";
 
 async function logTelemetryAndLearnings() {
-  const sessionId = "ab8995fb-0b0d-4f56-8d07-85458e326eaa";
+  const sessionId = process.env.ATTENTION_SESSION_ID ?? randomUUID();
   const now = new Date().toISOString();
 
   // Ensure tables exist before inserting
