@@ -261,5 +261,14 @@ describe("EventTimeline", () => {
       await act(async () => {});
       expect(onFilterLoading).toHaveBeenCalled();
     });
+
+    it("shows initial rows when filter fetch fails", async () => {
+      vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("network failure"));
+
+      render(<EventTimeline rows={mockRows} eventTypeFilter={["PushEvent"]} />);
+
+      expect(await screen.findByText("alice")).toBeInTheDocument();
+      expect(screen.queryByText(/No events match/)).not.toBeInTheDocument();
+    });
   });
 });

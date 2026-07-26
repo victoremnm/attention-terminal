@@ -103,7 +103,7 @@ export function EventTimeline({
       })
       .catch(() => {
         if (!cancelled) {
-          setFilteredRows([]);
+          setFilteredRows(null);
           onFilterLoading?.(false);
         }
       });
