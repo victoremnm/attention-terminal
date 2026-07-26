@@ -1222,19 +1222,21 @@ export async function searchRepos(query: string, limit = 20): Promise<{ rows: Re
         toString(github_stars) AS github_stars,
         multiIf(
           repo_name = {q: String}, 'Exact match',
+          lower(owner) = lower({q: String}), 'By owner',
+          positionCaseInsensitiveUTF8(owner, {q: String}) > 0, 'By owner',
           positionCaseInsensitiveUTF8(repo_name, {q: String}) > 0, 'By name',
-          'By owner'
+          'Fuzzy match'
         ) AS match_type
-      FROM gh_repo_metadata
+      FROM gh_repo_metadata FINAL
       WHERE positionCaseInsensitiveUTF8(repo_name, {q: String}) > 0
          OR positionCaseInsensitiveUTF8(owner, {q: String}) > 0
       ORDER BY
         multiIf(
           repo_name = {q: String}, 0,
-          positionCaseInsensitiveUTF8(repo_name, {q: String}) > 0
-            AND positionCaseInsensitiveUTF8(owner, {q: String}) > 0, 1,
-          positionCaseInsensitiveUTF8(repo_name, {q: String}) > 0, 2,
-          3
+          lower(owner) = lower({q: String}), 1,
+          positionCaseInsensitiveUTF8(owner, {q: String}) > 0, 2,
+          positionCaseInsensitiveUTF8(repo_name, {q: String}) > 0, 3,
+          4
         ),
         github_stars DESC
       LIMIT {limit: UInt32}

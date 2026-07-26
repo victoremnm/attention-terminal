@@ -50,6 +50,7 @@ function Card({
           <Sparkline data={card.spark} color="var(--cyan)" w={52} h={14} />
         </span>
       )}
+      {card.kicker && <span className="mono tk-card-kicker">{card.kicker}</span>}
       <span className="tk-name">{card.name}</span>
       <span className="tk-foot">
         <span className="tk-metric mono">{card.metric}</span>
@@ -234,7 +235,12 @@ export function TickerRail({ initial, ingestToken }: { initial: TickerLanes; ing
 
   useEffect(() => {
     if (searchTimer.current) clearTimeout(searchTimer.current);
-    if (!searchQuery.trim()) { setSearchResults([]); setSearching(false); return; }
+    if (!searchQuery.trim()) {
+      searchAbort.current?.abort();
+      setSearchResults([]);
+      setSearching(false);
+      return;
+    }
     searchTimer.current = setTimeout(() => doSearch(searchQuery), 300);
     return () => { if (searchTimer.current) clearTimeout(searchTimer.current); };
   }, [searchQuery, doSearch]);
