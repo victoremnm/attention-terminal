@@ -1198,3 +1198,54 @@ export const repoActivityL1d = (limit?: number) => repoActivityWindow("1d", limi
 export const repoActivityL7d = (limit?: number) => repoActivityWindow("7d", limit);
 export const repoActivityL30d = (limit?: number) => repoActivityWindow("30d", limit);
 export const repoActivityLtd = (limit?: number) => repoActivityWindow("td", limit);
+
+// ── Repo Lookup ──────────────────────────────────────────────
+export interface RepoLookupRow {
+  repo_name: string;
+  owner: string;
+  language: string;
+  github_stars: string;
+  match_type: string;
+}
+
+export async function searchRepos(query: string, limit = 20): Promise<{ rows: RepoLookupRow[]; sql: string; elapsedMs: number }> {
+  const trimmed = query.trim();
+  if (!trimmed) return { rows: [], sql: "", elapsedMs: 0 };
+
+  try {
+    const { rows, provenance } = await q<RepoLookupRow>(
+      `
+      SELECT
+        repo_name,
+        owner,
+        language,
+        toString(github_stars) AS github_stars,
+        multiIf(
+          repo_name = {q: String}, 'Exact match',
+          lower(owner) = lower({q: String}), 'By owner',
+          positionCaseInsensitiveUTF8(owner, {q: String}) > 0, 'By owner',
+          positionCaseInsensitiveUTF8(repo_name, {q: String}) > 0, 'By name',
+          'Fuzzy match'
+        ) AS match_type
+      FROM gh_repo_metadata FINAL
+      WHERE positionCaseInsensitiveUTF8(repo_name, {q: String}) > 0
+         OR positionCaseInsensitiveUTF8(owner, {q: String}) > 0
+      ORDER BY
+        multiIf(
+          repo_name = {q: String}, 0,
+          lower(owner) = lower({q: String}), 1,
+          positionCaseInsensitiveUTF8(owner, {q: String}) > 0, 2,
+          positionCaseInsensitiveUTF8(repo_name, {q: String}) > 0, 3,
+          4
+        ),
+        github_stars DESC
+      LIMIT {limit: UInt32}
+      `,
+      ["gh_repo_metadata"],
+      { q: trimmed, limit }
+    );
+    return { rows, sql: provenance.sql, elapsedMs: provenance.elapsedMs };
+  } catch {
+    return { rows: [], sql: "", elapsedMs: 0 };
+  }
+}
