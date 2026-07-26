@@ -3884,15 +3884,15 @@ a { color: inherit; }
 .events-type-legend {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 8px;
   margin-bottom: 12px;
 }
 
 .events-type-legend-item {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 4px 10px;
+  gap: 8px;
+  padding: 5px 12px;
   border-radius: 4px;
   border: 1px solid var(--line-soft);
   background: transparent;

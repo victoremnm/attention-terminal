@@ -225,7 +225,7 @@ export function EventTypeExplorer({
   );
 }
 
-const TOP_TYPES_W = 640;
+const TOP_TYPES_W = 720;
 const TOP_TYPES_BAR_H = 20;
 const TOP_TYPES_GAP = 18;
 
@@ -258,6 +258,11 @@ function TopTypesChart({
     const barW = (Math.log(total + 1) / Math.log(maxCount + 1)) * chartW;
     const y = idx * (TOP_TYPES_BAR_H + TOP_TYPES_GAP);
     const color = colorFor(type);
+    const labelRight = padL + barW + 6;
+    const labelOverflow = labelRight + 70 > TOP_TYPES_W;
+    const countX = labelOverflow ? padL + barW - 6 : labelRight;
+    const countAnchor = labelOverflow ? "end" : "start";
+    const countFill = labelOverflow ? "var(--panel)" : "var(--muted)";
 
     return (
       <g
@@ -290,11 +295,12 @@ function TopTypesChart({
           rx={3}
         />
         <text
-          x={padL + Math.max(1, barW) + 6}
+          x={countX}
           y={y + TOP_TYPES_BAR_H / 2 + 4}
           fontSize="10"
           fontWeight="600"
-          fill="var(--muted)"
+          fill={countFill}
+          textAnchor={countAnchor}
           className="mono"
           opacity={1}
         >
