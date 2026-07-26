@@ -100,6 +100,7 @@ export function EventTimeline({
   const openerRef = useRef<HTMLButtonElement | null>(null);
   const requestRef = useRef(0);
   const refreshRequestRef = useRef(0);
+  const mountedRef = useRef(false);
   const abortRef = useRef<AbortController | undefined>(undefined);
   const refreshAbortRef = useRef<AbortController | undefined>(undefined);
   const { lastIngestAt, error: realtimeError } = useIngestPulse(ingestToken);
@@ -149,7 +150,12 @@ export function EventTimeline({
   }, [eventTypeFilter, onFilterLoading]);
 
   useEffect(() => {
-    if (eventTypeFilter?.length) void refresh();
+    if (!mountedRef.current) {
+      mountedRef.current = true;
+      if (eventTypeFilter?.length) void refresh();
+      return;
+    }
+    void refresh();
   }, [eventTypeFilter, refresh]);
 
   useEffect(() => {
