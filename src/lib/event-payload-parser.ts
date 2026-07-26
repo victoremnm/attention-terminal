@@ -7,8 +7,8 @@ export interface PushEventFields {
   ref: string;
   before: string;
   head: string;
-  size: number;
-  distinct_size: number;
+  size: number | null;
+  distinct_size: number | null;
   commits: Array<{ sha: string; message: string; url: string }>;
   compare_url: string;
 }
@@ -244,6 +244,15 @@ function safeInt(val: unknown): number {
   return 0;
 }
 
+function optionalNonNegativeInt(val: unknown): number | null {
+  if (typeof val === "number" && Number.isFinite(val)) return Math.max(0, Math.floor(val));
+  if (typeof val === "string" && val.trim() !== "") {
+    const n = Number(val);
+    return Number.isFinite(n) ? Math.max(0, Math.floor(n)) : null;
+  }
+  return null;
+}
+
 function safeBool(val: unknown): boolean {
   return val === true || val === "true";
 }
@@ -279,8 +288,8 @@ function parsePushEvent(payload: Record<string, unknown>, timelineRepoName = "")
     ref,
     before: safeStr(payload.before),
     head: safeStr(payload.head),
-    size: safeInt(payload.size),
-    distinct_size: safeInt(payload.distinct_size),
+    size: optionalNonNegativeInt(payload.size),
+    distinct_size: optionalNonNegativeInt(payload.distinct_size),
     commits,
     compare_url: `https://github.com/${repoName}/compare/${safeStr(payload.before)}...${safeStr(payload.head)}`,
   };
