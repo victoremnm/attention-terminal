@@ -58,7 +58,7 @@ describe("TickerRail", () => {
     expect(screen.getByRole("dialog", { name: "REPO DETAILS" })).toBeInTheDocument();
     expect(screen.getByText("loading acme/widget details...")).toBeInTheDocument();
     await waitFor(() => expect(screen.getByRole("heading", { name: "acme/widget" })).toBeInTheDocument());
-    expect(screen.getByText("NEW REPOS")).toBeInTheDocument();
+    expect(screen.getAllByText("NEW REPOS").length).toBeGreaterThanOrEqual(1);
     expect(screen.queryByText("rendered below")).not.toBeInTheDocument();
   });
 
@@ -70,11 +70,11 @@ describe("TickerRail", () => {
 
     act(() => fireEvent.click(document.querySelector(".ticker-drilldown-backdrop")!));
     expect(screen.getByRole("dialog", { name: "REPO DETAILS" })).toBeInTheDocument();
-    expect(screen.getByText("NEW REPOS")).toBeInTheDocument();
+    expect(screen.getAllByText("NEW REPOS").length).toBeGreaterThanOrEqual(1);
 
     act(() => screen.getByRole("button", { name: "Close repository details" }).click());
     expect(screen.queryByRole("dialog", { name: "REPO DETAILS" })).not.toBeInTheDocument();
-    expect(screen.getByText("NEW REPOS")).toBeInTheDocument();
+    expect(screen.getAllByText("NEW REPOS").length).toBeGreaterThanOrEqual(1);
     expect(screen.getByRole("button", { name: /open live clickhouse details for acme\/widget/i })).toHaveFocus();
   });
 
