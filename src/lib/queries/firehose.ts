@@ -244,16 +244,16 @@ export async function firehoseEventMixDaily(
   const { rows, sql, elapsedMs } = await safeQ<FirehoseEventMixDailyRow>(
     `
     SELECT
-      toString(day) AS day,
+      toString(daily.day) AS day,
       repo_name,
       event_type,
       action,
       toString(countMerge(events)) AS event_count,
       toString(uniqMerge(actors)) AS actor_count
-    FROM curated.firehose_event_type_action_daily
-    WHERE day >= today() - INTERVAL {days: UInt32} DAY
-    GROUP BY day, repo_name, event_type, action
-    ORDER BY day DESC, toUInt64(event_count) DESC, repo_name ASC, event_type ASC, action ASC
+    FROM curated.firehose_event_type_action_daily AS daily
+    WHERE daily.day >= today() - INTERVAL {days: UInt32} DAY
+    GROUP BY daily.day, repo_name, event_type, action
+    ORDER BY daily.day DESC, toUInt64(event_count) DESC, repo_name ASC, event_type ASC, action ASC
     LIMIT {limit: UInt32} BY day
     `,
     EVENT_MIX_DAILY_TABLES,
@@ -269,16 +269,16 @@ export async function firehoseEventMixMonthly(
   const { rows, sql, elapsedMs } = await safeQ<FirehoseEventMixMonthlyRow>(
     `
     SELECT
-      toString(month) AS month,
+      toString(monthly.month) AS month,
       repo_name,
       event_type,
       action,
       toString(countMerge(events)) AS event_count,
       toString(uniqMerge(actors)) AS actor_count
-    FROM curated.firehose_event_type_action_monthly
-    WHERE month >= toStartOfMonth(today() - INTERVAL {months: UInt32} MONTH)
-    GROUP BY month, repo_name, event_type, action
-    ORDER BY month DESC, toUInt64(event_count) DESC, repo_name ASC, event_type ASC, action ASC
+    FROM curated.firehose_event_type_action_monthly AS monthly
+    WHERE monthly.month >= toStartOfMonth(today() - INTERVAL {months: UInt32} MONTH)
+    GROUP BY monthly.month, repo_name, event_type, action
+    ORDER BY monthly.month DESC, toUInt64(event_count) DESC, repo_name ASC, event_type ASC, action ASC
     LIMIT {limit: UInt32} BY month
     `,
     EVENT_MIX_MONTHLY_TABLES,
