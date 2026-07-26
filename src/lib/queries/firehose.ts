@@ -6,10 +6,17 @@ const TABLES = [
   "curated.event_volume_daily",
   "curated.event_timeline",
   "default.github_events_firehose",
-  "curated.firehose_repo_signal_hourly",
 ];
 
 const STATS_TABLES = ["curated.event_volume_hourly"];
+
+const SIGNAL_TABLES = [
+  "curated.event_volume_hourly",
+  "curated.event_volume_daily",
+  "curated.event_timeline",
+  "default.github_events_firehose",
+  "curated.firehose_repo_signal_hourly",
+];
 
 export interface EventVolumeRow {
   repo_name: string;
@@ -199,7 +206,7 @@ export async function firehoseRepoSignal(
     ORDER BY toUInt64(events) DESC
     LIMIT {limit: UInt32}
     `,
-    TABLES,
+    SIGNAL_TABLES,
     { hours, limit }
   );
   return { data: rows, sql, rowsRead: 0, elapsedMs };

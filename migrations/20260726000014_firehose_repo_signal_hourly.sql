@@ -63,6 +63,7 @@ SELECT
     uniqState(actor_login)
 FROM default.github_events_firehose
 WHERE created_at >= now() - INTERVAL 7 DAY
+  AND created_at < now() - INTERVAL 1 HOUR
 GROUP BY hour, repo_name;
 
 -- +goose Down
