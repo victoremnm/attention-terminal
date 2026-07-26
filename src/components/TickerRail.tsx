@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import type { TickerCard, TickerLanes } from "@/lib/queries";
+import { useCallback, useEffect, useRef, useState } from "react";
+import type { TickerCard, TickerLanes, RepoLookupRow } from "@/lib/queries";
 import type { RepoDrilldownPayload } from "@/lib/render-payload";
 import { RenderedAnswer } from "./RenderedAnswer";
 import { Sparkline } from "./charts";
@@ -206,6 +206,41 @@ export function TickerRail({ initial, ingestToken }: { initial: TickerLanes; ing
       setCopiedTickerMd(false);
     }
   }
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<RepoLookupRow[]>([]);
+  const [searching, setSearching] = useState(false);
+  const searchAbort = useRef<AbortController | undefined>(undefined);
+  const searchTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+
+  const doSearch = useCallback(async (q: string) => {
+    searchAbort.current?.abort();
+    if (!q.trim()) { setSearchResults([]); setSearching(false); return; }
+    const controller = new AbortController();
+    searchAbort.current = controller;
+    setSearching(true);
+    try {
+      const res = await fetch(`/api/repo-lookup?q=${encodeURIComponent(q)}`, { signal: controller.signal });
+      if (!res.ok) return;
+      const body = await res.json();
+      if (!controller.signal.aborted) {
+        setSearchResults(body.rows ?? []);
+      }
+    } catch {
+      if (!controller.signal.aborted) setSearchResults([]);
+    } finally {
+      if (!controller.signal.aborted) setSearching(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (searchTimer.current) clearTimeout(searchTimer.current);
+    if (!searchQuery.trim()) { setSearchResults([]); setSearching(false); return; }
+    searchTimer.current = setTimeout(() => doSearch(searchQuery), 300);
+    return () => { if (searchTimer.current) clearTimeout(searchTimer.current); };
+  }, [searchQuery, doSearch]);
+
+  useEffect(() => () => searchAbort.current?.abort(), []);
+
   const drilldownRequest = useRef(0);
   const drilldownAbort = useRef<AbortController | undefined>(undefined);
   // Ticks as ingestion lands (Trigger.dev Realtime); 0 while no run completed yet.
@@ -287,6 +322,32 @@ export function TickerRail({ initial, ingestToken }: { initial: TickerLanes; ing
           {copiedTickerMd ? "Copied MD!" : "Copy Markdown"}
         </button>
       </div>
+      <div className="tk-repo-search">
+        <input
+          type="search"
+          className="tk-search-input mono"
+          placeholder="Find repo by name or owner…"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          aria-label="Search repositories"
+        />
+        {searching && <span className="tk-search-spinner mono">searching…</span>}
+      </div>
+      {searchResults.length > 0 && (
+        <Lane
+          title="SEARCH RESULTS"
+          cards={searchResults.map((r) => ({
+            kicker: r.match_type,
+            name: r.repo_name,
+            metric: r.language,
+            stats: [{ label: "stars", value: r.github_stars }],
+            repoName: r.repo_name,
+          } satisfies TickerCard))}
+          selectedRepo={selectedRepo}
+          loadingRepo={loadingRepo}
+          onOpenRepo={openRepo}
+        />
+      )}
       <Lane title="NEW REPOS" cards={lanes.newRepos} selectedRepo={selectedRepo} loadingRepo={loadingRepo} onOpenRepo={openRepo} />
       <Lane title="TOP FORKED · 24H" cards={lanes.topForked} selectedRepo={selectedRepo} loadingRepo={loadingRepo} onOpenRepo={openRepo} />
       <Lane title="SHIPPING VELOCITY · 24H" cards={lanes.shippingVelocity} selectedRepo={selectedRepo} loadingRepo={loadingRepo} onOpenRepo={openRepo} />
