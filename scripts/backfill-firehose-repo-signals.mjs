@@ -7,11 +7,18 @@ const USAGE = `Usage:
 
 Options:
   --writers-paused       Required acknowledgement that firehose writers are paused.
-  --rebuild              Truncate both aggregate targets before inserting the window.
+  --rebuild              Truncate all firehose aggregate targets before inserting the window.
   --cutoff <timestamp>   Exclusive UTC cutoff; defaults to ClickHouse now().
   --window-hours <n>     Number of hours before cutoff to rebuild (default: 168).
   --help                 Show this help.
 `;
+
+const AGGREGATE_TABLES = [
+  "curated.firehose_repo_signal_hourly",
+  "curated.firehose_event_type_action_hourly",
+  "curated.firehose_event_type_action_daily",
+  "curated.firehose_event_type_action_monthly",
+];
 
 function parseArgs(argv) {
   const options = { windowHours: 168, writersPaused: false, rebuild: false };
@@ -20,9 +27,13 @@ function parseArgs(argv) {
     if (arg === "--writers-paused") options.writersPaused = true;
     else if (arg === "--rebuild") options.rebuild = true;
     else if (arg === "--help") options.help = true;
-    else if (arg === "--cutoff") options.cutoff = argv[++i];
-    else if (arg === "--window-hours") options.windowHours = Number(argv[++i]);
-    else throw new Error(`Unknown argument: ${arg}`);
+    else if (arg === "--cutoff") {
+      options.cutoff = argv[++i];
+      if (!options.cutoff) throw new Error("--cutoff requires a UTC timestamp");
+    } else if (arg === "--window-hours") {
+      options.windowHours = Number(argv[++i]);
+      if (!Number.isFinite(options.windowHours)) throw new Error("--window-hours requires a number");
+    } else throw new Error(`Unknown argument: ${arg}`);
   }
   return options;
 }
@@ -60,7 +71,7 @@ async function main() {
     let cutoff = options.cutoff;
     if (!cutoff) {
       const response = await client.query({
-        query: "SELECT formatDateTime(now(), '%Y-%m-%d %H:%i:%S') AS cutoff",
+        query: "SELECT formatDateTime(now('UTC'), '%Y-%m-%d %H:%i:%S') AS cutoff",
         format: "JSONEachRow",
       });
       const rows = await response.json();
@@ -69,10 +80,11 @@ async function main() {
 
     if (!cutoff) throw new Error("Could not determine a runtime cutoff from ClickHouse");
 
-    console.log(`[firehose-backfill] cutoff=${cutoff} window_hours=${options.windowHours}`);
-    console.log("[firehose-backfill] truncating aggregate targets");
-    await client.command({ query: "TRUNCATE TABLE curated.firehose_repo_signal_hourly" });
-    await client.command({ query: "TRUNCATE TABLE curated.firehose_event_type_action_hourly" });
+    console.log(`[firehose-backfill] writers_paused=true rebuild=true cutoff=${cutoff} window_hours=${options.windowHours}`);
+    console.log(`[firehose-backfill] truncating ${AGGREGATE_TABLES.length} aggregate targets`);
+    for (const table of AGGREGATE_TABLES) {
+      await client.command({ query: `TRUNCATE TABLE ${table}` });
+    }
 
     const params = { cutoff, windowHours: options.windowHours };
     await client.command({
@@ -119,18 +131,83 @@ async function main() {
       query_params: params,
     });
 
+    await client.command({
+      query: `
+        INSERT INTO curated.firehose_event_type_action_daily
+        SELECT
+            toDate(created_at) AS day,
+            repo_name,
+            event_type,
+            action,
+            countState(),
+            uniqState(actor_login)
+        FROM default.github_events_firehose
+        WHERE created_at >= {cutoff: DateTime} - INTERVAL {windowHours: UInt32} HOUR
+          AND created_at < {cutoff: DateTime}
+        GROUP BY day, repo_name, event_type, action
+      `,
+      query_params: params,
+    });
+
+    await client.command({
+      query: `
+        INSERT INTO curated.firehose_event_type_action_monthly
+        SELECT
+            toDate(toStartOfMonth(created_at)) AS month,
+            repo_name,
+            event_type,
+            action,
+            countState(),
+            uniqState(actor_login)
+        FROM default.github_events_firehose
+        WHERE created_at >= {cutoff: DateTime} - INTERVAL {windowHours: UInt32} HOUR
+          AND created_at < {cutoff: DateTime}
+        GROUP BY month, repo_name, event_type, action
+      `,
+      query_params: params,
+    });
+
     const result = await client.query({
       query: `
         SELECT
+          (SELECT count() FROM default.github_events_firehose
+            WHERE created_at >= {cutoff: DateTime} - INTERVAL {windowHours: UInt32} HOUR
+              AND created_at < {cutoff: DateTime}) AS source_rows,
           (SELECT count() FROM curated.firehose_repo_signal_hourly) AS repo_signal_rows,
-          (SELECT count() FROM curated.firehose_event_type_action_hourly) AS event_action_rows
+          (SELECT count() FROM curated.firehose_event_type_action_hourly) AS hourly_rows,
+          (SELECT count() FROM curated.firehose_event_type_action_daily) AS daily_rows,
+          (SELECT count() FROM curated.firehose_event_type_action_monthly) AS monthly_rows,
+          (SELECT countMerge(events) FROM curated.firehose_event_type_action_hourly) AS hourly_events,
+          (SELECT countMerge(events) FROM curated.firehose_event_type_action_daily) AS daily_events,
+          (SELECT countMerge(events) FROM curated.firehose_event_type_action_monthly) AS monthly_events,
+          (SELECT min(hour) FROM curated.firehose_event_type_action_hourly) AS hourly_min,
+          (SELECT max(hour) FROM curated.firehose_event_type_action_hourly) AS hourly_max,
+          (SELECT min(day) FROM curated.firehose_event_type_action_daily) AS daily_min,
+          (SELECT max(day) FROM curated.firehose_event_type_action_daily) AS daily_max,
+          (SELECT min(month) FROM curated.firehose_event_type_action_monthly) AS monthly_min,
+          (SELECT max(month) FROM curated.firehose_event_type_action_monthly) AS monthly_max
         FORMAT JSONEachRow
       `,
       format: "JSONEachRow",
+      query_params: params,
     }).then((response) => response.json());
 
-    console.log(`[firehose-backfill] complete ${JSON.stringify(result[0])}`);
-    console.log("[firehose-backfill] verify the results before resuming writers");
+    const verification = result[0] || {};
+    const parity = ["hourly_events", "daily_events", "monthly_events"]
+      .map((key) => `${key}=${verification[key] ?? "?"}`)
+      .join(" ");
+
+    console.log(`[firehose-backfill] verification ${JSON.stringify(verification)}`);
+    console.log(`[firehose-backfill] event-count parity source=${verification.source_rows ?? "?"} ${parity}`);
+    if (verification.source_rows !== undefined) {
+      const sourceRows = BigInt(verification.source_rows);
+      for (const key of ["hourly_events", "daily_events", "monthly_events"]) {
+        if (verification[key] !== undefined && BigInt(verification[key]) !== sourceRows) {
+          throw new Error(`event-count parity failed: source_rows=${sourceRows}, ${key}=${verification[key]}`);
+        }
+      }
+    }
+    console.log("[firehose-backfill] complete; verify the results before resuming writers");
   } finally {
     await client.close();
   }
