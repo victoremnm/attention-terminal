@@ -12,7 +12,18 @@ deployment and writer state.
    Before proceeding, verify the firehose timeline MV repair in issue #308 is
    deployed; migration 13 can otherwise leave the live MV targeting its
    temporary rebuild table and cause raw firehose inserts to fail.
-3. Keep the writer paused and run:
+3. Keep the writer paused and replay the retained raw events into the repaired
+   timeline. This is a separate operational command, not a Goose migration:
+
+   ```bash
+   ./scripts/backfill-firehose-timeline.sh --writers-paused --rebuild
+   ```
+
+   The command truncates and rebuilds the seven-day timeline window from
+   `default.github_events_firehose`, preserving `event_id` and checking row,
+   distinct-event, and zero-ID parity before it exits. It is idempotent because
+   `--rebuild` replaces the retained timeline window on every run.
+4. Keep the writer paused and run:
 
    ```bash
    ./scripts/backfill-firehose-repo-signals.sh --writers-paused --rebuild
@@ -28,8 +39,8 @@ deployment and writer state.
    aggregates, so a run has one reproducible source window. The script truncates
    and rebuilds all four firehose aggregate targets, including the existing repo
    signal hourly table.
-4. Run the verification queries below while writers are still paused.
-5. Resume the writer only after the counts and dimensions are plausible.
+5. Run the verification queries below while writers are still paused.
+6. Resume the writer only after the timeline, counts, and dimensions are plausible.
 
 The `--writers-paused` and `--rebuild` flags are required. This prevents an
 accidental additive backfill, and avoids double counting rows that the
