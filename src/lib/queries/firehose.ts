@@ -7,6 +7,8 @@ const EVENT_VOLUME_BY_DAY_TABLES = ["curated.event_volume_daily"];
 const STATS_TABLES = ["curated.event_volume_hourly"];
 const SIGNAL_TABLES = ["curated.firehose_repo_signal_hourly"];
 const EVENT_MIX_TABLES = ["curated.firehose_event_type_action_hourly"];
+const EVENT_MIX_DAILY_TABLES = ["curated.firehose_event_type_action_daily"];
+const EVENT_MIX_MONTHLY_TABLES = ["curated.firehose_event_type_action_monthly"];
 
 export interface EventVolumeRow {
   repo_name: string;
@@ -223,6 +225,54 @@ export async function firehoseEventMix(
     `,
     EVENT_MIX_TABLES,
     { hours, limit }
+  );
+  return { data: rows, sql, rowsRead: 0, elapsedMs };
+}
+
+export async function firehoseEventMixDaily(
+  days = 30,
+  limit = 100
+): Promise<QueryResult<FirehoseEventMixRow[]>> {
+  const { rows, sql, elapsedMs } = await safeQ<FirehoseEventMixRow>(
+    `
+    SELECT
+      repo_name,
+      event_type,
+      action,
+      toString(countMerge(events)) AS event_count,
+      toString(uniqMerge(actors)) AS actor_count
+    FROM curated.firehose_event_type_action_daily
+    WHERE day >= today() - {days: UInt32}
+    GROUP BY repo_name, event_type, action
+    ORDER BY toUInt64(event_count) DESC, repo_name ASC, event_type ASC, action ASC
+    LIMIT {limit: UInt32}
+    `,
+    EVENT_MIX_DAILY_TABLES,
+    { days, limit }
+  );
+  return { data: rows, sql, rowsRead: 0, elapsedMs };
+}
+
+export async function firehoseEventMixMonthly(
+  months = 12,
+  limit = 100
+): Promise<QueryResult<FirehoseEventMixRow[]>> {
+  const { rows, sql, elapsedMs } = await safeQ<FirehoseEventMixRow>(
+    `
+    SELECT
+      repo_name,
+      event_type,
+      action,
+      toString(countMerge(events)) AS event_count,
+      toString(uniqMerge(actors)) AS actor_count
+    FROM curated.firehose_event_type_action_monthly
+    WHERE month >= now() - INTERVAL {months: UInt32} MONTH
+    GROUP BY repo_name, event_type, action
+    ORDER BY toUInt64(event_count) DESC, repo_name ASC, event_type ASC, action ASC
+    LIMIT {limit: UInt32}
+    `,
+    EVENT_MIX_MONTHLY_TABLES,
+    { months, limit }
   );
   return { data: rows, sql, rowsRead: 0, elapsedMs };
 }

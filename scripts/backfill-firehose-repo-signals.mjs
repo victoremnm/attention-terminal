@@ -73,6 +73,8 @@ async function main() {
     console.log("[firehose-backfill] truncating aggregate targets");
     await client.command({ query: "TRUNCATE TABLE curated.firehose_repo_signal_hourly" });
     await client.command({ query: "TRUNCATE TABLE curated.firehose_event_type_action_hourly" });
+    await client.command({ query: "TRUNCATE TABLE curated.firehose_event_type_action_daily" });
+    await client.command({ query: "TRUNCATE TABLE curated.firehose_event_type_action_monthly" });
 
     const params = { cutoff, windowHours: options.windowHours };
     await client.command({
@@ -119,11 +121,49 @@ async function main() {
       query_params: params,
     });
 
+    await client.command({
+      query: `
+        INSERT INTO curated.firehose_event_type_action_daily
+        SELECT
+            toDate(created_at) AS day,
+            repo_name,
+            event_type,
+            action,
+            countState(),
+            uniqState(actor_login)
+        FROM default.github_events_firehose
+        WHERE created_at >= {cutoff: DateTime} - INTERVAL {windowHours: UInt32} HOUR
+          AND created_at < {cutoff: DateTime}
+        GROUP BY day, repo_name, event_type, action
+      `,
+      query_params: params,
+    });
+
+    await client.command({
+      query: `
+        INSERT INTO curated.firehose_event_type_action_monthly
+        SELECT
+            toStartOfMonth(created_at) AS month,
+            repo_name,
+            event_type,
+            action,
+            countState(),
+            uniqState(actor_login)
+        FROM default.github_events_firehose
+        WHERE created_at >= {cutoff: DateTime} - INTERVAL {windowHours: UInt32} HOUR
+          AND created_at < {cutoff: DateTime}
+        GROUP BY month, repo_name, event_type, action
+      `,
+      query_params: params,
+    });
+
     const result = await client.query({
       query: `
         SELECT
           (SELECT count() FROM curated.firehose_repo_signal_hourly) AS repo_signal_rows,
-          (SELECT count() FROM curated.firehose_event_type_action_hourly) AS event_action_rows
+          (SELECT count() FROM curated.firehose_event_type_action_hourly) AS hourly_rows,
+          (SELECT count() FROM curated.firehose_event_type_action_daily) AS daily_rows,
+          (SELECT count() FROM curated.firehose_event_type_action_monthly) AS monthly_rows
         FORMAT JSONEachRow
       `,
       format: "JSONEachRow",
