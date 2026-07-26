@@ -1,9 +1,5 @@
 -- +goose Up
 
--- Reuse the firehose cutover from migration 20260726000014. Rows before the
--- instant are backfilled; rows at or after it are written by the MV.
--- firehose_event_type_action_cutover = 2026-07-26 00:00:00 UTC
-
 -- Dimension-preserving activity mix. The existing repo signal aggregate stays
 -- in place for its stable UI contract; this path is the lossless event surface.
 CREATE TABLE IF NOT EXISTS curated.firehose_event_type_action_hourly
@@ -30,23 +26,11 @@ SELECT
     countState() AS events,
     uniqState(actor_login) AS actors
 FROM default.github_events_firehose
-WHERE created_at >= toDateTime('2026-07-26 00:00:00')
 GROUP BY hour, repo_name, event_type, action;
 
--- Manual backfill is strictly before the MV lower bound, so the two paths are
--- disjoint even when late-arriving firehose rows are inserted.
-INSERT INTO curated.firehose_event_type_action_hourly
-SELECT
-    toStartOfHour(created_at) AS hour,
-    repo_name,
-    event_type,
-    action,
-    countState(),
-    uniqState(actor_login)
-FROM default.github_events_firehose
-WHERE created_at >= toDateTime('2026-07-26 00:00:00') - INTERVAL 7 DAY
-  AND created_at < toDateTime('2026-07-26 00:00:00')
-GROUP BY hour, repo_name, event_type, action;
+-- Historical rows are populated by the operator-run runtime-cutoff backfill
+-- script. Keeping this migration DDL-only avoids arbitrary calendar cutovers
+-- and makes the backfill window explicit at execution time.
 
 -- +goose Down
 DROP VIEW IF EXISTS curated.firehose_event_type_action_hourly_mv;
