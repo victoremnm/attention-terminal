@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
-import type { CandlesPayload, DigestPayload, DivergencePayload, MatrixPayload, MorphingCardPayload, RenderPayload, RepoDrilldownPayload, RepoDrilldownActivity, RepoDrilldownPulse, RepoDrilldownTrend, TableColumn, TablePayload, TickerPayload, VerdictTile } from "@/lib/render-payload";
+import type { CandlesPayload, DigestPayload, DivergencePayload, EventDrilldownPayload, MatrixPayload, MorphingCardPayload, RenderPayload, RepoDrilldownPayload, RepoDrilldownActivity, RepoDrilldownPulse, RepoDrilldownTrend, TableColumn, TablePayload, TickerPayload, VerdictTile } from "@/lib/render-payload";
 import { VERDICT_COLOR } from "@/lib/verdict-color";
 import {
   AreaChart,
@@ -821,6 +821,202 @@ function RepoDrilldownAnswer({ payload }: { payload: RepoDrilldownPayload }) {
   );
 }
 
+function EventDrilldownAnswer({ payload }: { payload: EventDrilldownPayload }) {
+  const s = payload.structured as Record<string, unknown> | null;
+  const eventType = payload.eventType;
+
+  function shaLink(repoName: string, sha: string) {
+    if (!sha || sha === "0000000000000000000000000000000000000000") return <code className="mono">{"(none)"}</code>;
+    return (
+      <a href={`https://github.com/${repoName}/commit/${sha}`} target="_blank" rel="noopener noreferrer" className="mono">
+        {sha.slice(0, 7)}
+      </a>
+    );
+  }
+
+  function ghLink(href: string | undefined, label: string) {
+    if (!href) return null;
+    return (
+      <a href={href} target="_blank" rel="noopener noreferrer" className="mono">
+        {label}
+      </a>
+    );
+  }
+
+  function labelTag(name: string) {
+    return <span className="chip mono" style={{ fontSize: 9, marginRight: 4 }} key={name}>{name}</span>;
+  }
+
+  function field(label: string, value: React.ReactNode) {
+    return (
+      <div className="event-field" key={label}>
+        <span className="event-field-label mono">{label}</span>
+        <span className="event-field-value">{value}</span>
+      </div>
+    );
+  }
+
+  function commitItem(commit: Record<string, unknown>, i: number, repoName: string) {
+    const sha = String(commit.sha ?? "");
+    return (
+      <div className="event-commit" key={i}>
+        <span className="mono event-commit-sha">{shaLink(repoName, sha)}</span>
+        <span className="event-commit-msg">{String(commit.message ?? "")}</span>
+      </div>
+    );
+  }
+
+  const structuredView = (() => {
+    if (!s) return <p className="mono muted">No structured fields available for this event.</p>;
+
+    switch (eventType) {
+      case "PushEvent": {
+        const ref = String(s.ref ?? "");
+        const repoName = payload.repoName;
+        const commits = Array.isArray(s.commits) ? (s.commits as Record<string, unknown>[]) : [];
+        return (
+          <div className="event-fields">
+            {ref && field("ref", ghLink(`https://github.com/${repoName}/tree/${ref.replace("refs/heads/", "")}`, ref.replace("refs/heads/", "")))}
+            {field("before", shaLink(repoName, String(s.before ?? "")))}
+            {field("head", shaLink(repoName, String(s.head ?? "")))}
+            {field("size", String(s.size ?? "0"))}
+            {s.compare_url && field("compare", ghLink(String(s.compare_url), "compare"))}
+            {commits.length > 0 && (
+              <div className="event-field">
+                <span className="event-field-label mono">commits ({commits.length})</span>
+                <div className="event-commit-list">
+                  {commits.map((c, i) => commitItem(c, i, repoName))}
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      }
+      case "PullRequestEvent": {
+        const repoName = payload.repoName;
+        return (
+          <div className="event-fields">
+            {field("PR #", ghLink(String(s.html_url ?? ""), `#${String(s.number ?? "")}`))}
+            {field("title", String(s.title ?? ""))}
+            {field("head", `${String(s.head_ref ?? "")} @ ${shaLink(repoName, String(s.head_sha ?? ""))}`)}
+            {field("base", `${String(s.base_ref ?? "")} @ ${shaLink(repoName, String(s.base_sha ?? ""))}`)}
+            {field("status", `${s.merged ? "Merged" : ""}${s.draft ? "Draft" : ""}${!s.merged && !s.draft ? "Open" : ""}`)}
+          </div>
+        );
+      }
+      case "IssuesEvent":
+        return (
+          <div className="event-fields">
+            {field("issue #", ghLink(String(s.html_url ?? ""), `#${String(s.number ?? "")}`))}
+            {field("title", String(s.title ?? ""))}
+            {field("state", `[${String(s.state ?? "")}]`)}
+            {Array.isArray(s.labels) && (s.labels as string[]).length > 0 && field("labels", (s.labels as string[]).map(labelTag))}
+          </div>
+        );
+      case "ReleaseEvent":
+        return (
+          <div className="event-fields">
+            {field("release", ghLink(String(s.html_url ?? ""), String(s.tag_name ?? "")))}
+            {field("name", String(s.name ?? ""))}
+            {s.prerelease && field("flag", "prerelease")}
+            {s.draft && field("flag", "draft")}
+            {s.body && field("body", <span className="event-preview">{String(s.body ?? "")}</span>)}
+          </div>
+        );
+      case "ForkEvent":
+        return (
+          <div className="event-fields">
+            {field("forked", ghLink(String(s.forkee_html_url ?? ""), String(s.forkee_full_name ?? "")))}
+          </div>
+        );
+      case "CreateEvent":
+      case "DeleteEvent":
+        return (
+          <div className="event-fields">
+            {field("ref", String(s.ref_type ?? "") + "/" + String(s.ref ?? ""))}
+          </div>
+        );
+      case "PullRequestReviewEvent":
+        return (
+          <div className="event-fields">
+            {field("PR #", ghLink(String(s.html_url ?? ""), `#${String(s.pr_number ?? "")}`))}
+            {field("review", `[${String(s.review_state ?? "")}]`)}
+            {s.review_body && field("body", <span className="event-preview">{String(s.review_body ?? "")}</span>)}
+          </div>
+        );
+      case "PullRequestReviewCommentEvent":
+        return (
+          <div className="event-fields">
+            {field("PR #", ghLink(String(s.html_url ?? ""), `#${String(s.pr_number ?? "")}`))}
+            {field("path", String(s.path ?? ""))}
+            {s.comment_body && field("comment", <span className="event-preview">{String(s.comment_body ?? "")}</span>)}
+          </div>
+        );
+      case "IssueCommentEvent":
+        return (
+          <div className="event-fields">
+            {field("issue #", ghLink(String(s.html_url ?? ""), `#${String(s.issue_number ?? "")}`))}
+            {s.comment_body && field("comment", <span className="event-preview">{String(s.comment_body ?? "")}</span>)}
+          </div>
+        );
+      case "MemberEvent":
+        return (
+          <div className="event-fields">
+            {field("member", String(s.member_login ?? ""))}
+            {field("action", String(s.action ?? ""))}
+          </div>
+        );
+      case "CommitCommentEvent":
+        return (
+          <div className="event-fields">
+            {field("commit", shaLink(payload.repoName, String(s.commit_id ?? "")))}
+            {field("path", String(s.path ?? ""))}
+            {s.comment_body && field("comment", <span className="event-preview">{String(s.comment_body ?? "")}</span>)}
+          </div>
+        );
+      case "DiscussionEvent":
+        return (
+          <div className="event-fields">
+            {field("discussion #", ghLink(String(s.html_url ?? ""), `#${String(s.number ?? "")}`))}
+            {field("title", String(s.title ?? ""))}
+          </div>
+        );
+      default:
+        return <p className="mono muted">No structured fields for this event type.</p>;
+    }
+  })();
+
+  return (
+    <div className="event-drilldown">
+      <div className="event-head">
+        <span style={{ fontSize: 11, color: "var(--muted)" }}>{payload.actorLogin}</span>
+        <span className="mono" style={{ fontSize: 10, color: "var(--ink)", marginLeft: 8 }}>
+          {new Date(payload.createdAt).toLocaleString()}
+        </span>
+      </div>
+      <div className="event-type-badge-line" style={{ margin: "6px 0" }}>
+        <span className="chip mono" style={{ fontSize: 9, background: "var(--line)", padding: "2px 6px" }}>
+          {payload.eventType}
+        </span>
+        {payload.action && (
+          <span className="chip mono" style={{ fontSize: 9, marginLeft: 4, background: "var(--panel)", border: "1px solid var(--line)", padding: "2px 6px" }}>
+            {payload.action}
+          </span>
+        )}
+      </div>
+
+      {structuredView}
+
+      <details className="event-raw-details" style={{ marginTop: 12 }}>
+        <summary className="mono" style={{ fontSize: 10, cursor: "pointer" }}>
+          Raw payload {payload.rawPayloadTruncated ? "(truncated, click to expand)" : "(click to expand)"}
+        </summary>
+        <pre className="mono event-raw">{payload.rawPayload}</pre>
+      </details>
+    </div>
+  );
+}
+
 // Adapter: turns a morphing-card's raw row objects + Vega-Lite-ish chartConfig
 // into one of the chart primitives exposed from ./charts. Returns null
 // whenever the visualizationType/mark isn't chart-capable yet or the data is
@@ -1280,6 +1476,7 @@ export function RenderedAnswer({ payload, showCopy = true, question }: { payload
   else if (payload.type === "candles") answer = <CandlesAnswer payload={payload} />;
   else if (payload.type === "skinny-deck") answer = <SkinnyDeck payload={payload} />;
   else if (payload.type === "repo-drilldown") answer = <RepoDrilldownAnswer payload={payload} />;
+  else if (payload.type === "event-drilldown") answer = <EventDrilldownAnswer payload={payload} />;
   else if (payload.type === "morphing-card") answer = <MorphingCardAnswer payload={payload} />;
   else if (payload.type === "table") answer = <TableAnswer payload={payload} />;
   else answer = <MatrixAnswer payload={payload} />;

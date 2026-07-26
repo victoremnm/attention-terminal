@@ -458,6 +458,20 @@ export const RepoDrilldownSchema = z.object({
   query: CardQuerySchema,
 });
 
+export const EventDrilldownSchema = z.object({
+  type: z.literal("event-drilldown"),
+  eventType: z.string(),
+  action: z.string(),
+  repoName: z.string(),
+  actorLogin: z.string(),
+  actorAvatar: z.string(),
+  createdAt: z.string(),
+  structured: z.record(z.unknown()).nullable(),
+  rawPayload: z.string(),
+  rawPayloadTruncated: z.boolean(),
+  query: CardQuerySchema,
+});
+
 export const RenderPayloadSchema = z.discriminatedUnion("type", [
   DigestSchema,
   TickerSchema,
@@ -468,6 +482,7 @@ export const RenderPayloadSchema = z.discriminatedUnion("type", [
   RepoDrilldownSchema,
   MorphingCardSchema,
   TablePayloadSchema,
+  EventDrilldownSchema,
 ]);
 
 export type Verdict = z.infer<typeof VerdictSchema>;
@@ -488,6 +503,7 @@ export type CardQuery = z.infer<typeof CardQuerySchema>;
 export type SkinnyCard = z.infer<typeof SkinnyCardSchema>;
 export type SkinnyDeckPayload = z.infer<typeof SkinnyDeckSchema>;
 export type RepoDrilldownPayload = z.infer<typeof RepoDrilldownSchema>;
+export type EventDrilldownPayload = z.infer<typeof EventDrilldownSchema>;
 export type RepoDrilldownActivity = NonNullable<RepoDrilldownPayload["activity"]>;
 export type RepoDrilldownTrend = NonNullable<RepoDrilldownPayload["trends"]>[number];
 export type RepoDrilldownTrendEvent = RepoDrilldownTrend["events"][number];
