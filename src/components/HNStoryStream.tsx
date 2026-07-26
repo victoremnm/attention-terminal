@@ -8,18 +8,27 @@ export async function HNStoryStream() {
     stories: { data: [], sql: "", rowsRead: 0, elapsedMs: 0 },
     replies: [],
   };
-  const [initial, ingestToken] = await Promise.all([
-    hnStoryStream(6, 50).catch((error) => {
-      console.warn("HN story stream unavailable during initial render", error);
-      return emptyStream;
-    }),
+  const [initialResult, ingestToken] = await Promise.all([
+    hnStoryStream(6, 50)
+      .then((data) => ({ data, error: null as string | null }))
+      .catch((error) => {
+        console.warn("HN story stream unavailable during initial render", error);
+        return {
+          data: emptyStream,
+          error: error instanceof Error ? error.message : "HN story stream unavailable",
+        };
+      }),
     mintIngestReadToken(),
   ]);
 
   return (
     <>
       <SurfaceNav active="stories" />
-      <HNStoryStreamClient initial={initial} ingestToken={ingestToken ?? undefined} />
+      <HNStoryStreamClient
+        initial={initialResult.data}
+        initialError={initialResult.error}
+        ingestToken={ingestToken ?? undefined}
+      />
     </>
   );
 }

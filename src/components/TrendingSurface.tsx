@@ -7,16 +7,21 @@ import { mintIngestReadToken } from "@/lib/realtime-actions";
 
 export async function TrendingSurface() {
   const emptyStoryFeed = { data: [], sql: "", rowsRead: 0, elapsedMs: 0 };
-  const [lanes, ingestToken, storyFeed] = await Promise.all([
+  const [lanes, ingestToken, storyResult] = await Promise.all([
     tickerLanes(),
     mintIngestReadToken(),
-    hnStoryFeed(6, 8).catch((error) => {
-      console.warn("HN story ticker unavailable during initial render", error);
-      return emptyStoryFeed;
-    }),
+    hnStoryFeed(6, 8)
+      .then((data) => ({ data, error: null as string | null }))
+      .catch((error) => {
+        console.warn("HN story ticker unavailable during initial render", error);
+        return {
+          data: emptyStoryFeed,
+          error: error instanceof Error ? error.message : "HN story ticker unavailable",
+        };
+      }),
   ]);
   const token = ingestToken ?? undefined;
-  const stories = { stories: storyFeed, replies: [] };
+  const stories = { stories: storyResult.data, replies: [] };
 
   return (
     <>
@@ -30,7 +35,7 @@ export async function TrendingSurface() {
           </p>
         </header>
         <TickerRail initial={lanes} ingestToken={token} />
-        <HNStoryTicker initial={stories} ingestToken={token} />
+        <HNStoryTicker initial={stories} initialError={storyResult.error} ingestToken={token} />
         <ChatCtaBanner />
       </main>
     </>

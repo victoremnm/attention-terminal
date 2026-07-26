@@ -109,10 +109,15 @@ function StoryCard({ row, replies, compact = false }: { row: HNStoryRow; replies
   );
 }
 
-function useHNStoryStream(initial: HNStreamResult, ingestToken?: string, includeReplies = true) {
+function useHNStoryStream(
+  initial: HNStreamResult,
+  ingestToken?: string,
+  includeReplies = true,
+  initialError?: string | null,
+) {
   const [stream, setStream] = useState(initial);
   const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(initialError ?? null);
   // Keep the server-rendered and first client-rendered markup identical. The
   // localized timestamp is populated by the mount effect below.
   const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
@@ -148,14 +153,14 @@ function useHNStoryStream(initial: HNStreamResult, ingestToken?: string, include
   }, [includeReplies]);
 
   useEffect(() => {
-    setUpdatedAt(new Date());
+    if (!initialError) setUpdatedAt(new Date());
     if (ingestKey) void refresh();
     const timer = window.setInterval(() => void refresh(), REFRESH_INTERVAL_MS);
     return () => {
       window.clearInterval(timer);
       abortRef.current?.abort();
     };
-  }, [ingestKey, refresh]);
+  }, [ingestKey, initialError, refresh]);
 
   return {
     stream,
@@ -198,8 +203,21 @@ function StreamStatus({
   );
 }
 
-export function HNStoryTicker({ initial, ingestToken }: { initial: HNStreamResult; ingestToken?: string }) {
-  const { stream, refreshing, error, updatedAt, usingPollingFallback, refresh } = useHNStoryStream(initial, ingestToken, false);
+export function HNStoryTicker({
+  initial,
+  initialError,
+  ingestToken,
+}: {
+  initial: HNStreamResult;
+  initialError?: string | null;
+  ingestToken?: string;
+}) {
+  const { stream, refreshing, error, updatedAt, usingPollingFallback, refresh } = useHNStoryStream(
+    initial,
+    ingestToken,
+    false,
+    initialError,
+  );
   const repliesByStory = useMemo(() => {
     const result = new Map<string, HNReplyRow[]>();
     for (const reply of stream.replies) {
@@ -230,8 +248,21 @@ export function HNStoryTicker({ initial, ingestToken }: { initial: HNStreamResul
   );
 }
 
-export function HNStoryStreamClient({ initial, ingestToken }: { initial: HNStreamResult; ingestToken?: string }) {
-  const { stream, refreshing, error, updatedAt, usingPollingFallback, refresh } = useHNStoryStream(initial, ingestToken);
+export function HNStoryStreamClient({
+  initial,
+  initialError,
+  ingestToken,
+}: {
+  initial: HNStreamResult;
+  initialError?: string | null;
+  ingestToken?: string;
+}) {
+  const { stream, refreshing, error, updatedAt, usingPollingFallback, refresh } = useHNStoryStream(
+    initial,
+    ingestToken,
+    true,
+    initialError,
+  );
   const repliesByStory = useMemo(() => {
     const result = new Map<string, HNReplyRow[]>();
     for (const reply of stream.replies) {

@@ -3,7 +3,8 @@ import { hnStoryFeed, hnStoryReplies } from "@/lib/queries";
 
 export const dynamic = "force-dynamic";
 
-function boundedNumber(value: string | null, fallback: number, min: number, max: number) {
+export function boundedNumber(value: string | null, fallback: number, min: number, max: number) {
+  if (value == null || value.trim() === "") return fallback;
   const parsed = Number(value);
   return Number.isFinite(parsed) ? Math.min(max, Math.max(min, Math.floor(parsed))) : fallback;
 }
