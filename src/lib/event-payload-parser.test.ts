@@ -28,6 +28,21 @@ describe("parseEventPayload", () => {
     expect(result.structured).toHaveProperty("compare_url", "https://github.com/owner/repo/compare/abc...def");
   });
 
+  it("preserves omitted PushEvent commit metrics as unknown", () => {
+    const raw = JSON.stringify({
+      repository_id: 1312181806,
+      push_id: 38104576408,
+      ref: "refs/heads/main",
+      head: "cfb30d32d1670a63dbd773e0de61430d5da16a0e",
+      before: "d1f6878039c90964a7300a18560f7508a07d3ef9",
+    });
+    const result = parseEventPayload("PushEvent", "", raw, "owner/repo");
+    const structured = result.structured as unknown as Record<string, unknown>;
+    expect(structured.size).toBeNull();
+    expect(structured.distinct_size).toBeNull();
+    expect(structured.commits).toEqual([]);
+  });
+
   it("returns structured PullRequestEvent fields", () => {
     const raw = JSON.stringify({
       action: "opened",

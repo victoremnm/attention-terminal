@@ -105,6 +105,26 @@ describe("EventTimeline", () => {
     await screen.findByText("commit msg");
   });
 
+  it("does not render an omitted PushEvent commit count as zero", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        ...mockDetail,
+        structured: {
+          ...mockDetail.structured,
+          size: null,
+          distinct_size: null,
+          commits: [],
+        },
+      }),
+    } as Response);
+    render(<EventTimeline rows={mockRows} />);
+    await act(async () => {
+      screen.getByLabelText("Inspect PushEvent by alice").click();
+    });
+    expect(await screen.findByText("unavailable in source payload")).toBeInTheDocument();
+  });
+
   it("closes drawer on backdrop click", async () => {
     render(<EventTimeline rows={mockRows} />);
     const firstRow = screen.getByLabelText("Inspect PushEvent by alice");

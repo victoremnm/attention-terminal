@@ -874,12 +874,18 @@ function EventDrilldownAnswer({ payload }: { payload: EventDrilldownPayload }) {
         const ref = String(s.ref ?? "");
         const repoName = payload.repoName;
         const commits = Array.isArray(s.commits) ? (s.commits as Record<string, unknown>[]) : [];
+        const commitCount = typeof s.size === "number" ? s.size : null;
+        const commitCountLabel = commitCount !== null
+          ? `${commitCount}${commits.length > 0 && commits.length < commitCount ? ` (${commits.length} shown)` : ""}`
+          : commits.length > 0
+            ? `${commits.length} shown (total unavailable)`
+            : "unavailable in source payload";
         return (
           <div className="event-fields">
             {ref && field("ref", ghLink(`https://github.com/${repoName}/tree/${ref.replace("refs/heads/", "")}`, ref.replace("refs/heads/", "")))}
             {field("before", shaLink(repoName, String(s.before ?? "")))}
             {field("head", shaLink(repoName, String(s.head ?? "")))}
-            {field("size", String(s.size ?? "0"))}
+            {field("commits", commitCountLabel)}
             {typeof s.compare_url === "string" && field("compare", ghLink(s.compare_url, "compare"))}
             {commits.length > 0 && (
               <div className="event-field">
