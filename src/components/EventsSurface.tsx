@@ -111,6 +111,7 @@ interface EventsSurfaceProps {
   signalData: FirehoseRepoSignalRow[];
   eventMixData: FirehoseEventMixRow[];
   hourlyData: EventTypeHourlyRow[];
+  ingestToken?: string;
 }
 
 export function EventsSurface({
@@ -120,6 +121,7 @@ export function EventsSurface({
   signalData,
   eventMixData,
   hourlyData,
+  ingestToken,
 }: EventsSurfaceProps) {
   const [filterEventTypes, setFilterEventTypes] = useState<string[]>([]);
   const [filterLoading, setFilterLoading] = useState(false);
@@ -172,6 +174,7 @@ export function EventsSurface({
           </h2>
           <EventTimeline
             rows={timeline}
+            ingestToken={ingestToken}
             eventTypeFilter={filterEventTypes.length > 0 ? filterEventTypes : undefined}
             onFilterLoading={setFilterLoading}
           />

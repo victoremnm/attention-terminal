@@ -211,6 +211,7 @@ describe("EventTimeline", () => {
       data: [
         {
           event_id: "3",
+          event_key: "github:3",
           event_type: "PushEvent",
           action: "",
           repo_name: "other/repo",
@@ -220,6 +221,19 @@ describe("EventTimeline", () => {
           title: null,
           number: "0",
           payload_summary: "pushed to main",
+        },
+        {
+          event_id: "3-duplicate",
+          event_key: "github:3",
+          event_type: "PushEvent",
+          action: "",
+          repo_name: "other/repo",
+          actor_login: "charlie-duplicate",
+          actor_avatar: "",
+          created_at: "2026-07-26T13:00:00Z",
+          title: null,
+          number: "0",
+          payload_summary: "duplicate event",
         },
       ],
     };
@@ -250,6 +264,18 @@ describe("EventTimeline", () => {
       render(<EventTimeline rows={mockRows} eventTypeFilter={["PushEvent"]} />);
 
       expect(await screen.findByText("charlie")).toBeInTheDocument();
+    });
+
+    it("deduplicates refreshed rows by event_key", async () => {
+      vi.spyOn(globalThis, "fetch").mockResolvedValue({
+        ok: true,
+        json: async () => filteredFeedResponse,
+      } as Response);
+
+      render(<EventTimeline rows={mockRows} eventTypeFilter={["PushEvent"]} />);
+
+      await screen.findByText("charlie");
+      expect(screen.queryByText("charlie-duplicate")).not.toBeInTheDocument();
     });
 
     it("shows empty filter message when API returns no rows", async () => {

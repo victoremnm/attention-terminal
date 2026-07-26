@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { RenderedAnswer } from "./RenderedAnswer";
+import { useIngestPulse } from "./useIngestPulse";
 import type { EventTimelineRow } from "@/lib/queries";
 import type { EventDrilldownPayload } from "@/lib/render-payload";
 
@@ -59,12 +60,30 @@ function TimelineRow({
 
 interface EventTimelineProps {
   rows: EventTimelineRow[];
+  ingestToken?: string;
   eventTypeFilter?: string[];
   onFilterLoading?: (loading: boolean) => void;
 }
 
+type LiveEventRow = EventTimelineRow & { event_key?: string };
+
+function eventIdentity(row: LiveEventRow) {
+  return row.event_key || row.event_id;
+}
+
+function dedupeRows(rows: LiveEventRow[]) {
+  const seen = new Set<string>();
+  return rows.filter((row) => {
+    const identity = eventIdentity(row);
+    if (seen.has(identity)) return false;
+    seen.add(identity);
+    return true;
+  }).slice(0, 100);
+}
+
 export function EventTimeline({
   rows: initialRows,
+  ingestToken,
   eventTypeFilter,
   onFilterLoading,
 }: EventTimelineProps) {
@@ -73,45 +92,98 @@ export function EventTimeline({
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | undefined>();
-  const [filteredRows, setFilteredRows] = useState<EventTimelineRow[] | null>(null);
+  const [visibleRows, setVisibleRows] = useState<LiveEventRow[]>(() => dedupeRows(initialRows));
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshError, setRefreshError] = useState<string>();
+  const [updatedAt, setUpdatedAt] = useState<Date>();
   const closeRef = useRef<HTMLButtonElement>(null);
   const openerRef = useRef<HTMLButtonElement | null>(null);
   const requestRef = useRef(0);
+  const refreshRequestRef = useRef(0);
   const abortRef = useRef<AbortController | undefined>(undefined);
+  const refreshAbortRef = useRef<AbortController | undefined>(undefined);
+  const { lastIngestAt, error: realtimeError } = useIngestPulse(ingestToken);
+  const ingestKey = lastIngestAt?.getTime() ?? 0;
 
   useEffect(() => () => abortRef.current?.abort(), []);
 
   useEffect(() => {
-    if (!eventTypeFilter || eventTypeFilter.length === 0) {
-      setFilteredRows(null);
-      onFilterLoading?.(false);
-      return;
-    }
-    let cancelled = false;
+    setVisibleRows(dedupeRows(initialRows));
+  }, [initialRows]);
+
+  const refresh = useCallback(async () => {
+    const requestId = refreshRequestRef.current + 1;
+    refreshRequestRef.current = requestId;
+    refreshAbortRef.current?.abort();
     const controller = new AbortController();
+    refreshAbortRef.current = controller;
+    setRefreshing(true);
     onFilterLoading?.(true);
     const params = new URLSearchParams();
-    for (const et of eventTypeFilter) params.append("eventType", et);
-    params.set("window", "24h");
-    fetch(`/api/events?${params.toString()}`, { signal: controller.signal })
-      .then((res) => (res.ok ? res.json() : Promise.reject(new Error("filtered feed failed"))))
-      .then((body) => {
-        if (!cancelled) {
-          setFilteredRows(body.data ?? []);
-          onFilterLoading?.(false);
-        }
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setFilteredRows(null);
-          onFilterLoading?.(false);
-        }
+    for (const eventType of eventTypeFilter ?? []) params.append("eventType", eventType);
+    params.set("window", eventTypeFilter?.length ? "24h" : "7d");
+    try {
+      const response = await fetch(`/api/events?${params.toString()}`, {
+        signal: controller.signal,
+        headers: { accept: "application/json" },
       });
-    return () => {
-      cancelled = true;
-      controller.abort();
-    };
+      const body = await response.json() as {
+        data?: LiveEventRow[];
+        fetchedAt?: string;
+        error?: string;
+      };
+      if (!response.ok) throw new Error(body.error ?? "event feed refresh failed");
+      if (refreshRequestRef.current !== requestId) return;
+      setVisibleRows(dedupeRows(body.data ?? []));
+      setUpdatedAt(body.fetchedAt ? new Date(body.fetchedAt) : new Date());
+      setRefreshError(undefined);
+    } catch (error) {
+      if (controller.signal.aborted || refreshRequestRef.current !== requestId) return;
+      setRefreshError(error instanceof Error ? error.message : "event feed refresh failed");
+    } finally {
+      if (refreshRequestRef.current === requestId) {
+        setRefreshing(false);
+        onFilterLoading?.(false);
+      }
+    }
   }, [eventTypeFilter, onFilterLoading]);
+
+  useEffect(() => {
+    if (eventTypeFilter?.length) void refresh();
+  }, [eventTypeFilter, refresh]);
+
+  useEffect(() => {
+    if (ingestKey) void refresh();
+  }, [ingestKey, refresh]);
+
+  useEffect(() => {
+    let timer: number | undefined;
+    const stopPolling = () => {
+      if (timer === undefined) return;
+      window.clearInterval(timer);
+      timer = undefined;
+    };
+    const startPolling = () => {
+      if (timer !== undefined || document.visibilityState !== "visible") return;
+      timer = window.setInterval(() => void refresh(), 60_000);
+    };
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") {
+        void refresh();
+        startPolling();
+      } else {
+        stopPolling();
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibility);
+    startPolling();
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibility);
+      stopPolling();
+      abortRef.current?.abort();
+      refreshAbortRef.current?.abort();
+    };
+  }, [refresh]);
 
   useEffect(() => {
     if (!open) return;
@@ -160,11 +232,17 @@ export function EventTimeline({
     openerRef.current?.focus();
   }
 
-  const rows = filteredRows ?? initialRows;
+  const rows = visibleRows;
+  const freshness = updatedAt ? `Updated ${updatedAt.toLocaleTimeString()}` : "Waiting for first refresh";
 
   return (
     <>
-      <div className="events-timeline" role="list" aria-label="Event timeline">
+      <div className="events-timeline" role="list" aria-label="Event timeline" aria-busy={refreshing}>
+        <div className="mono events-timeline-status" aria-live="polite">
+          {refreshing ? "Refreshing events…" : freshness}
+          {realtimeError && " · realtime unavailable; polling every 60 seconds"}
+          {refreshError && <span role="alert"> · {refreshError}; showing last successful results</span>}
+        </div>
         {rows.length === 0 && (
           <p className="events-empty mono">
             {eventTypeFilter && eventTypeFilter.length > 0
@@ -172,8 +250,8 @@ export function EventTimeline({
               : "No events ingested yet. The firehose task runs at :05 past every hour."}
           </p>
         )}
-        {rows.map((row, i) => (
-          <TimelineRow key={`${row.event_id}-${i}`} row={row} onSelect={openDrawer} />
+        {rows.map((row) => (
+          <TimelineRow key={eventIdentity(row)} row={row} onSelect={openDrawer} />
         ))}
       </div>
 
