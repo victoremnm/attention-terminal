@@ -49,6 +49,20 @@ describe("Goose Migrations & Skipping Index Verification", () => {
     expect(script).not.toContain("event_timeline_rebuild");
   });
 
+  it("repairs legacy timeline schemas before recreating the event-ID MV", async () => {
+    const migration = await fs.readFile(
+      path.join(process.cwd(), "migrations", "20260726000019_repair_firehose_timeline_event_id.sql"),
+      "utf-8"
+    );
+
+    expect(migration).not.toMatch(/INSERT\s+INTO/i);
+    expect(migration).toContain("ADD COLUMN IF NOT EXISTS event_id UInt64");
+    expect(migration).toContain("DROP VIEW IF EXISTS curated.event_timeline_mv");
+    expect(migration).toContain("TO curated.event_timeline AS");
+    expect(migration).toContain("event_id,");
+    expect(migration).not.toContain("event_timeline_rebuild");
+  });
+
   it("partitions daily and monthly firehose rollups by calendar month", async () => {
     const daily = await fs.readFile(
       path.join(process.cwd(), "migrations", "20260726000016_firehose_event_type_action_daily.sql"),
