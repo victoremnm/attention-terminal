@@ -20,3 +20,7 @@ reference-design/
 .agy/
 tsconfig.tsbuildinfo
 *.tsbuildinfo
+# Stray GSD/worktree artifacts that sometimes appear in root
+0
+*.json.gz
+backfill-firehose-event-type-action*
