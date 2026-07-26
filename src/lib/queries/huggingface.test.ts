@@ -66,12 +66,12 @@ describe("hf_model_snapshots migration schema consistency", () => {
         argMax(pipeline_tag, ingested_at) AS pipeline_tag,
         argMax(library_name, ingested_at) AS library_name,
         argMax(tags, ingested_at) AS tags,
-        max(downloads) AS downloads,
-        max(likes) AS likes,
+        argMax(downloads, ingested_at) AS downloads,
+        argMax(likes, ingested_at) AS likes,
         argMax(created_at, ingested_at) AS created_at,
         argMax(last_modified, ingested_at) AS last_modified,
-        max(is_private) AS is_private,
-        max(is_gated) AS is_gated,
+        argMax(is_private, ingested_at) AS is_private,
+        argMax(is_gated, ingested_at) AS is_gated,
         max(ingested_at) AS ingested_at,
         max(scan_at) AS scan_at
     FROM raw.hf_model_snapshots
@@ -92,15 +92,15 @@ describe("hf_model_snapshots migration schema consistency", () => {
     expect(migrationDDL).toContain("GROUP BY scan_kind, model_id");
   });
 
-  it("curated.hf_model_latest uses argMax for mutable columns", () => {
-    const mutableCols = ["author", "pipeline_tag", "library_name", "tags", "created_at", "last_modified"];
+  it("curated.hf_model_latest uses argMax for all mutable columns", () => {
+    const mutableCols = ["author", "pipeline_tag", "library_name", "tags", "created_at", "last_modified", "downloads", "likes", "is_private", "is_gated"];
     for (const col of mutableCols) {
       expect(migrationDDL).toContain(`argMax(${col}, ingested_at)`);
     }
   });
 
-  it("curated.hf_model_latest uses max for monotonic columns", () => {
-    const monotonicCols = ["downloads", "likes", "is_private", "is_gated", "ingested_at", "scan_at"];
+  it("curated.hf_model_latest uses max only for immutable timestamps", () => {
+    const monotonicCols = ["ingested_at", "scan_at"];
     for (const col of monotonicCols) {
       expect(migrationDDL).toContain(`max(${col})`);
     }

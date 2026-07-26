@@ -153,7 +153,7 @@ export async function hfTrendingModels(
      SELECT
        c.model_id,
        c.author,
-       toString(c.downloads - COALESCE(p.downloads, 0)) AS downloads_delta,
+       toString(toInt64(c.downloads) - toInt64(COALESCE(p.downloads, 0))) AS downloads_delta,
        toString(c.downloads) AS downloads_now,
        toString(COALESCE(p.downloads, 0)) AS downloads_prev
      FROM current AS c
@@ -277,10 +277,11 @@ export async function hfModelDetail(
     `SELECT
        toString(scan_at) AS scan_at,
        scan_kind,
-       toString(downloads) AS downloads,
-       toString(likes) AS likes
+       toString(argMax(downloads, ingested_at)) AS downloads,
+       toString(argMax(likes, ingested_at)) AS likes
      FROM raw.hf_model_snapshots
      WHERE model_id = {modelId: String}
+     GROUP BY scan_at, scan_kind
      ORDER BY scan_at DESC
      LIMIT 24`,
     HF_RAW_TABLES,
