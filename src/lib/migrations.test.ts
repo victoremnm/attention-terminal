@@ -20,6 +20,35 @@ describe("Goose Migrations & Skipping Index Verification", () => {
     }
   });
 
+  it("repairs the firehose timeline MV target without replaying history", async () => {
+    const migration = await fs.readFile(
+      path.join(process.cwd(), "migrations", "20260726000018_repair_firehose_timeline_mv.sql"),
+      "utf-8"
+    );
+
+    expect(migration).not.toMatch(/INSERT\s+INTO/i);
+    expect(migration).toContain("DROP VIEW IF EXISTS curated.event_timeline_mv");
+    expect(migration).toContain("CREATE MATERIALIZED VIEW curated.event_timeline_mv");
+    expect(migration).toContain("TO curated.event_timeline AS");
+    expect(migration).toContain("FROM default.github_events_firehose");
+    expect(migration).not.toContain("event_timeline_rebuild");
+    expect(migration).toContain("event_id,");
+  });
+
+  it("keeps the retained timeline replay outside Goose DDL", async () => {
+    const script = await fs.readFile(
+      path.join(process.cwd(), "scripts", "backfill-firehose-timeline.mjs"),
+      "utf-8"
+    );
+
+    expect(script).toContain("--writers-paused");
+    expect(script).toContain("--rebuild");
+    expect(script).toContain("INSERT INTO ${TIMELINE_TABLE}");
+    expect(script).toContain("FROM default.github_events_firehose");
+    expect(script).toContain("event_id");
+    expect(script).not.toContain("event_timeline_rebuild");
+  });
+
   it("partitions daily and monthly firehose rollups by calendar month", async () => {
     const daily = await fs.readFile(
       path.join(process.cwd(), "migrations", "20260726000016_firehose_event_type_action_daily.sql"),
