@@ -7,6 +7,8 @@ const EVENT_VOLUME_BY_DAY_TABLES = ["curated.event_volume_daily"];
 const STATS_TABLES = ["curated.event_volume_hourly"];
 const SIGNAL_TABLES = ["curated.firehose_repo_signal_hourly"];
 const EVENT_MIX_TABLES = ["curated.firehose_event_type_action_hourly"];
+const EVENT_MIX_DAILY_TABLES = ["curated.firehose_event_type_action_daily"];
+const EVENT_MIX_MONTHLY_TABLES = ["curated.firehose_event_type_action_monthly"];
 
 export interface EventVolumeRow {
   repo_name: string;
@@ -63,6 +65,14 @@ export interface FirehoseEventMixRow {
   action: string;
   event_count: string;
   actor_count: string;
+}
+
+export interface FirehoseEventMixDailyRow extends FirehoseEventMixRow {
+  day: string;
+}
+
+export interface FirehoseEventMixMonthlyRow extends FirehoseEventMixRow {
+  month: string;
 }
 
 const EMPTY_STATS: FirehoseStatsRow = {
@@ -223,6 +233,56 @@ export async function firehoseEventMix(
     `,
     EVENT_MIX_TABLES,
     { hours, limit }
+  );
+  return { data: rows, sql, rowsRead: 0, elapsedMs };
+}
+
+export async function firehoseEventMixDaily(
+  days = 30,
+  limit = 500
+): Promise<QueryResult<FirehoseEventMixDailyRow[]>> {
+  const { rows, sql, elapsedMs } = await safeQ<FirehoseEventMixDailyRow>(
+    `
+    SELECT
+      toString(day) AS day,
+      repo_name,
+      event_type,
+      action,
+      toString(countMerge(events)) AS event_count,
+      toString(uniqMerge(actors)) AS actor_count
+    FROM curated.firehose_event_type_action_daily
+    WHERE day >= today() - INTERVAL {days: UInt32} DAY
+    GROUP BY day, repo_name, event_type, action
+    ORDER BY day DESC, toUInt64(event_count) DESC, repo_name ASC, event_type ASC, action ASC
+    LIMIT {limit: UInt32}
+    `,
+    EVENT_MIX_DAILY_TABLES,
+    { days, limit }
+  );
+  return { data: rows, sql, rowsRead: 0, elapsedMs };
+}
+
+export async function firehoseEventMixMonthly(
+  months = 12,
+  limit = 500
+): Promise<QueryResult<FirehoseEventMixMonthlyRow[]>> {
+  const { rows, sql, elapsedMs } = await safeQ<FirehoseEventMixMonthlyRow>(
+    `
+    SELECT
+      toString(month) AS month,
+      repo_name,
+      event_type,
+      action,
+      toString(countMerge(events)) AS event_count,
+      toString(uniqMerge(actors)) AS actor_count
+    FROM curated.firehose_event_type_action_monthly
+    WHERE month >= toStartOfMonth(today() - INTERVAL {months: UInt32} MONTH)
+    GROUP BY month, repo_name, event_type, action
+    ORDER BY month DESC, toUInt64(event_count) DESC, repo_name ASC, event_type ASC, action ASC
+    LIMIT {limit: UInt32}
+    `,
+    EVENT_MIX_MONTHLY_TABLES,
+    { months, limit }
   );
   return { data: rows, sql, rowsRead: 0, elapsedMs };
 }

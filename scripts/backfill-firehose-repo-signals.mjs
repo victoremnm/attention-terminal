@@ -9,7 +9,7 @@ Options:
   --writers-paused       Required acknowledgement that firehose writers are paused.
   --rebuild              Truncate all firehose aggregate targets before inserting the window.
   --cutoff <timestamp>   Exclusive UTC cutoff; defaults to ClickHouse now().
-  --window-hours <n>     Number of hours before cutoff to rebuild (default: 168).
+  --window-hours <n>     Number of hours before cutoff to rebuild (default: 168; max: 8784).
   --help                 Show this help.
 `;
 
@@ -56,8 +56,8 @@ async function main() {
   if (!options.rebuild) {
     throw new Error("Refusing an additive backfill. Pass --rebuild so reruns replace the selected aggregate window.");
   }
-  if (!Number.isInteger(options.windowHours) || options.windowHours < 1 || options.windowHours > 24 * 30) {
-    throw new Error("--window-hours must be an integer between 1 and 720");
+  if (!Number.isInteger(options.windowHours) || options.windowHours < 1 || options.windowHours > 24 * 366) {
+    throw new Error("--window-hours must be an integer between 1 and 8784");
   }
 
   const client = createClient({

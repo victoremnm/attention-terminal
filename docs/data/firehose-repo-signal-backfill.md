@@ -9,6 +9,9 @@ deployment and writer state.
 
 1. Pause the GitHub/firehose writer task and confirm it is no longer inserting.
 2. Apply Goose migrations through the firehose daily/monthly rollup migration.
+   Before proceeding, verify the firehose timeline MV repair in issue #308 is
+   deployed; migration 13 can otherwise leave the live MV targeting its
+   temporary rebuild table and cause raw firehose inserts to fail.
 3. Keep the writer paused and run:
 
    ```bash
@@ -17,7 +20,9 @@ deployment and writer state.
 
    The script asks ClickHouse for `now()` at execution time. An explicit UTC
    cutoff can be supplied with `--cutoff "YYYY-MM-DD HH:MM:SS"`; the selected
-   window defaults to 168 hours and can be changed with `--window-hours`.
+   window defaults to 168 hours and can be changed with `--window-hours` (up to
+   8784 hours). Select a window that covers the monthly history you intend to
+   serve; for approximately 12 months, use `--window-hours 8784`.
    The same cutoff and window are used for hourly, daily, and monthly event/action
    aggregates, so a run has one reproducible source window. The script truncates
    and rebuilds all four firehose aggregate targets, including the existing repo

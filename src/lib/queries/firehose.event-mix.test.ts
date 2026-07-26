@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 const { qMock } = vi.hoisted(() => ({ qMock: vi.fn() }));
 vi.mock("./core", () => ({ q: qMock }));
 
-import { firehoseEventMix } from "./firehose";
+import { firehoseEventMix, firehoseEventMixDaily, firehoseEventMixMonthly } from "./firehose";
 
 // Representative observed firehose surface. Empty actions are intentional:
 // Push/Create/Delete/Public are event variants, not actioned transitions.
@@ -62,5 +62,18 @@ describe("firehose event/action mix", () => {
     expect(sql).toContain("uniqMerge(actors)");
     expect(sql).toContain("GROUP BY repo_name, event_type, action");
     expect(result.sql).toBe("SELECT 1");
+  });
+
+  it.each([
+    ["daily", firehoseEventMixDaily, "day", "curated.firehose_event_type_action_daily"],
+    ["monthly", firehoseEventMixMonthly, "month", "curated.firehose_event_type_action_monthly"],
+  ])("builds the %s rollup query with a time key and merged states", async (_name, query, timeKey, table) => {
+    qMock.mockResolvedValueOnce({ rows: [], provenance: { sql: "SELECT 1", elapsedMs: 0 } });
+    await query();
+    const [sql, tables] = qMock.mock.calls.at(-1) ?? [];
+    expect(String(sql)).toContain(timeKey);
+    expect(String(sql)).toContain("countMerge(events)");
+    expect(String(sql)).toContain("uniqMerge(actors)");
+    expect(tables).toEqual([table]);
   });
 });

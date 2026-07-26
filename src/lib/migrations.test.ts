@@ -9,6 +9,8 @@ describe("Goose Migrations & Skipping Index Verification", () => {
     for (const file of [
       "20260726000014_firehose_repo_signal_hourly.sql",
       "20260726000015_firehose_event_type_action_hourly.sql",
+      "20260726000016_firehose_event_type_action_daily.sql",
+      "20260726000017_firehose_event_type_action_monthly.sql",
     ]) {
       const migration = await fs.readFile(path.join(process.cwd(), "migrations", file), "utf-8");
 
@@ -16,6 +18,22 @@ describe("Goose Migrations & Skipping Index Verification", () => {
       expect(migration).not.toMatch(/toDateTime\(['"]20\d\d-/i);
       expect(migration).not.toContain("INTERVAL 7 DAY");
     }
+  });
+
+  it("partitions daily and monthly firehose rollups by calendar month", async () => {
+    const daily = await fs.readFile(
+      path.join(process.cwd(), "migrations", "20260726000016_firehose_event_type_action_daily.sql"),
+      "utf-8"
+    );
+    const monthly = await fs.readFile(
+      path.join(process.cwd(), "migrations", "20260726000017_firehose_event_type_action_monthly.sql"),
+      "utf-8"
+    );
+
+    expect(daily).toContain("PARTITION BY toYYYYMM(day)");
+    expect(daily).toContain("ORDER BY (day, repo_name, event_type, action)");
+    expect(monthly).toContain("PARTITION BY toYYYYMM(month)");
+    expect(monthly).toContain("ORDER BY (month, repo_name, event_type, action)");
   });
 
   it("verifies all SQL migration files in /migrations are readable and non-empty", async () => {

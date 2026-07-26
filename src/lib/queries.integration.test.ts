@@ -13,6 +13,8 @@ import {
   firehoseStats,
   firehoseRepoSignal,
   firehoseEventMix,
+  firehoseEventMixDaily,
+  firehoseEventMixMonthly,
   type RepoWindow,
   type FirehoseRepoSignalRow,
 } from "./queries";
@@ -164,6 +166,26 @@ describe.skipIf(!hasCH)("query layer (integration)", () => {
     expect(sql).toContain("uniqMerge(actors)");
     for (const row of data) {
       expect(typeof row.repo_name).toBe("string");
+      expect(typeof row.event_type).toBe("string");
+      expect(typeof row.action).toBe("string");
+      expect(typeof row.event_count).toBe("string");
+      expect(typeof row.actor_count).toBe("string");
+    }
+  }, 120_000);
+
+  it("firehose daily and monthly rollups preserve event type/action dimensions", async () => {
+    const daily = await firehoseEventMixDaily(30, 100);
+    const monthly = await firehoseEventMixMonthly(12, 100);
+
+    for (const row of daily.data) {
+      expect(typeof row.day).toBe("string");
+      expect(typeof row.event_type).toBe("string");
+      expect(typeof row.action).toBe("string");
+      expect(typeof row.event_count).toBe("string");
+      expect(typeof row.actor_count).toBe("string");
+    }
+    for (const row of monthly.data) {
+      expect(typeof row.month).toBe("string");
       expect(typeof row.event_type).toBe("string");
       expect(typeof row.action).toBe("string");
       expect(typeof row.event_count).toBe("string");
