@@ -19,7 +19,7 @@ describe("huggingface query dependencies", () => {
   const queries: Array<[string, () => Promise<unknown>, string[]]> = [
     ["headline stats", hfModelsHeadline, ["curated.hf_model_global_latest"]],
     ["top models", () => hfTopModels(), ["curated.hf_model_global_latest"]],
-    ["trending models", hfTrendingModels, ["curated.hf_model_global_latest", "raw.hf_model_snapshots"]],
+    ["trending models", hfTrendingModels, ["curated.hf_model_global_latest"]],
     ["author leaderboard", () => hfAuthorLeaderboard(), ["curated.hf_author_summary"]],
     ["pipeline tag distribution", hfPipelineTagDistribution, ["curated.hf_model_global_latest"]],
     ["library distribution", hfLibraryDistribution, ["curated.hf_model_global_latest"]],

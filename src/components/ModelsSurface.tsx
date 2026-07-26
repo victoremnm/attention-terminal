@@ -83,17 +83,21 @@ function ModelLeaderboardRow({
   );
 }
 
-function TrendingRow({ row }: { row: HfTrendingModelRow }) {
-  const delta = Number(row.downloads_delta);
+function TrendingRow({ row, onSelect }: { row: HfTrendingModelRow; onSelect: (m: HfTopModelRow, el: HTMLButtonElement) => void }) {
+  const partial: HfTopModelRow = { model_id: row.model_id, author: row.author, pipeline_tag: row.pipeline_tag, library_name: "", downloads: "", likes: "", is_gated: "0", is_private: "0" };
+  const age = Math.floor((Date.now() - new Date(row.created_at).getTime()) / 3600000);
   return (
-    <div className="models-trending-row">
+    <button
+      type="button"
+      className="models-trending-row"
+      onClick={(e) => onSelect(partial, e.currentTarget)}
+      aria-label={`Inspect ${row.model_id}`}
+    >
       <span className="mono models-trending-name">{row.model_id}</span>
       <span className="mono models-trending-author">{row.author}</span>
-      <span className="mono models-trending-now">{Number(row.downloads_now).toLocaleString()}</span>
-      <span className={`mono models-trending-delta ${delta >= 0 ? "delta-up" : "delta-down"}`}>
-        {delta >= 0 ? "+" : ""}{delta.toLocaleString()}
-      </span>
-    </div>
+      {row.pipeline_tag && <ModelBadge label={row.pipeline_tag} color="var(--cyan)" />}
+      <span className="mono models-trending-age">{age < 1 ? "<1h" : `${age}h`}</span>
+    </button>
   );
 }
 
@@ -184,22 +188,22 @@ export function ModelsSurface({
   const pipelineItems = pipelineTags.map((r) => ({
     label: r.pipeline_tag,
     value: Number(r.model_count),
-  }));
+  })).sort((a, b) => b.value - a.value);
 
   const libraryItems = libraryDistribution.map((r) => ({
     label: r.library_name,
     value: Number(r.model_count),
-  }));
+  })).sort((a, b) => b.value - a.value);
 
   const authorItems = authorLeaderboard.map((r) => ({
     label: r.author,
     value: Number(r.total_downloads),
-  }));
+  })).sort((a, b) => b.value - a.value);
 
   const tagItems = tagFrequency.map((r) => ({
     label: r.tag,
     value: Number(r.model_count),
-  }));
+  })).sort((a, b) => b.value - a.value);
 
   const scanKindItems = scanKindBreakdown.map((r) => ({
     category: r.scan_kind,
@@ -225,10 +229,16 @@ export function ModelsSurface({
 
         {trendingModels.length > 0 && (
           <section className="models-section">
-            <h2 className="models-section-title mono">TRENDING_1H</h2>
+            <h2 className="models-section-title mono">NEW_MODELS_7D</h2>
             <div className="models-trending-list">
+              <div className="models-trending-header mono">
+                <span>Model</span>
+                <span>Author</span>
+                <span>Pipeline</span>
+                <span>Age</span>
+              </div>
               {trendingModels.map((row, i) => (
-                <TrendingRow key={row.model_id} row={row} />
+                <TrendingRow key={row.model_id} row={row} onSelect={openDrawer} />
               ))}
             </div>
           </section>
@@ -251,6 +261,15 @@ export function ModelsSurface({
             </span>
           </h2>
           <div className="models-leaderboard">
+            <div className="models-lb-header mono">
+              <span className="models-rank">#</span>
+              <span>Model</span>
+              <span>Author</span>
+              <span>Tags</span>
+              <span />
+              <span className="mono models-dl">Downloads</span>
+              <span className="mono models-likes">Likes</span>
+            </div>
             {leaderboardLoading && (
               <p className="models-empty mono">loading leaderboard...</p>
             )}

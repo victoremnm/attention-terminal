@@ -27,8 +27,8 @@ const mockTopModels: HfTopModelRow[] = [
 ];
 
 const mockTrending: HfTrendingModelRow[] = [
-  { model_id: "new/hot-model", author: "new-org", downloads_now: "50000", downloads_prev: "10000", downloads_delta: "40000" },
-  { model_id: "old/cooling-model", author: "old-org", downloads_now: "20000", downloads_prev: "50000", downloads_delta: "-30000" },
+  { model_id: "new/hot-model", author: "new-org", pipeline_tag: "text-generation", created_at: "2026-07-26T10:00:00Z", scan_at: "2026-07-26T12:00:00Z" },
+  { model_id: "old/cooling-model", author: "old-org", pipeline_tag: "", created_at: "2026-07-25T08:00:00Z", scan_at: "2026-07-26T12:00:00Z" },
 ];
 
 const mockAuthors: HfAuthorRow[] = [
@@ -121,7 +121,7 @@ describe("ModelsSurface component", () => {
     expect(gated?.model_id).toBe("gated/custom-model");
   });
 
-  it("accepts trending models with positive and negative delta", () => {
+  it("accepts trending models with pipeline tags and age", () => {
     const element = createElement(ModelsSurface, {
       topModels: [],
       trendingModels: mockTrending,
@@ -132,10 +132,8 @@ describe("ModelsSurface component", () => {
       tagFrequency: [],
     });
     expect(element.props.trendingModels).toHaveLength(2);
-    const up = mockTrending[0];
-    const down = mockTrending[1];
-    expect(Number(up.downloads_delta)).toBeGreaterThan(0);
-    expect(Number(down.downloads_delta)).toBeLessThan(0);
+    expect(element.props.trendingModels[0].pipeline_tag).toBe("text-generation");
+    expect(element.props.trendingModels[0].created_at).toBeTruthy();
   });
 
   it("accepts pipeline tags and library data", () => {

@@ -4332,6 +4332,30 @@ a { color: inherit; }
 }
 .models-leaderboard-row:hover { background: var(--panel-2); }
 .models-leaderboard-row:focus-visible { outline: 2px solid var(--cyan); outline-offset: -2px; }
+.models-lb-header {
+  display: grid;
+  grid-template-columns: 32px 1.8fr 1fr auto 1fr 80px 60px;
+  gap: 8px;
+  align-items: center;
+  padding: 4px 12px;
+  font-size: 9px;
+  letter-spacing: .12em;
+  color: var(--muted);
+  border-bottom: 1px solid var(--line-soft);
+  background: var(--panel);
+}
+.models-trending-header {
+  display: grid;
+  grid-template-columns: 1.8fr 1fr auto auto;
+  gap: 8px;
+  align-items: center;
+  padding: 4px 12px;
+  font-size: 9px;
+  letter-spacing: .12em;
+  color: var(--muted);
+  border-bottom: 1px solid var(--line-soft);
+  background: var(--panel);
+}
 .models-rank { color: var(--muted); font-size: 10px; }
 .models-name {
   color: var(--cyan);
@@ -4382,19 +4406,24 @@ a { color: inherit; }
 }
 .models-trending-row {
   display: grid;
-  grid-template-columns: 1.8fr 1fr 1fr 1fr;
+  grid-template-columns: 1.8fr 1fr auto auto;
   gap: 8px;
   align-items: center;
   padding: 6px 12px;
   background: var(--panel);
   font-size: 12px;
+  cursor: pointer;
+  text-align: left;
+  width: 100%;
+  border: none;
+  font: inherit;
+  color: inherit;
 }
+.models-trending-row:hover { background: var(--panel-2); }
+.models-trending-row:focus-visible { outline: 2px solid var(--cyan); outline-offset: -2px; }
 .models-trending-name { color: var(--cyan); }
 .models-trending-author { color: var(--muted); font-size: 11px; }
-.models-trending-now { color: var(--ink); text-align: right; }
-.models-trending-delta { text-align: right; }
-.delta-up { color: var(--emerald); }
-.delta-down { color: var(--mag); }
+.models-trending-age { font-size: 11px; color: var(--muted); }
 
 /* Charts row */
 .models-charts-row {
@@ -4506,4 +4535,5 @@ a { color: inherit; }
   .models-stats-grid { grid-template-columns: repeat(2, 1fr); }
   .models-charts-row { grid-template-columns: 1fr; }
   .models-leaderboard-row { grid-template-columns: 24px 1.4fr 1fr auto 1fr 60px 50px; }
+  .models-lb-header { grid-template-columns: 24px 1.4fr 1fr auto 1fr 60px 50px; }
 }

@@ -33,9 +33,9 @@ export type HfModelDetail = HfTopModelRow & { scan_history: HfScanHistoryRow[] }
 export interface HfTrendingModelRow {
   model_id: string;
   author: string;
-  downloads_delta: string;
-  downloads_now: string;
-  downloads_prev: string;
+  pipeline_tag: string;
+  created_at: string;
+  scan_at: string;
 }
 
 export interface HfAuthorRow {
@@ -135,38 +135,17 @@ export async function hfTrendingModels(
   limit = 20
 ): Promise<QueryResult<HfTrendingModelRow[]>> {
   const { rows, sql, elapsedMs } = await safeQ<HfTrendingModelRow>(
-    `WITH
-       latest_scan AS (
-         SELECT max(scan_at) AS ts FROM raw.hf_model_snapshots
-       ),
-       prev_scan AS (
-         SELECT max(scan_at) AS ts FROM raw.hf_model_snapshots
-         WHERE scan_at < (SELECT ts FROM latest_scan)
-       ),
-       current AS (
-         SELECT model_id, argMax(author, ingested_at) AS author, argMax(downloads, ingested_at) AS downloads
-         FROM raw.hf_model_snapshots
-         WHERE scan_at = (SELECT ts FROM latest_scan)
-         GROUP BY model_id
-       ),
-       previous AS (
-         SELECT model_id, argMax(downloads, ingested_at) AS downloads
-         FROM raw.hf_model_snapshots
-         WHERE scan_at = (SELECT ts FROM prev_scan)
-         GROUP BY model_id
-       )
-     SELECT
-       c.model_id,
-       c.author,
-       toString(toInt64(c.downloads) - toInt64(COALESCE(p.downloads, 0))) AS downloads_delta,
-       toString(c.downloads) AS downloads_now,
-       toString(COALESCE(p.downloads, 0)) AS downloads_prev
-     FROM current AS c
-     LEFT JOIN previous AS p ON c.model_id = p.model_id
-      WHERE c.downloads > 0 AND p.downloads IS NOT NULL
-      ORDER BY toInt64(downloads_delta) DESC
-      LIMIT {limit: UInt32}`,
-    [...HF_MODEL_GLOBAL_TABLES, ...HF_RAW_TABLES],
+    `SELECT
+       model_id,
+       author,
+       pipeline_tag,
+       toString(created_at) AS created_at,
+       toString(last_scan_at) AS scan_at
+     FROM curated.hf_model_global_latest
+     WHERE created_at > toDateTime(now() - 86400 * 7)
+     ORDER BY created_at DESC
+     LIMIT {limit: UInt32}`,
+    HF_MODEL_GLOBAL_TABLES,
     { limit }
   );
   return { data: rows, sql, rowsRead: 0, elapsedMs };
