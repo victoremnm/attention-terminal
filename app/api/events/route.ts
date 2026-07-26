@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
   eventFeed,
-  EVENT_FEED_SOURCE_TABLES,
+  eventFeedSourceTables,
   parseEventFeedRequest,
 } from "@/lib/event-feed-query";
 
@@ -24,7 +24,7 @@ export async function GET(request: NextRequest) {
       filters,
       provenance: {
         sql: result.sql,
-        sourceTables: [...EVENT_FEED_SOURCE_TABLES],
+        sourceTables: eventFeedSourceTables(filters),
         rowsRead: result.rowsRead,
         elapsedMs: result.elapsedMs,
       },

@@ -47,7 +47,7 @@ describe("GET /api/events", () => {
       filters: { window: "24h", eventTypes: ["PushEvent"], repo: "owner/repo" },
       provenance: {
         sql: "SELECT ... LIMIT 100",
-        sourceTables: ["default.github_events_firehose"],
+        sourceTables: ["curated.event_timeline"],
         rowsRead: 321,
         elapsedMs: 12,
       },

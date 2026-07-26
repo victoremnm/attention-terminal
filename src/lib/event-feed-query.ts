@@ -28,7 +28,8 @@ export interface EventFeedRow {
   payload_summary: string;
 }
 
-export const EVENT_FEED_SOURCE_TABLES = ["default.github_events_firehose"] as const;
+export const EVENT_FEED_RAW_TABLE = "default.github_events_firehose";
+export const EVENT_FEED_TIMELINE_TABLE = "curated.event_timeline";
 export const EVENT_FEED_MAX_LIMIT = 100;
 
 const WINDOWS: Record<EventFeedWindow, string> = {
@@ -71,7 +72,7 @@ function eventTypes(searchParams: URLSearchParams) {
 
 export function parseEventFeedRequest(searchParams: URLSearchParams): EventFeedFilters {
   const rawWindow = searchParams.get("window") ?? "7d";
-  if (!(rawWindow in WINDOWS)) invalid("window is not supported");
+  if (!Object.hasOwn(WINDOWS, rawWindow)) invalid("window is not supported");
 
   const repo = filterText(searchParams.get("repo"), "repo");
   if (repo && !REPO.test(repo)) invalid("repo must be an owner/repo name");
@@ -97,45 +98,53 @@ const SUMMARY_SQL = `multiIf(
   event_type = 'ReleaseEvent', concat('published ', coalesce(title, '')),
   event_type)`;
 
+export function eventFeedSourceTables(filters: EventFeedFilters) {
+  return [filters.ref ? EVENT_FEED_RAW_TABLE : EVENT_FEED_TIMELINE_TABLE];
+}
+
 export function buildEventFeedQuery(filters: EventFeedFilters) {
+  const from = filters.ref ? EVENT_FEED_RAW_TABLE : EVENT_FEED_TIMELINE_TABLE;
+  const source = filters.ref ? "raw" : "timeline";
   const predicates = [
-    `created_at >= now() - ${WINDOWS[filters.window]}`,
+    `${source}.created_at >= now() - ${WINDOWS[filters.window]}`,
     ...(filters.eventTypes.length ? ["event_type IN {eventTypes: Array(String)}"] : []),
-    ...(filters.repo ? ["repo_name = {repo: String}"] : []),
-    ...(filters.actor ? ["actor_login = {actor: String}"] : []),
-    ...(filters.ref ? ["positionCaseInsensitiveUTF8(JSONExtractString(payload, 'ref'), {ref: String}) > 0"] : []),
+    ...(filters.repo ? [`${source}.repo_name = {repo: String}`] : []),
+    ...(filters.actor ? [`${source}.actor_login = {actor: String}`] : []),
+    ...(filters.ref ? ["positionCaseInsensitiveUTF8(JSONExtractString(raw.payload, 'ref'), {ref: String}) > 0"] : []),
     ...(filters.search
       ? [
-          "positionCaseInsensitiveUTF8(concat(repo_name, ' ', actor_login, ' ', event_type, ' ', action, ' ', ifNull(title, ''), ' ', JSONExtractString(payload, 'ref')), {search: String}) > 0",
+          source === "raw"
+            ? "positionCaseInsensitiveUTF8(concat(raw.repo_name, ' ', raw.actor_login, ' ', raw.event_type, ' ', raw.action, ' ', ifNull(raw.title, ''), ' ', JSONExtractString(raw.payload, 'ref')), {search: String}) > 0"
+            : "positionCaseInsensitiveUTF8(concat(timeline.repo_name, ' ', timeline.actor_login, ' ', timeline.event_type, ' ', timeline.action, ' ', ifNull(timeline.title, ''), ' ', timeline.payload_summary), {search: String}) > 0",
         ]
       : []),
   ];
 
   return `
     SELECT
-      toString(event_id) AS event_id,
-      concat('github:', toString(event_id)) AS event_key,
-      toString(created_at) AS created_at,
+      toString(${source}.event_id) AS event_id,
+      concat('github:', toString(${source}.event_id)) AS event_key,
+      toString(${source}.created_at) AS created_at,
       repo_name,
       actor_login,
       actor_avatar,
       event_type,
       action,
-      ref_type,
-      JSONExtractString(payload, 'ref') AS ref,
+      ${source === "raw" ? "ref_type" : "''"} AS ref_type,
+      ${source === "raw" ? "JSONExtractString(raw.payload, 'ref')" : "''"} AS ref,
       title,
       toString(number) AS number,
-      ${SUMMARY_SQL} AS payload_summary
-    FROM default.github_events_firehose
+      ${source === "raw" ? SUMMARY_SQL : "timeline.payload_summary"} AS payload_summary
+    FROM ${from} AS ${source}
     WHERE ${predicates.join("\n      AND ")}
-    ORDER BY created_at DESC, event_id DESC
+    ORDER BY ${source}.created_at DESC, ${source}.event_id DESC
     LIMIT ${EVENT_FEED_MAX_LIMIT}
   `.trim();
 }
 
 export async function eventFeed(filters: EventFeedFilters): Promise<QueryResult<EventFeedRow[]>> {
   const sql = buildEventFeedQuery(filters);
-  const { rows, provenance } = await q<EventFeedRow>(sql, [...EVENT_FEED_SOURCE_TABLES], {
+  const { rows, provenance } = await q<EventFeedRow>(sql, eventFeedSourceTables(filters), {
     ...(filters.eventTypes.length ? { eventTypes: filters.eventTypes } : {}),
     ...(filters.repo ? { repo: filters.repo } : {}),
     ...(filters.actor ? { actor: filters.actor } : {}),
