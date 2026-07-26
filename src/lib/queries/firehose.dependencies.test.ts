@@ -9,6 +9,8 @@ import {
   eventVolumeFeed,
   firehoseRepoSignal,
   firehoseEventMix,
+  firehoseEventMixDaily,
+  firehoseEventMixMonthly,
   firehoseStats,
 } from "./firehose";
 
@@ -20,6 +22,8 @@ describe("firehose query dependencies", () => {
     ["firehose stats", firehoseStats, ["curated.event_volume_hourly"]],
     ["repo signal", firehoseRepoSignal, ["curated.firehose_repo_signal_hourly"]],
     ["event mix", firehoseEventMix, ["curated.firehose_event_type_action_hourly"]],
+    ["daily event mix", firehoseEventMixDaily, ["curated.firehose_event_type_action_daily"]],
+    ["monthly event mix", firehoseEventMixMonthly, ["curated.firehose_event_type_action_monthly"]],
   ];
 
   it.each(queries)("checks only the %s table", async (_name, query, expectedTables) => {
