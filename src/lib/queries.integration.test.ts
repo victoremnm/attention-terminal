@@ -11,7 +11,10 @@ import {
   eventTimelineFeed,
   eventVolumeFeed,
   firehoseStats,
+  firehoseRepoSignal,
+  firehoseEventMix,
   type RepoWindow,
+  type FirehoseRepoSignalRow,
 } from "./queries";
 
 const hasCH = Boolean(process.env.CLICKHOUSE_URL && process.env.CLICKHOUSE_PASSWORD);
@@ -139,6 +142,32 @@ describe.skipIf(!hasCH)("query layer (integration)", () => {
       expect(typeof data[0].total_events).toBe("string");
       expect(typeof data[0].total_repos).toBe("string");
       expect(typeof data[0].total_actors).toBe("string");
+    }
+  }, 120_000);
+
+  it("firehoseRepoSignal executes and returns repo signal shape", async () => {
+    const { data } = await firehoseRepoSignal(72, 10);
+    expect(Array.isArray(data)).toBe(true);
+    for (const row of data) {
+      expect(typeof row.repo_name).toBe("string");
+      expect(typeof row.events).toBe("string");
+      expect(typeof row.pushes).toBe("string");
+      expect(typeof row.stars).toBe("string");
+      expect(typeof row.forks).toBe("string");
+    }
+  }, 120_000);
+
+  it("firehoseEventMix preserves event type/action dimensions", async () => {
+    const { data, sql } = await firehoseEventMix(72, 100);
+    expect(Array.isArray(data)).toBe(true);
+    expect(sql).toContain("countMerge(events)");
+    expect(sql).toContain("uniqMerge(actors)");
+    for (const row of data) {
+      expect(typeof row.repo_name).toBe("string");
+      expect(typeof row.event_type).toBe("string");
+      expect(typeof row.action).toBe("string");
+      expect(typeof row.event_count).toBe("string");
+      expect(typeof row.actor_count).toBe("string");
     }
   }, 120_000);
 

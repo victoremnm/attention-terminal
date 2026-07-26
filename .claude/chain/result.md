@@ -1,15 +1,22 @@
-# Orchestration result
+# Chain result: firehose-repo-signal-hourly aggregate
 
-The exploration wave is complete. No product code was changed.
+## Files created/edited
 
-Logged session: `orch-repo-drilldown-20260722`
+| File | Action | Subagent |
+|------|--------|----------|
+| `migrations/20260726000012_firehose_repo_signal_hourly.sql` | Created | A |
+| `src/lib/queries/firehose.ts` | Edited | B |
+| `src/lib/queries.integration.test.ts` | Edited | C |
+| `src/components/EventsSurface.tsx` | Edited | D |
 
-Agent runs:
+## Validation
 
-- `explore-repo-drilldown-query-plan`
-- `explore-clickhouse-repo-key-index`
-- `explore-skinny-and-code-frequency`
-- `explore-drilldown-attribution-ux`
-- `explore-session-telemetry-gate`
+- `npx tsc --noEmit` — zero new errors (only pre-existing errors in clickhouse.test.ts and actor-leaderboard.ts)
+- Migration follows goose format, uses `default.github_events_firehose` physical table (correct for MVs)
+- Query uses parameterized placeholders (`{hours: UInt32}`, `{limit: UInt32}`)
+- EventsSurface fetches in parallel via Promise.all with existing queries — no serialization regression
+- Type `FirehoseRepoSignalRow` properly exported via `index.ts` `export * from "./firehose"`
 
-All five returned useful read-only reports and were logged with `model=gpt-5.6-luna`, `ok=1`, and token values estimated by the logging helper because the orchestration API did not expose exact usage counters.
+## Branch
+
+`feat/firehose-repo-signal` — checked out in main workdir.

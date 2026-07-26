@@ -5,6 +5,19 @@ import { execSync } from "node:child_process";
 import { clickhouse } from "./clickhouse";
 
 describe("Goose Migrations & Skipping Index Verification", () => {
+  it("keeps firehose aggregate migrations DDL-only", async () => {
+    for (const file of [
+      "20260726000014_firehose_repo_signal_hourly.sql",
+      "20260726000015_firehose_event_type_action_hourly.sql",
+    ]) {
+      const migration = await fs.readFile(path.join(process.cwd(), "migrations", file), "utf-8");
+
+      expect(migration).not.toMatch(/INSERT\s+INTO/i);
+      expect(migration).not.toMatch(/toDateTime\(['"]20\d\d-/i);
+      expect(migration).not.toContain("INTERVAL 7 DAY");
+    }
+  });
+
   it("verifies all SQL migration files in /migrations are readable and non-empty", async () => {
     const migrationsDir = path.join(process.cwd(), "migrations");
     const files = await fs.readdir(migrationsDir);

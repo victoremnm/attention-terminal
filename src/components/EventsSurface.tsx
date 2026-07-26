@@ -3,9 +3,13 @@ import {
   eventTimelineFeed,
   eventVolumeFeed,
   firehoseStats,
+  firehoseRepoSignal,
+  firehoseEventMix,
   type EventTimelineRow,
   type EventVolumeRow,
   type FirehoseStatsRow,
+  type FirehoseRepoSignalRow,
+  type FirehoseEventMixRow,
 } from "@/lib/queries";
 
 function EventTypeBadge({ type }: { type: string }) {
@@ -85,11 +89,39 @@ function StatsCards({ stats }: { stats: FirehoseStatsRow }) {
   );
 }
 
+function SignalCard({ row }: { row: FirehoseRepoSignalRow }) {
+  return (
+    <div className="signal-card">
+      <span className="mono signal-repo">{row.repo_name}</span>
+      <span className="mono signal-metric" title="Pushes">⊞{row.pushes}</span>
+      <span className="mono signal-metric signal-muted" title="Stars">★{row.stars}</span>
+      <span className="mono signal-metric signal-muted" title="Forks">⑂{row.forks}</span>
+      <span className="mono signal-metric signal-muted" title="PRs opened/closed">⊞PR {row.prs_opened}/{row.prs_closed}</span>
+      <span className="mono signal-metric signal-muted" title="Issues opened/closed">I {row.issues_opened}/{row.issues_closed}</span>
+      <span className="mono signal-metric signal-muted" title="Releases">●{row.releases}</span>
+    </div>
+  );
+}
+
+function EventMixRow({ row }: { row: FirehoseEventMixRow }) {
+  const action = row.action || "(none)";
+  return (
+    <div className="events-mix-row">
+      <span className="events-mix-repo">{row.repo_name}</span>
+      <EventTypeBadge type={row.event_type} />
+      <span className="mono events-mix-action">{action}</span>
+      <span className="mono events-mix-count">{row.event_count}</span>
+    </div>
+  );
+}
+
 export async function EventsSurface() {
-  const [timeline, volume, statsResult] = await Promise.all([
+  const [timeline, volume, statsResult, signalResult, eventMixResult] = await Promise.all([
     eventTimelineFeed(50),
     eventVolumeFeed(),
     firehoseStats(),
+    firehoseRepoSignal(24, 20),
+    firehoseEventMix(24, 100),
   ]);
 
   const stats = statsResult.data[0] ?? {
@@ -112,6 +144,30 @@ export async function EventsSurface() {
         </header>
 
         <StatsCards stats={stats} />
+
+        <section className="events-section">
+          <h2 className="events-section-title mono">REPO_SIGNALS_24H</h2>
+          <div className="events-signal-grid">
+            {signalResult.data.length === 0 && (
+              <p className="events-empty mono">No signal data yet.</p>
+            )}
+            {signalResult.data.map((row, i) => (
+              <SignalCard key={row.repo_name} row={row} />
+            ))}
+          </div>
+        </section>
+
+        <section className="events-section">
+          <h2 className="events-section-title mono">ACTIVITY_MIX_24H</h2>
+          <div className="events-mix">
+            {eventMixResult.data.length === 0 && (
+              <p className="events-empty mono">No event mix data yet.</p>
+            )}
+            {eventMixResult.data.map((row) => (
+              <EventMixRow key={`${row.repo_name}-${row.event_type}-${row.action}`} row={row} />
+            ))}
+          </div>
+        </section>
 
         <section className="events-section">
           <h2 className="events-section-title mono">TIMELINE</h2>
