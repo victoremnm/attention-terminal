@@ -105,6 +105,7 @@ export function EventTimeline({
   const refreshAbortRef = useRef<AbortController | undefined>(undefined);
   const { lastIngestAt, error: realtimeError } = useIngestPulse(ingestToken);
   const ingestKey = lastIngestAt?.getTime() ?? 0;
+  const usingPollingFallback = Boolean(realtimeError || !ingestToken);
 
   useEffect(() => () => abortRef.current?.abort(), []);
 
@@ -246,7 +247,7 @@ export function EventTimeline({
       <div className="events-timeline" role="list" aria-label="Event timeline" aria-busy={refreshing}>
         <div className="mono events-timeline-status" aria-live="polite">
           {refreshing ? "Refreshing events…" : freshness}
-          {realtimeError && " · realtime unavailable; polling every 60 seconds"}
+          {usingPollingFallback && " · realtime unavailable; polling every 60 seconds"}
           {refreshError && <span role="alert"> · {refreshError}; showing last successful results</span>}
         </div>
         {rows.length === 0 && (

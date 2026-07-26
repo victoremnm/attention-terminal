@@ -82,6 +82,11 @@ describe("EventTimeline", () => {
     expect(screen.getByText(/No events ingested/)).toBeInTheDocument();
   });
 
+  it("discloses polling when realtime access is unavailable", () => {
+    render(<EventTimeline rows={mockRows} />);
+    expect(screen.getByText(/realtime unavailable; polling every 60 seconds/)).toBeInTheDocument();
+  });
+
   it("opens detail drawer on click and fetches event detail", async () => {
     render(<EventTimeline rows={mockRows} />);
     const firstRow = screen.getByLabelText("Inspect PushEvent by alice");
