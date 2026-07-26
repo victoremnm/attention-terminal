@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { SurfaceNav } from "@/components/SurfaceNav";
 import { EventTimeline } from "@/components/EventTimeline";
 import { EventTypeExplorer } from "@/components/EventTypeExplorer";
@@ -123,6 +123,15 @@ export function EventsSurface({
 }: EventsSurfaceProps) {
   const [filterEventTypes, setFilterEventTypes] = useState<string[]>([]);
   const [filterLoading, setFilterLoading] = useState(false);
+  const [signalSort, setSignalSort] = useState("events");
+
+  const sortedSignalData = useMemo(() => {
+    return [...signalData].sort((a, b) => {
+      const av = Number(a[signalSort as keyof FirehoseRepoSignalRow] ?? 0);
+      const bv = Number(b[signalSort as keyof FirehoseRepoSignalRow] ?? 0);
+      return bv - av;
+    });
+  }, [signalData, signalSort]);
 
   const handleFilterChange = useCallback((types: string[]) => {
     setFilterEventTypes(types);
@@ -149,30 +158,6 @@ export function EventsSurface({
             onFilterChange={handleFilterChange}
             activeEventTypes={filterEventTypes}
           />
-        </section>
-
-        <section className="events-section">
-          <h2 className="events-section-title mono">REPO_SIGNALS_24H</h2>
-          <div className="events-signal-grid">
-            {signalData.length === 0 && (
-              <p className="events-empty mono">No signal data yet.</p>
-            )}
-            {signalData.map((row, i) => (
-              <SignalCard key={row.repo_name} row={row} />
-            ))}
-          </div>
-        </section>
-
-        <section className="events-section">
-          <h2 className="events-section-title mono">ACTIVITY_MIX_24H</h2>
-          <div className="events-mix">
-            {eventMixData.length === 0 && (
-              <p className="events-empty mono">No event mix data yet.</p>
-            )}
-            {eventMixData.map((row) => (
-              <EventMixRow key={`${row.repo_name}-${row.event_type}-${row.action}`} row={row} />
-            ))}
-          </div>
         </section>
 
         <section className="events-section">
@@ -203,6 +188,47 @@ export function EventsSurface({
             ))}
           </div>
         </section>
+
+        <details className="events-section events-section-collapsible">
+          <summary className="events-section-title mono events-section-summary">
+            REPO_SIGNALS_24H
+            <span className="events-sort-control">
+              sort:
+              <select
+                className="events-sort-select"
+                value={signalSort}
+                onChange={(e) => setSignalSort(e.target.value)}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <option value="events">events</option>
+                <option value="pushes">pushes</option>
+                <option value="stars">stars</option>
+              </select>
+            </span>
+          </summary>
+          <div className="events-signal-grid">
+            {sortedSignalData.length === 0 && (
+              <p className="events-empty mono">No signal data yet.</p>
+            )}
+            {sortedSignalData.map((row, i) => (
+              <SignalCard key={row.repo_name} row={row} />
+            ))}
+          </div>
+        </details>
+
+        <details className="events-section events-section-collapsible">
+          <summary className="events-section-title mono events-section-summary">
+            ACTIVITY_MIX_24H
+          </summary>
+          <div className="events-mix">
+            {eventMixData.length === 0 && (
+              <p className="events-empty mono">No event mix data yet.</p>
+            )}
+            {eventMixData.map((row) => (
+              <EventMixRow key={`${row.repo_name}-${row.event_type}-${row.action}`} row={row} />
+            ))}
+          </div>
+        </details>
       </main>
     </>
   );
