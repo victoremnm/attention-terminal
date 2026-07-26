@@ -48,6 +48,7 @@
     "start": "next start",
     "release": "semantic-release",
     "test": "vitest run",
+    "security:uuids": "bash scripts/check-no-hardcoded-uuids.sh",
     "test:migrations:local": "./scripts/test-migrations-local.sh",
     "backfill:firehose": "./scripts/backfill-firehose-repo-signals.sh",
     "log-telemetry": "tsx scripts/log-session-telemetry.ts",
