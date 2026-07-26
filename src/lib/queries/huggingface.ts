@@ -95,7 +95,7 @@ export async function hfModelsHeadline(): Promise<QueryResult<HfHeadlineRow[]>> 
        toString(sum(downloads)) AS total_downloads,
        toString(sum(likes)) AS total_likes,
        (SELECT toString(count()) FROM curated.hf_scan_kind_summary) AS scan_kinds_covered,
-       toString(max(scan_at)) AS last_scan_at
+       toString(max(last_scan_at)) AS last_scan_at
      FROM curated.hf_model_global_latest`,
     HF_MODEL_GLOBAL_TABLES
   );

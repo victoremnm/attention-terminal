@@ -35,7 +35,7 @@ SELECT
     argMax(last_modified, scan_at) AS last_modified,
     argMax(is_private, scan_at) AS is_private,
     argMax(is_gated, scan_at) AS is_gated,
-    max(scan_at) AS scan_at
+    max(scan_at) AS last_scan_at
 FROM curated.hf_model_latest
 GROUP BY model_id;
 
@@ -59,7 +59,7 @@ SELECT
     count() AS model_count,
     sum(downloads) AS total_downloads,
     sum(likes) AS total_likes,
-    max(scan_at) AS last_scan_at
+    max(last_scan_at) AS last_scan_at
 FROM curated.hf_model_global_latest
 WHERE author != ''
 GROUP BY author;

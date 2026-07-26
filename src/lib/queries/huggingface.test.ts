@@ -102,6 +102,21 @@ describe("hf_model_snapshots migration schema consistency", () => {
     expect(migrationDDL).not.toContain("max(ingested_at)");
   });
 
+  it("global latest uses last_scan_at alias to avoid argMax/scan_at conflict", () => {
+    const globalDDL = `
+      SELECT
+        model_id,
+        argMax(author, scan_at) AS author,
+        argMax(downloads, scan_at) AS downloads,
+        max(scan_at) AS last_scan_at
+      FROM curated.hf_model_latest
+      GROUP BY model_id
+    `;
+    expect(globalDDL).toContain("argMax(author, scan_at)");
+    expect(globalDDL).toContain("max(scan_at) AS last_scan_at");
+    expect(globalDDL).not.toContain("max(scan_at) AS scan_at");
+  });
+
   it("raw view exists as passthrough", () => {
     const rawView = `
       CREATE VIEW IF NOT EXISTS raw.hf_model_snapshots AS
