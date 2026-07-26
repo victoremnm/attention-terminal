@@ -1,15 +1,22 @@
 import { ChatCtaBanner } from "@/components/ChatCtaBanner";
+import { HNStoryTicker } from "@/components/HNStoryStreamClient";
 import { SurfaceNav } from "@/components/SurfaceNav";
 import { TickerRail } from "@/components/TickerRail";
-import { tickerLanes } from "@/lib/queries";
+import { hnStoryFeed, tickerLanes } from "@/lib/queries";
 import { mintIngestReadToken } from "@/lib/realtime-actions";
 
 export async function TrendingSurface() {
-  const [lanes, ingestToken] = await Promise.all([
+  const emptyStoryFeed = { data: [], sql: "", rowsRead: 0, elapsedMs: 0 };
+  const [lanes, ingestToken, storyFeed] = await Promise.all([
     tickerLanes(),
     mintIngestReadToken(),
+    hnStoryFeed(6, 8).catch((error) => {
+      console.warn("HN story ticker unavailable during initial render", error);
+      return emptyStoryFeed;
+    }),
   ]);
   const token = ingestToken ?? undefined;
+  const stories = { stories: storyFeed, replies: [] };
 
   return (
     <>
@@ -23,6 +30,7 @@ export async function TrendingSurface() {
           </p>
         </header>
         <TickerRail initial={lanes} ingestToken={token} />
+        <HNStoryTicker initial={stories} ingestToken={token} />
         <ChatCtaBanner />
       </main>
     </>
