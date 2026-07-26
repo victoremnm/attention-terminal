@@ -337,6 +337,7 @@ export function exportAssetAsMarkdown(payload: RenderPayload): string {
     case "repo-drilldown": return repoDrilldownMarkdown(payload);
     case "morphing-card": return morphingCardMarkdown(payload);
     case "table": return tableMarkdown(payload);
+    default: return "";
   }
 }
 
@@ -510,6 +511,7 @@ export function exportAssetAsHTML(payload: RenderPayload): string {
     case "repo-drilldown": return repoDrilldownHtml(payload);
     case "morphing-card": return morphingCardHtml(payload);
     case "table": return tableHtml(payload);
+    default: return "";
   }
 }
 

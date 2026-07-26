@@ -16,6 +16,16 @@ interface EventDetailRow {
   payload: string;
 }
 
+const UINT64_MAX = "18446744073709551615";
+
+function normalizeEventId(rawId: string): string | undefined {
+  if (!/^\d+$/.test(rawId)) return undefined;
+  const normalized = rawId.replace(/^0+(?=\d)/, "");
+  if (normalized === "0" || normalized.length > UINT64_MAX.length) return undefined;
+  if (normalized.length === UINT64_MAX.length && normalized > UINT64_MAX) return undefined;
+  return normalized;
+}
+
 export async function GET(request: Request): Promise<Response> {
   try {
     const { searchParams } = new URL(request.url);
@@ -23,9 +33,18 @@ export async function GET(request: Request): Promise<Response> {
     if (!rawId) {
       return Response.json({ error: "event_id is required" }, { status: 400 });
     }
-    const eventId = Number(rawId);
-    if (!Number.isInteger(eventId) || eventId < 1 || eventId > 18446744073709551615) {
+    const eventId = normalizeEventId(rawId);
+    if (!eventId) {
       return Response.json({ error: "event_id must be a positive integer up to 2^64-1" }, { status: 400 });
+    }
+    const eventType = searchParams.get("event_type");
+    const repoName = searchParams.get("repo_name");
+    const createdAt = searchParams.get("created_at");
+    if (!eventType || !repoName || !createdAt) {
+      return Response.json(
+        { error: "event_type, repo_name, and created_at are required for an event detail lookup" },
+        { status: 400 }
+      );
     }
 
     const { rows, provenance } = await q<EventDetailRow>(
@@ -39,11 +58,14 @@ export async function GET(request: Request): Promise<Response> {
         toString(created_at) AS created_at,
         payload
       FROM default.github_events_firehose
-      WHERE event_id = {eventId: UInt64}
+      WHERE event_type = {eventType: String}
+        AND repo_name = {repoName: String}
+        AND created_at = parseDateTimeBestEffort({createdAt: String})
+        AND event_id = {eventId: UInt64}
       LIMIT 1
       `,
       EVENT_DETAIL_TABLES,
-      { eventId }
+      { eventId, eventType, repoName, createdAt }
     );
 
     if (rows.length === 0) {
@@ -51,7 +73,7 @@ export async function GET(request: Request): Promise<Response> {
     }
 
     const row = rows[0];
-    const { structured, rawPayload, truncated } = parseEventPayload(row.event_type, row.action, row.payload);
+    const { structured, rawPayload, truncated } = parseEventPayload(row.event_type, row.action, row.payload, row.repo_name);
 
     const payload: EventDrilldownPayload = {
       type: "event-drilldown",

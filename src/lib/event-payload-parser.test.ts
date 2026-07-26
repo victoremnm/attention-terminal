@@ -22,6 +22,12 @@ describe("parseEventPayload", () => {
     expect(result.rawPayload).toBe(raw);
   });
 
+  it("uses the timeline repository when the GH Archive payload omits repository metadata", () => {
+    const raw = JSON.stringify({ ref: "refs/heads/main", before: "abc", head: "def", commits: [] });
+    const result = parseEventPayload("PushEvent", "", raw, "owner/repo");
+    expect(result.structured).toHaveProperty("compare_url", "https://github.com/owner/repo/compare/abc...def");
+  });
+
   it("returns structured PullRequestEvent fields", () => {
     const raw = JSON.stringify({
       action: "opened",
@@ -57,7 +63,7 @@ describe("parseEventPayload", () => {
     const result = parseEventPayload("IssuesEvent", "opened", raw);
     expect(result.structured).toHaveProperty("type", "IssuesEvent");
     expect(result.structured).toHaveProperty("number", 101);
-    expect((result.structured as Record<string, unknown>).labels).toEqual(["bug", "frontend"]);
+    expect((result.structured as unknown as Record<string, unknown>).labels).toEqual(["bug", "frontend"]);
   });
 
   it("returns structured ReleaseEvent fields", () => {
@@ -109,7 +115,16 @@ describe("parseEventPayload", () => {
     const raw = JSON.stringify({ data: big });
     const result = parseEventPayload("PushEvent", "", raw);
     expect(result.truncated).toBe(true);
-    expect(result.rawPayload.length).toBeLessThanOrEqual(65536 + 3);
+    expect(new TextEncoder().encode(result.rawPayload).byteLength).toBeLessThanOrEqual(65536);
+  });
+
+  it("truncates raw payload by UTF-8 bytes without splitting a multibyte character", () => {
+    const raw = JSON.stringify({ data: "🙂".repeat(30000) });
+    const result = parseEventPayload("PushEvent", "", raw);
+    expect(result.truncated).toBe(true);
+    expect(new TextEncoder().encode(result.rawPayload).byteLength).toBeLessThanOrEqual(65536);
+    expect(result.rawPayload.endsWith("...")).toBe(true);
+    expect(() => JSON.stringify(result.rawPayload)).not.toThrow();
   });
 
   it("handles missing nested objects gracefully (PushEvent without repository)", () => {
@@ -199,7 +214,7 @@ describe("parseEventPayload", () => {
     const commits = Array.from({ length: 30 }, (_, i) => ({ sha: `sha${i}`, message: `msg${i}`, url: `https://api.github.com/repos/user/repo/commits/sha${i}` }));
     const raw = JSON.stringify({ ref: "refs/heads/main", before: "a", head: "b", size: 30, distinct_size: 30, commits, repository: { full_name: "user/repo" } });
     const result = parseEventPayload("PushEvent", "", raw);
-    const s = result.structured as Record<string, unknown>;
+    const s = result.structured as unknown as Record<string, unknown>;
     expect((s as Record<string, unknown[]>).commits).toHaveLength(20);
   });
 });

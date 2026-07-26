@@ -95,7 +95,13 @@ export function EventTimeline({ rows }: { rows: EventTimelineRow[] }) {
     setLoading(true);
     setOpen(true);
     try {
-      const res = await fetch(`/api/event-detail?event_id=${encodeURIComponent(row.event_id)}`, { signal: controller.signal });
+      const params = new URLSearchParams({
+        event_id: row.event_id,
+        event_type: row.event_type,
+        repo_name: row.repo_name,
+        created_at: row.created_at,
+      });
+      const res = await fetch(`/api/event-detail?${params.toString()}`, { signal: controller.signal });
       const body = await res.json();
       if (!res.ok) throw new Error(body.error ?? "event detail fetch failed");
       if (requestRef.current !== requestId) return;

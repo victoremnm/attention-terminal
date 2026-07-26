@@ -880,7 +880,7 @@ function EventDrilldownAnswer({ payload }: { payload: EventDrilldownPayload }) {
             {field("before", shaLink(repoName, String(s.before ?? "")))}
             {field("head", shaLink(repoName, String(s.head ?? "")))}
             {field("size", String(s.size ?? "0"))}
-            {s.compare_url && field("compare", ghLink(String(s.compare_url), "compare"))}
+            {typeof s.compare_url === "string" && field("compare", ghLink(s.compare_url, "compare"))}
             {commits.length > 0 && (
               <div className="event-field">
                 <span className="event-field-label mono">commits ({commits.length})</span>
@@ -898,8 +898,8 @@ function EventDrilldownAnswer({ payload }: { payload: EventDrilldownPayload }) {
           <div className="event-fields">
             {field("PR #", ghLink(String(s.html_url ?? ""), `#${String(s.number ?? "")}`))}
             {field("title", String(s.title ?? ""))}
-            {field("head", `${String(s.head_ref ?? "")} @ ${shaLink(repoName, String(s.head_sha ?? ""))}`)}
-            {field("base", `${String(s.base_ref ?? "")} @ ${shaLink(repoName, String(s.base_sha ?? ""))}`)}
+            {field("head", <>{String(s.head_ref ?? "")} @ {shaLink(repoName, String(s.head_sha ?? ""))}</>)}
+            {field("base", <>{String(s.base_ref ?? "")} @ {shaLink(repoName, String(s.base_sha ?? ""))}</>)}
             {field("status", `${s.merged ? "Merged" : ""}${s.draft ? "Draft" : ""}${!s.merged && !s.draft ? "Open" : ""}`)}
           </div>
         );
@@ -918,9 +918,9 @@ function EventDrilldownAnswer({ payload }: { payload: EventDrilldownPayload }) {
           <div className="event-fields">
             {field("release", ghLink(String(s.html_url ?? ""), String(s.tag_name ?? "")))}
             {field("name", String(s.name ?? ""))}
-            {s.prerelease && field("flag", "prerelease")}
-            {s.draft && field("flag", "draft")}
-            {s.body && field("body", <span className="event-preview">{String(s.body ?? "")}</span>)}
+            {s.prerelease === true && field("flag", "prerelease")}
+            {s.draft === true && field("flag", "draft")}
+            {typeof s.body === "string" && s.body.length > 0 && field("body", <span className="event-preview">{s.body}</span>)}
           </div>
         );
       case "ForkEvent":
@@ -941,7 +941,7 @@ function EventDrilldownAnswer({ payload }: { payload: EventDrilldownPayload }) {
           <div className="event-fields">
             {field("PR #", ghLink(String(s.html_url ?? ""), `#${String(s.pr_number ?? "")}`))}
             {field("review", `[${String(s.review_state ?? "")}]`)}
-            {s.review_body && field("body", <span className="event-preview">{String(s.review_body ?? "")}</span>)}
+            {typeof s.review_body === "string" && s.review_body.length > 0 && field("body", <span className="event-preview">{s.review_body}</span>)}
           </div>
         );
       case "PullRequestReviewCommentEvent":
@@ -949,14 +949,14 @@ function EventDrilldownAnswer({ payload }: { payload: EventDrilldownPayload }) {
           <div className="event-fields">
             {field("PR #", ghLink(String(s.html_url ?? ""), `#${String(s.pr_number ?? "")}`))}
             {field("path", String(s.path ?? ""))}
-            {s.comment_body && field("comment", <span className="event-preview">{String(s.comment_body ?? "")}</span>)}
+            {typeof s.comment_body === "string" && s.comment_body.length > 0 && field("comment", <span className="event-preview">{s.comment_body}</span>)}
           </div>
         );
       case "IssueCommentEvent":
         return (
           <div className="event-fields">
             {field("issue #", ghLink(String(s.html_url ?? ""), `#${String(s.issue_number ?? "")}`))}
-            {s.comment_body && field("comment", <span className="event-preview">{String(s.comment_body ?? "")}</span>)}
+            {typeof s.comment_body === "string" && s.comment_body.length > 0 && field("comment", <span className="event-preview">{s.comment_body}</span>)}
           </div>
         );
       case "MemberEvent":
@@ -971,7 +971,7 @@ function EventDrilldownAnswer({ payload }: { payload: EventDrilldownPayload }) {
           <div className="event-fields">
             {field("commit", shaLink(payload.repoName, String(s.commit_id ?? "")))}
             {field("path", String(s.path ?? ""))}
-            {s.comment_body && field("comment", <span className="event-preview">{String(s.comment_body ?? "")}</span>)}
+            {typeof s.comment_body === "string" && s.comment_body.length > 0 && field("comment", <span className="event-preview">{s.comment_body}</span>)}
           </div>
         );
       case "DiscussionEvent":

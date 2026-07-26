@@ -466,7 +466,7 @@ export const EventDrilldownSchema = z.object({
   actorLogin: z.string(),
   actorAvatar: z.string(),
   createdAt: z.string(),
-  structured: z.record(z.unknown()).nullable(),
+  structured: z.record(z.string(), z.unknown()).nullable(),
   rawPayload: z.string(),
   rawPayloadTruncated: z.boolean(),
   query: CardQuerySchema,

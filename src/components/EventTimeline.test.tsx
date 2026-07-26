@@ -15,6 +15,8 @@ const mockRows = [
     actor_login: "alice",
     actor_avatar: "",
     created_at: "2026-07-26T12:00:00Z",
+    title: null,
+    number: "0",
     payload_summary: "2 commits to main",
   },
   {
@@ -25,6 +27,8 @@ const mockRows = [
     actor_login: "bob",
     actor_avatar: "",
     created_at: "2026-07-26T12:01:00Z",
+    title: null,
+    number: "0",
     payload_summary: "starred the repo",
   },
 ];
@@ -86,7 +90,10 @@ describe("EventTimeline", () => {
     });
     expect(screen.getByRole("dialog")).toBeInTheDocument();
     await screen.findByText("commit msg");
-    expect(globalThis.fetch).toHaveBeenCalledWith("/api/event-detail?event_id=1", expect.any(Object));
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      "/api/event-detail?event_id=1&event_type=PushEvent&repo_name=user%2Frepo&created_at=2026-07-26T12%3A00%3A00Z",
+      expect.any(Object)
+    );
   });
 
   it("renders structured fields after fetch resolves", async () => {
@@ -160,7 +167,10 @@ describe("EventTimeline", () => {
     await act(async () => {
       secondRow.click();
     });
-    expect(globalThis.fetch).toHaveBeenCalledWith("/api/event-detail?event_id=2", expect.any(Object));
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      "/api/event-detail?event_id=2&event_type=WatchEvent&repo_name=user%2Frepo&created_at=2026-07-26T12%3A01%3A00Z",
+      expect.any(Object)
+    );
   });
 
   it("restores focus to the opener when drawer closes", async () => {
