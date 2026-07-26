@@ -254,7 +254,7 @@ export async function firehoseEventMixDaily(
     WHERE day >= today() - INTERVAL {days: UInt32} DAY
     GROUP BY day, repo_name, event_type, action
     ORDER BY day DESC, toUInt64(event_count) DESC, repo_name ASC, event_type ASC, action ASC
-    LIMIT {limit: UInt32}
+    LIMIT {limit: UInt32} BY day
     `,
     EVENT_MIX_DAILY_TABLES,
     { days, limit }
@@ -279,7 +279,7 @@ export async function firehoseEventMixMonthly(
     WHERE month >= toStartOfMonth(today() - INTERVAL {months: UInt32} MONTH)
     GROUP BY month, repo_name, event_type, action
     ORDER BY month DESC, toUInt64(event_count) DESC, repo_name ASC, event_type ASC, action ASC
-    LIMIT {limit: UInt32}
+    LIMIT {limit: UInt32} BY month
     `,
     EVENT_MIX_MONTHLY_TABLES,
     { months, limit }
