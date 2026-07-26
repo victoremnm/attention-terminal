@@ -24,7 +24,11 @@ export interface HfTopModelRow {
   likes: string;
   is_gated: string;
   is_private: string;
+  created_at?: string;
+  tags?: string[];
 }
+
+export type HfModelDetail = HfTopModelRow & { scan_history: HfScanHistoryRow[] };
 
 export interface HfTrendingModelRow {
   model_id: string;
@@ -116,7 +120,8 @@ export async function hfTopModels(
        toString(downloads) AS downloads,
        toString(likes) AS likes,
        toString(is_gated) AS is_gated,
-       toString(is_private) AS is_private
+       toString(is_private) AS is_private,
+       toString(created_at) AS created_at
      FROM curated.hf_model_global_latest
      ORDER BY ${orderCol} DESC
      LIMIT {limit: UInt32}`,
@@ -261,7 +266,8 @@ export async function hfModelDetail(
        toString(downloads) AS downloads,
        toString(likes) AS likes,
        toString(is_gated) AS is_gated,
-       toString(is_private) AS is_private
+       toString(is_private) AS is_private,
+       tags
      FROM curated.hf_model_global_latest
      WHERE model_id = {modelId: String}
      LIMIT 1`,
