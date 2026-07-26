@@ -258,12 +258,6 @@ function TopTypesChart({
     const barW = (Math.log(total + 1) / Math.log(maxCount + 1)) * chartW;
     const y = idx * (TOP_TYPES_BAR_H + TOP_TYPES_GAP);
     const color = colorFor(type);
-    const labelRight = padL + barW + 6;
-    const labelOverflow = labelRight + 70 > TOP_TYPES_W;
-    const countX = labelOverflow ? padL + barW - 6 : labelRight;
-    const countAnchor = labelOverflow ? "end" : "start";
-    const countFill = labelOverflow ? "var(--panel)" : "var(--muted)";
-
     return (
       <g
         key={type}
@@ -295,12 +289,11 @@ function TopTypesChart({
           rx={3}
         />
         <text
-          x={countX}
+          x={padL + Math.max(1, barW) + 6}
           y={y + TOP_TYPES_BAR_H / 2 + 4}
           fontSize="10"
           fontWeight="600"
-          fill={countFill}
-          textAnchor={countAnchor}
+          fill="var(--muted)"
           className="mono"
           opacity={1}
         >
