@@ -1,6 +1,6 @@
 /**
  * L7D backfill script: inserts last 7 days of GH Archive .gz files
- * into default.github_events_firehose with actual payloads.
+ * into default.github_events_stream with actual payloads.
  *
  * Usage: npx tsx scripts/backfill-firehose-l7d.ts [--dry-run] [--from YYYY-MM-DD-HH] [--to YYYY-MM-DD-HH]
  */
@@ -56,7 +56,7 @@ async function main() {
   // Only check the L7D window to avoid scanning the full table.
   const existingRows = await client.query({
     query: `SELECT DISTINCT toString(toStartOfHour(created_at)) AS hour
-            FROM default.github_events_firehose
+            FROM default.github_events_stream
             WHERE created_at > {from: DateTime}`,
     format: "JSONEachRow",
     query_params: { from: from.toISOString().slice(0, 19).replace("T", " ") },
@@ -89,7 +89,7 @@ async function main() {
     try {
       await client.command({
         query: `
-          INSERT INTO default.github_events_firehose
+          INSERT INTO default.github_events_stream
             (event_id, event_type, actor_login, actor_avatar, repo_name, owner, created_at,
              action, ref_type, number, title, payload)
           SELECT
@@ -118,7 +118,7 @@ async function main() {
       });
 
       const countResult = await client.query({
-        query: `SELECT toString(count()) AS rows FROM default.github_events_firehose WHERE toStartOfHour(created_at) = toDateTime('${hourStart.toISOString().slice(0, 19).replace("T", " ")}')`,
+        query: `SELECT toString(count()) AS rows FROM default.github_events_stream WHERE toStartOfHour(created_at) = toDateTime('${hourStart.toISOString().slice(0, 19).replace("T", " ")}')`,
         format: "JSONEachRow",
       });
       const countData = await countResult.json<{ rows: string }>();

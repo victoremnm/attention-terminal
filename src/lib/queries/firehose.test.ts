@@ -8,8 +8,10 @@ import { describe, expect, it } from "vitest";
  * Runs without ClickHouse (no network dependency).
  */
 describe("firehose migration schema consistency", () => {
+  // default.github_events_stream (ReplacingMergeTree) is the physical events
+  // table as of migration 21; it replaced the MergeTree github_events_firehose.
   const migrationSQL = `
-    CREATE TABLE IF NOT EXISTS default.github_events_firehose
+    CREATE TABLE IF NOT EXISTS default.github_events_stream
     (
         event_id      UInt64,
         event_type    LowCardinality(String),
@@ -24,8 +26,8 @@ describe("firehose migration schema consistency", () => {
         title         Nullable(String),
         payload       String DEFAULT '{}'
     )
-    ENGINE = MergeTree
-    ORDER BY (event_type, repo_name, created_at)
+    ENGINE = ReplacingMergeTree
+    ORDER BY (event_type, repo_name, created_at, event_id)
     TTL created_at + INTERVAL 30 DAY;
   `;
 
@@ -76,7 +78,7 @@ describe("firehose migration schema consistency", () => {
       SELECT
         created_at, repo_name, actor_login, actor_avatar,
         event_type, action, title, number, payload_summary
-      FROM default.github_events_firehose
+      FROM default.github_events_stream
     `;
     for (const col of ["created_at", "repo_name", "actor_login", "actor_avatar", "event_type", "action", "title", "number"]) {
       expect(migrationSQL).toContain(col);
@@ -91,7 +93,7 @@ describe("firehose migration schema consistency", () => {
         event_type,
         countState() AS events,
         uniqState(actor_login) AS actors
-      FROM default.github_events_firehose
+      FROM default.github_events_stream
     `;
     for (const col of ["created_at", "repo_name", "event_type", "actor_login"]) {
       expect(migrationSQL).toContain(col);
@@ -106,7 +108,7 @@ describe("firehose migration schema consistency", () => {
         toUInt8(lower(actor_login) LIKE '%[bot]%') AS is_bot,
         actor_avatar, repo_name, owner, created_at,
         action, ref_type, number, title, payload
-      FROM default.github_events_firehose
+      FROM default.github_events_stream
     `;
     for (const col of ["event_id", "event_type", "actor_login", "actor_avatar", "repo_name", "owner", "created_at", "action", "ref_type", "number", "title", "payload"]) {
       expect(migrationSQL).toContain(col);
@@ -116,9 +118,9 @@ describe("firehose migration schema consistency", () => {
   it("raw view is a thin passthrough", () => {
     const rawView = `
       CREATE VIEW IF NOT EXISTS raw.github_events_firehose AS
-      SELECT * FROM default.github_events_firehose;
+      SELECT * FROM default.github_events_stream;
     `;
-    expect(rawView).toContain("SELECT * FROM default.github_events_firehose");
+    expect(rawView).toContain("SELECT * FROM default.github_events_stream");
   });
 
   it("timeline table has payload_summary column", () => {
@@ -166,5 +168,13 @@ describe("firehose migration schema consistency", () => {
 
   it("payload column is present for future re-parsing", () => {
     expect(migrationSQL).toContain("payload");
+  });
+
+  it("stream table dedups by event_id via ReplacingMergeTree", () => {
+    // event_id must trail the ORDER BY so duplicate inserts of the same event
+    // (GH Archive hourly load + real-time Events API poller) converge at
+    // merge time while the leading columns keep range-scan pruning.
+    expect(migrationSQL).toContain("ENGINE = ReplacingMergeTree");
+    expect(migrationSQL).toContain("ORDER BY (event_type, repo_name, created_at, event_id)");
   });
 });

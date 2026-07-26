@@ -87,7 +87,7 @@ async function main() {
           minOrNull(created_at) AS source_min,
           maxOrNull(created_at) AS source_max,
           if(count() = 0, 0, dateDiff('hour', min(created_at), {cutoff: DateTime})) AS source_available_hours
-        FROM default.github_events_firehose
+        FROM default.github_events_stream
         WHERE created_at < {cutoff: DateTime}
       `,
       format: "JSONEachRow",
@@ -122,7 +122,7 @@ async function main() {
             sumSimpleState(toUInt64(event_type = 'DeleteEvent' AND ref_type = 'branch')),
             countState(),
             uniqState(actor_login)
-        FROM default.github_events_firehose
+        FROM default.github_events_stream
         WHERE created_at >= {cutoff: DateTime} - INTERVAL {windowHours: UInt32} HOUR
           AND created_at < {cutoff: DateTime}
         GROUP BY hour, repo_name
@@ -140,7 +140,7 @@ async function main() {
             action,
             countState(),
             uniqState(actor_login)
-        FROM default.github_events_firehose
+        FROM default.github_events_stream
         WHERE created_at >= {cutoff: DateTime} - INTERVAL {windowHours: UInt32} HOUR
           AND created_at < {cutoff: DateTime}
         GROUP BY hour, repo_name, event_type, action
@@ -158,7 +158,7 @@ async function main() {
             action,
             countState(),
             uniqState(actor_login)
-        FROM default.github_events_firehose
+        FROM default.github_events_stream
         WHERE created_at >= {cutoff: DateTime} - INTERVAL {windowHours: UInt32} HOUR
           AND created_at < {cutoff: DateTime}
         GROUP BY day, repo_name, event_type, action
@@ -176,7 +176,7 @@ async function main() {
             action,
             countState(),
             uniqState(actor_login)
-        FROM default.github_events_firehose
+        FROM default.github_events_stream
         WHERE created_at >= {cutoff: DateTime} - INTERVAL {windowHours: UInt32} HOUR
           AND created_at < {cutoff: DateTime}
         GROUP BY month, repo_name, event_type, action
@@ -187,7 +187,7 @@ async function main() {
     const result = await client.query({
       query: `
         SELECT
-          (SELECT count() FROM default.github_events_firehose
+          (SELECT count() FROM default.github_events_stream
             WHERE created_at >= {cutoff: DateTime} - INTERVAL {windowHours: UInt32} HOUR
               AND created_at < {cutoff: DateTime}) AS source_rows,
           (SELECT count() FROM curated.firehose_repo_signal_hourly) AS repo_signal_rows,

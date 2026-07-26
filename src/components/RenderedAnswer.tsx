@@ -691,6 +691,7 @@ function RepoDrilldownAnswer({ payload }: { payload: RepoDrilldownPayload }) {
           <p>{payload.metadata.description || "No repository description has been enriched yet."}</p>
         </div>
         <a href={`https://github.com/${payload.repoName}`} target="_blank" rel="noreferrer" className="repo-gh-link mono">GitHub</a>
+        <a href={`/repos/${payload.repoName.split("/").slice(0, 2).join("/")}/timelapse`} className="repo-gh-link mono" style={{ borderColor: "var(--cyan)", color: "var(--cyan)" }}>Timelapse</a>
       </header>
       <div className="repo-meta mono">
         {metaStats.map((item) => <span key={item}>{item}</span>)}

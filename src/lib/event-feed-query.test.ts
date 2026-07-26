@@ -58,10 +58,10 @@ describe("event feed SQL contract", () => {
       search: "",
     });
 
-    expect(sql).toContain("FROM default.github_events_firehose AS raw");
+    expect(sql).toContain("FROM default.github_events_stream AS raw");
     expect(sql).toContain("raw.created_at >= now() - INTERVAL 7 DAY");
     expect(sql).toContain("positionCaseInsensitiveUTF8(JSONExtractString(raw.payload, 'ref'), {ref: String}) > 0");
     expect(eventFeedSourceTables({ window: "7d", eventTypes: [], repo: "", actor: "", ref: "main", search: "" }))
-      .toEqual(["default.github_events_firehose"]);
+      .toEqual(["default.github_events_stream"]);
   });
 });

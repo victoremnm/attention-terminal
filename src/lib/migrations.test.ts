@@ -44,7 +44,7 @@ describe("Goose Migrations & Skipping Index Verification", () => {
     expect(script).toContain("--writers-paused");
     expect(script).toContain("--rebuild");
     expect(script).toContain("INSERT INTO ${TIMELINE_TABLE}");
-    expect(script).toContain("FROM default.github_events_firehose");
+    expect(script).toContain("FROM default.github_events_stream");
     expect(script).toContain("event_id");
     expect(script).not.toContain("event_timeline_rebuild");
   });
@@ -61,6 +61,71 @@ describe("Goose Migrations & Skipping Index Verification", () => {
     expect(migration).toContain("TO curated.event_timeline AS");
     expect(migration).toContain("event_id,");
     expect(migration).not.toContain("event_timeline_rebuild");
+  });
+
+  it("swaps the firehose source to ReplacingMergeTree without dropping projections", async () => {
+    const migration = await fs.readFile(
+      path.join(process.cwd(), "migrations", "20260726000021_github_events_stream_rmt.sql"),
+      "utf-8"
+    );
+
+    // Stream table: RMT keyed by event_id trailing the existing scan columns.
+    expect(migration).toContain("CREATE TABLE IF NOT EXISTS default.github_events_stream");
+    expect(migration).toContain("ENGINE = ReplacingMergeTree");
+    expect(migration).toContain("ORDER BY (event_type, repo_name, created_at, event_id)");
+
+    // Every pre-existing projection MV is dropped, then recreated against the
+    // stream table — none may be left pointing at the renamed legacy table.
+    for (const mv of [
+      "curated.event_volume_hourly_mv",
+      "curated.event_volume_daily_mv",
+      "curated.event_timeline_mv",
+      "curated.firehose_repo_signal_hourly_mv",
+      "curated.firehose_event_type_action_hourly_mv",
+      "curated.firehose_event_type_action_daily_mv",
+      "curated.firehose_event_type_action_monthly_mv",
+    ]) {
+      expect(migration).toContain(`DROP VIEW IF EXISTS ${mv}`);
+    }
+    expect(migration.match(/FROM default\.github_events_stream/g)?.length).toBeGreaterThanOrEqual(9);
+
+    // AggregatingMergeTree targets are truncated before the copy re-fires
+    // every event through the new MVs (otherwise they would double count).
+    // The RMT timeline is NOT truncated — it dedups on event_id.
+    expect(migration).toContain("TRUNCATE TABLE IF EXISTS curated.event_volume_hourly");
+    expect(migration).toContain("TRUNCATE TABLE IF EXISTS curated.firehose_repo_signal_hourly");
+    expect(migration).not.toContain("TRUNCATE TABLE IF EXISTS curated.event_timeline");
+
+    // The old table is preserved as _legacy and copied in full.
+    expect(migration).toContain(
+      "RENAME TABLE default.github_events_firehose TO default.github_events_firehose_legacy"
+    );
+    expect(migration).toContain("INSERT INTO default.github_events_stream");
+    expect(migration).toContain("SELECT * FROM default.github_events_firehose_legacy");
+
+    // Readers keep working through repointed schema-family views.
+    expect(migration).toContain("CREATE OR REPLACE VIEW raw.github_events_firehose");
+    expect(migration).toContain("CREATE OR REPLACE VIEW cleansed.github_events_stg_firehose");
+  });
+
+  it("builds the poller and timelapse infrastructure on the stream table", async () => {
+    const migration = await fs.readFile(
+      path.join(process.cwd(), "migrations", "20260726000022_poll_infrastructure.sql"),
+      "utf-8"
+    );
+
+    expect(migration).toContain("CREATE TABLE IF NOT EXISTS default.events_api_etags");
+    expect(migration).toContain("ENGINE = ReplacingMergeTree(updated_at)");
+    expect(migration).toContain("CREATE TABLE IF NOT EXISTS curated.repo_timelapse");
+    expect(migration).toContain("ENGINE = ReplacingMergeTree(generated_at)");
+
+    // The prune must measure engagement from the stream (firehose coverage),
+    // never from gh_repo_daily (degraded old-pipeline coverage), and must
+    // preserve manually curated watchlist rows.
+    expect(migration).toContain("FROM default.github_events_stream");
+    expect(migration).not.toContain("FROM gh_repo_daily");
+    expect(migration).toContain("source = 'auto-seed'");
+    expect(migration).toContain("mutations_sync = 1");
   });
 
   it("partitions daily and monthly firehose rollups by calendar month", async () => {

@@ -2,6 +2,7 @@ import { logger, metadata, schedules, tags } from "@trigger.dev/sdk";
 import { clickhouse, logIngest, selectRows } from "../lib/clickhouse";
 
 const MAX_FILES_PER_RUN = 12;
+const STREAM_TABLE = "default.github_events_stream";
 
 function hourKey(d: Date): string {
   return `${d.toISOString().slice(0, 10)}-${d.getUTCHours()}`;
@@ -31,11 +32,11 @@ export const ingestFirehose = schedules.task({
       ).map((r) => r.chunk_key)
     );
 
-    // Bootstrap: if the firehose table is empty, start from the high-water
+    // Bootstrap: if the stream table is empty, start from the high-water
     // of the existing default.github_events table so we don't try to fetch
     // 1970 GH Archive files.
     const [{ firehose_last }] = await selectRows<{ firehose_last: string }>(
-      "SELECT toUnixTimestamp(toStartOfHour(max(created_at))) AS firehose_last FROM default.github_events_firehose"
+      `SELECT toUnixTimestamp(toStartOfHour(max(created_at))) AS firehose_last FROM ${STREAM_TABLE}`
     );
     const from =
       firehose_last === "0" || !firehose_last
@@ -50,10 +51,16 @@ export const ingestFirehose = schedules.task({
       if (done.has(key)) continue;
 
       const url = `https://data.gharchive.org/${key}.json.gz`;
+      const hourStart = Math.floor(hour.getTime() / 1000);
+      const hourEnd = hourStart + 3600;
       try {
+        // The anti-join keeps events the real-time poller already wrote for
+        // this hour from being re-inserted: the RMT stream table would dedup
+        // them at merge time, but MVs fire on every INSERT, so a re-inserted
+        // event would double count in the AggregatingMergeTree projections.
         await clickhouse.command({
           query: `
-            INSERT INTO default.github_events_firehose
+            INSERT INTO ${STREAM_TABLE}
               (event_id, event_type, actor_login, actor_avatar, repo_name, owner, created_at,
                action, ref_type, number, title, payload)
             SELECT
@@ -75,6 +82,10 @@ export const ingestFirehose = schedules.task({
               payload
             FROM url('${url}', 'JSONEachRow',
                      'id String, type String, actor Tuple(login String, avatar_url String), repo Tuple(name String), payload String, created_at DateTime')
+            WHERE toUInt64OrZero(id) NOT IN (
+              SELECT event_id FROM ${STREAM_TABLE}
+              WHERE created_at >= toDateTime(${hourStart}) AND created_at < toDateTime(${hourEnd})
+            )
             SETTINGS input_format_json_read_objects_as_strings = 1,
                      input_format_json_ignore_unknown_keys_in_named_tuple = 1,
                      input_format_skip_unknown_fields = 1,
@@ -90,7 +101,7 @@ export const ingestFirehose = schedules.task({
       }
 
       const [{ rows }] = await selectRows<{ rows: string }>(
-        `SELECT count() AS rows FROM default.github_events_firehose WHERE toStartOfHour(created_at) = toDateTime(${Math.floor(hour.getTime() / 1000)})`
+        `SELECT count() AS rows FROM ${STREAM_TABLE} WHERE toStartOfHour(created_at) = toDateTime(${Math.floor(hour.getTime() / 1000)})`
       );
       await logIngest({ source: "firehose", chunk_key: key, rows_ingested: Number(rows) });
       loaded += 1;

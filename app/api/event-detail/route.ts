@@ -2,7 +2,7 @@ import { q } from "@/lib/queries/core";
 import { parseEventPayload } from "@/lib/event-payload-parser";
 import type { EventDrilldownPayload } from "@/lib/render-payload";
 
-const EVENT_DETAIL_TABLES = ["default.github_events_firehose"];
+const EVENT_DETAIL_TABLES = ["default.github_events_stream"];
 
 export const dynamic = "force-dynamic";
 
@@ -57,11 +57,11 @@ export async function GET(request: Request): Promise<Response> {
         actor_avatar,
         toString(created_at) AS created_at,
         payload
-      FROM default.github_events_firehose
-      WHERE default.github_events_firehose.event_type = {eventType: String}
-        AND default.github_events_firehose.repo_name = {repoName: String}
-        AND default.github_events_firehose.created_at = parseDateTimeBestEffort({createdAt: String})
-        AND default.github_events_firehose.event_id = {eventId: UInt64}
+      FROM default.github_events_stream
+      WHERE default.github_events_stream.event_type = {eventType: String}
+        AND default.github_events_stream.repo_name = {repoName: String}
+        AND default.github_events_stream.created_at = parseDateTimeBestEffort({createdAt: String})
+        AND default.github_events_stream.event_id = {eventId: UInt64}
       LIMIT 1
       `,
       EVENT_DETAIL_TABLES,
