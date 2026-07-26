@@ -74,6 +74,8 @@ describe("firehose event/action mix", () => {
     expect(String(sql)).toContain(timeKey);
     expect(String(sql)).toContain("countMerge(events)");
     expect(String(sql)).toContain("uniqMerge(actors)");
+    expect(String(sql)).toContain(`WHERE ${_name === "daily" ? "daily.day" : "monthly.month"} >=`);
+    expect(String(sql)).not.toContain(`WHERE ${timeKey} >=`);
     expect(String(sql)).toContain(`LIMIT {limit: UInt32} BY ${timeKey}`);
     expect(tables).toEqual([table]);
   });
