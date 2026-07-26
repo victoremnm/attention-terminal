@@ -1,5 +1,11 @@
 -- +goose Up
 
+-- Fixed UTC cutover: rows before this instant are backfilled, while rows at
+-- or after it are captured by the MV. Keep this literal identical in both
+-- predicates so late-arriving inserts cannot be counted by both paths.
+-- Update the cutover deliberately if this migration is rescheduled.
+-- firehose_repo_signal_cutover = 2026-07-26 00:00:00 UTC
+
 -- ============================================================
 -- CURATED: Repo signal aggregates per hour
 -- Derives 10 discrete signals from event_type + action + ref_type
@@ -42,9 +48,11 @@ SELECT
     countState() AS events,
     uniqState(actor_login) AS actors
 FROM default.github_events_firehose
+WHERE created_at >= toDateTime('2026-07-26 00:00:00')
 GROUP BY hour, repo_name;
 
--- Backfill last 7 days
+-- Backfill the seven days before the fixed cutover. The strict upper bound is
+-- disjoint from the MV predicate above.
 INSERT INTO curated.firehose_repo_signal_hourly
 SELECT
     toStartOfHour(created_at) AS hour,
@@ -62,8 +70,8 @@ SELECT
     countState(),
     uniqState(actor_login)
 FROM default.github_events_firehose
-WHERE created_at >= now() - INTERVAL 7 DAY
-  AND created_at < now() - INTERVAL 1 HOUR
+WHERE created_at >= toDateTime('2026-07-26 00:00:00') - INTERVAL 7 DAY
+  AND created_at < toDateTime('2026-07-26 00:00:00')
 GROUP BY hour, repo_name;
 
 -- +goose Down

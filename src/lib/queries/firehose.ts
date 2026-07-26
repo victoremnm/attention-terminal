@@ -1,22 +1,11 @@
 import { q } from "./core";
 import type { QueryResult } from "./types";
 
-const TABLES = [
-  "curated.event_volume_hourly",
-  "curated.event_volume_daily",
-  "curated.event_timeline",
-  "default.github_events_firehose",
-];
-
+const EVENT_VOLUME_TABLES = ["curated.event_volume_hourly"];
+const EVENT_TIMELINE_TABLES = ["curated.event_timeline"];
+const EVENT_VOLUME_BY_DAY_TABLES = ["curated.event_volume_daily"];
 const STATS_TABLES = ["curated.event_volume_hourly"];
-
-const SIGNAL_TABLES = [
-  "curated.event_volume_hourly",
-  "curated.event_volume_daily",
-  "curated.event_timeline",
-  "default.github_events_firehose",
-  "curated.firehose_repo_signal_hourly",
-];
+const SIGNAL_TABLES = ["curated.firehose_repo_signal_hourly"];
 
 export interface EventVolumeRow {
   repo_name: string;
@@ -101,7 +90,7 @@ export async function eventVolumeFeed(): Promise<QueryResult<EventVolumeRow[]>> 
     ORDER BY toUInt64(event_count) DESC
     LIMIT 50
     `,
-    TABLES
+    EVENT_VOLUME_TABLES
   );
   return { data: rows, sql, rowsRead: 0, elapsedMs };
 }
@@ -123,7 +112,7 @@ export async function eventTimelineFeed(limit = 50): Promise<QueryResult<EventTi
     ORDER BY created_at DESC
     LIMIT ${limit}
     `,
-    TABLES
+    EVENT_TIMELINE_TABLES
   );
   return { data: rows, sql, rowsRead: 0, elapsedMs };
 }
@@ -145,7 +134,7 @@ export async function eventVolumeByDay(
     GROUP BY day, event_type
     ORDER BY day ASC
     `,
-    TABLES,
+    EVENT_VOLUME_BY_DAY_TABLES,
     { repoName }
   );
   return { data: rows, sql, rowsRead: 0, elapsedMs };

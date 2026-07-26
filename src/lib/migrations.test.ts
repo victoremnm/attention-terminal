@@ -5,6 +5,20 @@ import { execSync } from "node:child_process";
 import { clickhouse } from "./clickhouse";
 
 describe("Goose Migrations & Skipping Index Verification", () => {
+  it("keeps repo signal MV and backfill ranges disjoint", async () => {
+    const migration = await fs.readFile(
+      path.join(process.cwd(), "migrations", "20260726000014_firehose_repo_signal_hourly.sql"),
+      "utf-8"
+    );
+
+    expect(migration).toContain("WHERE created_at >= toDateTime('2026-07-26 00:00:00')");
+    expect(migration).toContain(
+      "WHERE created_at >= toDateTime('2026-07-26 00:00:00') - INTERVAL 7 DAY"
+    );
+    expect(migration).toContain("AND created_at < toDateTime('2026-07-26 00:00:00')");
+    expect(migration).not.toContain("now() - INTERVAL 1 HOUR");
+  });
+
   it("verifies all SQL migration files in /migrations are readable and non-empty", async () => {
     const migrationsDir = path.join(process.cwd(), "migrations");
     const files = await fs.readdir(migrationsDir);
