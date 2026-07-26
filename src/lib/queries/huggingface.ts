@@ -24,14 +24,18 @@ export interface HfTopModelRow {
   likes: string;
   is_gated: string;
   is_private: string;
+  created_at?: string;
+  tags?: string[];
 }
+
+export type HfModelDetail = HfTopModelRow & { scan_history: HfScanHistoryRow[] };
 
 export interface HfTrendingModelRow {
   model_id: string;
   author: string;
-  downloads_delta: string;
-  downloads_now: string;
-  downloads_prev: string;
+  pipeline_tag: string;
+  created_at_txt: string;
+  scan_at: string;
 }
 
 export interface HfAuthorRow {
@@ -116,7 +120,8 @@ export async function hfTopModels(
        toString(downloads) AS downloads,
        toString(likes) AS likes,
        toString(is_gated) AS is_gated,
-       toString(is_private) AS is_private
+       toString(is_private) AS is_private,
+       toString(created_at) AS created_at
      FROM curated.hf_model_global_latest
      ORDER BY ${orderCol} DESC
      LIMIT {limit: UInt32}`,
@@ -130,38 +135,17 @@ export async function hfTrendingModels(
   limit = 20
 ): Promise<QueryResult<HfTrendingModelRow[]>> {
   const { rows, sql, elapsedMs } = await safeQ<HfTrendingModelRow>(
-    `WITH
-       latest_scan AS (
-         SELECT max(scan_at) AS ts FROM raw.hf_model_snapshots
-       ),
-       prev_scan AS (
-         SELECT max(scan_at) AS ts FROM raw.hf_model_snapshots
-         WHERE scan_at < (SELECT ts FROM latest_scan)
-       ),
-       current AS (
-         SELECT model_id, argMax(author, ingested_at) AS author, argMax(downloads, ingested_at) AS downloads
-         FROM raw.hf_model_snapshots
-         WHERE scan_at = (SELECT ts FROM latest_scan)
-         GROUP BY model_id
-       ),
-       previous AS (
-         SELECT model_id, argMax(downloads, ingested_at) AS downloads
-         FROM raw.hf_model_snapshots
-         WHERE scan_at = (SELECT ts FROM prev_scan)
-         GROUP BY model_id
-       )
-     SELECT
-       c.model_id,
-       c.author,
-       toString(toInt64(c.downloads) - toInt64(COALESCE(p.downloads, 0))) AS downloads_delta,
-       toString(c.downloads) AS downloads_now,
-       toString(COALESCE(p.downloads, 0)) AS downloads_prev
-     FROM current AS c
-     LEFT JOIN previous AS p ON c.model_id = p.model_id
-     WHERE c.downloads > 0
-     ORDER BY toInt64(downloads_delta) DESC
+    `SELECT
+       model_id,
+       author,
+       pipeline_tag,
+       toString(created_at) AS created_at_txt,
+       toString(last_scan_at) AS scan_at
+     FROM curated.hf_model_global_latest
+     WHERE created_at > now() - interval 7 day
+     ORDER BY created_at DESC
      LIMIT {limit: UInt32}`,
-    [...HF_MODEL_GLOBAL_TABLES, ...HF_RAW_TABLES],
+    HF_MODEL_GLOBAL_TABLES,
     { limit }
   );
   return { data: rows, sql, rowsRead: 0, elapsedMs };
@@ -261,7 +245,8 @@ export async function hfModelDetail(
        toString(downloads) AS downloads,
        toString(likes) AS likes,
        toString(is_gated) AS is_gated,
-       toString(is_private) AS is_private
+       toString(is_private) AS is_private,
+       tags
      FROM curated.hf_model_global_latest
      WHERE model_id = {modelId: String}
      LIMIT 1`,
