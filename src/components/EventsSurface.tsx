@@ -91,16 +91,12 @@ function SignalCard({ row }: { row: FirehoseRepoSignalRow }) {
   return (
     <div className="signal-card">
       <span className="mono signal-repo">{row.repo_name}</span>
-      <div className="signal-metrics">
-        {Number(row.pushes) > 0 && <span className="mono signal-metric">⊞ {row.pushes}</span>}
-        {Number(row.stars) > 0 && <span className="mono signal-metric">★ {row.stars}</span>}
-        {Number(row.forks) > 0 && <span className="mono signal-metric">⑂ {row.forks}</span>}
-        {Number(row.prs_opened) > 0 && <span className="mono signal-metric">PR+{row.prs_opened}</span>}
-        {Number(row.prs_closed) > 0 && <span className="mono signal-metric">PR-{row.prs_closed}</span>}
-        {Number(row.issues_opened) > 0 && <span className="mono signal-metric">I+{row.issues_opened}</span>}
-        {Number(row.issues_closed) > 0 && <span className="mono signal-metric">I-{row.issues_closed}</span>}
-        {Number(row.releases) > 0 && <span className="mono signal-metric">● {row.releases}</span>}
-      </div>
+      <span className="mono signal-metric" title="Pushes">⊞{row.pushes}</span>
+      <span className="mono signal-metric signal-muted" title="Stars">★{row.stars}</span>
+      <span className="mono signal-metric signal-muted" title="Forks">⑂{row.forks}</span>
+      <span className="mono signal-metric signal-muted" title="PRs opened/closed">⊞PR {row.prs_opened}/{row.prs_closed}</span>
+      <span className="mono signal-metric signal-muted" title="Issues opened/closed">I {row.issues_opened}/{row.issues_closed}</span>
+      <span className="mono signal-metric signal-muted" title="Releases">●{row.releases}</span>
     </div>
   );
 }

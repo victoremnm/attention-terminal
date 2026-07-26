@@ -3549,6 +3549,40 @@ a { color: inherit; }
   text-align: right;
 }
 
+/* Signal cards */
+.events-signal-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  background: var(--line-soft);
+  border: 1px solid var(--line-soft);
+  border-radius: 6px;
+  overflow: hidden;
+}
+.signal-card {
+  display: grid;
+  grid-template-columns: 1fr repeat(6, auto);
+  gap: 12px;
+  align-items: center;
+  padding: 7px 12px;
+  background: var(--panel);
+  font-size: 12px;
+}
+.signal-repo {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ink);
+}
+.signal-metric {
+  font-size: 11px;
+  white-space: nowrap;
+  color: var(--green);
+}
+.signal-muted {
+  color: var(--muted);
+}
+
 .events-empty {
   color: var(--muted);
   font-size: 12px;
