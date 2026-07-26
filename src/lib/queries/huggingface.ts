@@ -163,9 +163,9 @@ export async function hfTrendingModels(
        toString(COALESCE(p.downloads, 0)) AS downloads_prev
      FROM current AS c
      LEFT JOIN previous AS p ON c.model_id = p.model_id
-     WHERE c.downloads > 0
-     ORDER BY toInt64(downloads_delta) DESC
-     LIMIT {limit: UInt32}`,
+      WHERE c.downloads > 0 AND p.downloads IS NOT NULL
+      ORDER BY toInt64(downloads_delta) DESC
+      LIMIT {limit: UInt32}`,
     [...HF_MODEL_GLOBAL_TABLES, ...HF_RAW_TABLES],
     { limit }
   );

@@ -68,10 +68,12 @@ function ModelLeaderboardRow({
       <span className="mono models-rank">{rank}</span>
       <span className="mono models-name">{row.model_id}</span>
       <span className="mono models-author">{row.author}</span>
-      {row.pipeline_tag && <ModelBadge label={row.pipeline_tag} color="var(--cyan)" />}
-      {row.library_name && <ModelBadge label={row.library_name} color="var(--blue)" />}
-      {row.is_gated === "1" && <ModelBadge label="gated" color="var(--amber)" />}
-      {row.is_private === "1" && <ModelBadge label="private" color="var(--mag)" />}
+      <span className="models-badge-cell">
+        {row.pipeline_tag && <ModelBadge label={row.pipeline_tag} color="var(--cyan)" />}
+        {row.library_name && <ModelBadge label={row.library_name} color="var(--blue)" />}
+        {row.is_gated === "1" && <ModelBadge label="gated" color="var(--amber)" />}
+        {row.is_private === "1" && <ModelBadge label="private" color="var(--mag)" />}
+      </span>
       <div className="models-leaderbar-track">
         <div className="models-leaderbar-fill" style={{ width: `${barW}%` }} />
       </div>
@@ -122,17 +124,24 @@ export function ModelsSurface({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | undefined>();
   const [sort, setSort] = useState<"downloads" | "likes" | "created_at">("downloads");
+  const [leaderboardData, setLeaderboardData] = useState<HfTopModelRow[]>(topModels);
+  const [leaderboardLoading, setLeaderboardLoading] = useState(false);
   const closeRef = useRef<HTMLButtonElement>(null);
   const openerRef = useRef<HTMLButtonElement | null>(null);
   const requestRef = useRef(0);
 
-  function getSortValue(m: HfTopModelRow): number {
-    if (sort === "created_at") return new Date(m.created_at || 0).getTime();
-    return Number(m[sort]);
-  }
-  const sortedModels = [...topModels].sort((a, b) => {
-    return getSortValue(b) - getSortValue(a);
-  });
+  useEffect(() => {
+    setLeaderboardLoading(true);
+    fetch(`/api/models?sort=${sort}&limit=100`)
+      .then((r) => r.json())
+      .then((body) => {
+        if (Array.isArray(body.data)) setLeaderboardData(body.data);
+      })
+      .catch(() => {})
+      .finally(() => setLeaderboardLoading(false));
+  }, [sort]);
+
+  const sortedModels = leaderboardData;
 
   useEffect(() => {
     if (!open) return;
@@ -144,9 +153,10 @@ export function ModelsSurface({
     return () => window.removeEventListener("keydown", closeOnEscape);
   }, [open]);
 
-  const openDrawer = useCallback(async (model: HfTopModelRow, _opener: HTMLButtonElement) => {
+  const openDrawer = useCallback(async (model: HfTopModelRow, opener: HTMLButtonElement) => {
     const requestId = requestRef.current + 1;
     requestRef.current = requestId;
+    openerRef.current = opener;
     setSelected(model);
     setDetail(undefined);
     setError(undefined);
@@ -241,10 +251,13 @@ export function ModelsSurface({
             </span>
           </h2>
           <div className="models-leaderboard">
-            {sortedModels.length === 0 && (
+            {leaderboardLoading && (
+              <p className="models-empty mono">loading leaderboard...</p>
+            )}
+            {!leaderboardLoading && sortedModels.length === 0 && (
               <p className="models-empty mono">No models loaded yet. The HF ingestion cron runs every hour.</p>
             )}
-            {sortedModels.slice(0, 100).map((row, i) => (
+            {!leaderboardLoading && sortedModels.slice(0, 100).map((row, i) => (
               <ModelLeaderboardRow key={row.model_id} row={row} rank={i + 1} onSelect={openDrawer} />
             ))}
           </div>

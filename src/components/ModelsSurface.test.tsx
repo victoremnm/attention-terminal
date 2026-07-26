@@ -47,8 +47,8 @@ const mockLibraries: HfLibraryRow[] = [
 ];
 
 const mockScanKinds: HfScanKindRow[] = [
-  { scan_kind: "hourly", model_count: "1500", total_downloads: "45000000" },
-  { scan_kind: "daily", model_count: "3000", total_downloads: "75000000" },
+  { scan_kind: "hourly", model_count: "1500", total_downloads: "45000000", total_likes: "120000", last_scan_at: "2026-07-26T12:00:00Z" },
+  { scan_kind: "daily", model_count: "3000", total_downloads: "75000000", total_likes: "250000", last_scan_at: "2026-07-26T12:00:00Z" },
 ];
 
 const mockTags: HfTagRow[] = [
@@ -89,7 +89,7 @@ describe("ModelsSurface component", () => {
       tagFrequency: [],
     });
     expect(element.props.headline).toBeDefined();
-    expect(element.props.headline.total_models).toBe("42000");
+    expect(element.props.headline!.total_models).toBe("42000");
   });
 
   it("handles headline absent gracefully", () => {
