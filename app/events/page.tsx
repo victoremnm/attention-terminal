@@ -8,6 +8,7 @@ import {
   firehoseEventMix,
   eventTypeHourlyAggregation,
 } from "@/lib/queries";
+import { mintIngestReadToken } from "@/lib/realtime-actions";
 
 export const dynamic = "force-dynamic";
 
@@ -17,14 +18,15 @@ export const metadata: Metadata = {
 };
 
 export default async function EventsPage() {
-  const [timeline, volume, statsResult, signalResult, eventMixResult, hourlyResult] =
+  const [timeline, volume, statsResult, signalResult, eventMixResult, hourlyResult, ingestToken] =
     await Promise.all([
-      eventTimelineFeed(50),
+      eventTimelineFeed(100),
       eventVolumeFeed(),
       firehoseStats(),
       firehoseRepoSignal(24, 20),
       firehoseEventMix(24, 100),
       eventTypeHourlyAggregation(24),
+      mintIngestReadToken(),
     ]);
 
   const stats = statsResult.data[0] ?? {
@@ -39,6 +41,7 @@ export default async function EventsPage() {
       timeline={timeline.data}
       volume={volume.data}
       stats={stats}
+      ingestToken={ingestToken ?? undefined}
       signalData={signalResult.data}
       eventMixData={eventMixResult.data}
       hourlyData={hourlyResult.data}
