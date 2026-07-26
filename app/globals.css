@@ -3583,6 +3583,38 @@ a { color: inherit; }
   color: var(--muted);
 }
 
+.events-mix {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  background: var(--line-soft);
+  border: 1px solid var(--line-soft);
+  border-radius: 6px;
+  overflow: hidden;
+}
+.events-mix-row {
+  display: grid;
+  grid-template-columns: 1fr 150px 130px 56px;
+  gap: 12px;
+  align-items: center;
+  padding: 6px 12px;
+  background: var(--panel);
+  font-size: 11px;
+}
+.events-mix-repo,
+.events-mix-action {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.events-mix-action,
+.events-mix-count {
+  color: var(--muted);
+}
+.events-mix-count {
+  text-align: right;
+}
+
 .events-empty {
   color: var(--muted);
   font-size: 12px;

@@ -6,6 +6,7 @@ const EVENT_TIMELINE_TABLES = ["curated.event_timeline"];
 const EVENT_VOLUME_BY_DAY_TABLES = ["curated.event_volume_daily"];
 const STATS_TABLES = ["curated.event_volume_hourly"];
 const SIGNAL_TABLES = ["curated.firehose_repo_signal_hourly"];
+const EVENT_MIX_TABLES = ["curated.firehose_event_type_action_hourly"];
 
 export interface EventVolumeRow {
   repo_name: string;
@@ -54,6 +55,14 @@ export interface FirehoseRepoSignalRow {
   branches_deleted: string;
   events: string;
   actors: string;
+}
+
+export interface FirehoseEventMixRow {
+  repo_name: string;
+  event_type: string;
+  action: string;
+  event_count: string;
+  actor_count: string;
 }
 
 const EMPTY_STATS: FirehoseStatsRow = {
@@ -196,6 +205,30 @@ export async function firehoseRepoSignal(
     LIMIT {limit: UInt32}
     `,
     SIGNAL_TABLES,
+    { hours, limit }
+  );
+  return { data: rows, sql, rowsRead: 0, elapsedMs };
+}
+
+export async function firehoseEventMix(
+  hours = 24,
+  limit = 100
+): Promise<QueryResult<FirehoseEventMixRow[]>> {
+  const { rows, sql, elapsedMs } = await safeQ<FirehoseEventMixRow>(
+    `
+    SELECT
+      repo_name,
+      event_type,
+      action,
+      toString(countMerge(events)) AS event_count,
+      toString(uniqMerge(actors)) AS actor_count
+    FROM curated.firehose_event_type_action_hourly
+    WHERE hour >= now() - INTERVAL {hours: UInt32} HOUR
+    GROUP BY repo_name, event_type, action
+    ORDER BY toUInt64(event_count) DESC, repo_name ASC, event_type ASC, action ASC
+    LIMIT {limit: UInt32}
+    `,
+    EVENT_MIX_TABLES,
     { hours, limit }
   );
   return { data: rows, sql, rowsRead: 0, elapsedMs };
