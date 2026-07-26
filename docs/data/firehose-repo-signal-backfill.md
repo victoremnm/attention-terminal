@@ -12,6 +12,8 @@ deployment and writer state.
    Before proceeding, verify the firehose timeline MV repair in issue #308 is
    deployed; migration 13 can otherwise leave the live MV targeting its
    temporary rebuild table and cause raw firehose inserts to fail.
+   If production retained the legacy nine-column timeline schema, the
+   follow-up event-ID repair migration must also be applied before replaying.
 3. Keep the writer paused and replay the retained raw events into the repaired
    timeline. This is a separate operational command, not a Goose migration:
 
