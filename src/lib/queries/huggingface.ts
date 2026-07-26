@@ -34,7 +34,7 @@ export interface HfTrendingModelRow {
   model_id: string;
   author: string;
   pipeline_tag: string;
-  created_at: string;
+  created_at_txt: string;
   scan_at: string;
 }
 
@@ -139,10 +139,10 @@ export async function hfTrendingModels(
        model_id,
        author,
        pipeline_tag,
-       toString(created_at) AS created_at,
+       toString(created_at) AS created_at_txt,
        toString(last_scan_at) AS scan_at
      FROM curated.hf_model_global_latest
-     WHERE created_at > toDateTime(now() - 86400 * 7)
+     WHERE created_at > now() - interval 7 day
      ORDER BY created_at DESC
      LIMIT {limit: UInt32}`,
     HF_MODEL_GLOBAL_TABLES,

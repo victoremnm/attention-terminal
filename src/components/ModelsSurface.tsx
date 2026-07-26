@@ -85,7 +85,7 @@ function ModelLeaderboardRow({
 
 function TrendingRow({ row, onSelect }: { row: HfTrendingModelRow; onSelect: (m: HfTopModelRow, el: HTMLButtonElement) => void }) {
   const partial: HfTopModelRow = { model_id: row.model_id, author: row.author, pipeline_tag: row.pipeline_tag, library_name: "", downloads: "", likes: "", is_gated: "0", is_private: "0" };
-  const age = Math.floor((Date.now() - new Date(row.created_at).getTime()) / 3600000);
+  const age = Math.floor((Date.now() - new Date(row.created_at_txt).getTime()) / 3600000);
   return (
     <button
       type="button"

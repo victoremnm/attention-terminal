@@ -27,8 +27,8 @@ const mockTopModels: HfTopModelRow[] = [
 ];
 
 const mockTrending: HfTrendingModelRow[] = [
-  { model_id: "new/hot-model", author: "new-org", pipeline_tag: "text-generation", created_at: "2026-07-26T10:00:00Z", scan_at: "2026-07-26T12:00:00Z" },
-  { model_id: "old/cooling-model", author: "old-org", pipeline_tag: "", created_at: "2026-07-25T08:00:00Z", scan_at: "2026-07-26T12:00:00Z" },
+  { model_id: "new/hot-model", author: "new-org", pipeline_tag: "text-generation", created_at_txt: "2026-07-26T10:00:00Z", scan_at: "2026-07-26T12:00:00Z" },
+  { model_id: "old/cooling-model", author: "old-org", pipeline_tag: "", created_at_txt: "2026-07-25T08:00:00Z", scan_at: "2026-07-26T12:00:00Z" },
 ];
 
 const mockAuthors: HfAuthorRow[] = [
@@ -133,7 +133,7 @@ describe("ModelsSurface component", () => {
     });
     expect(element.props.trendingModels).toHaveLength(2);
     expect(element.props.trendingModels[0].pipeline_tag).toBe("text-generation");
-    expect(element.props.trendingModels[0].created_at).toBeTruthy();
+    expect(element.props.trendingModels[0].created_at_txt).toBeTruthy();
   });
 
   it("accepts pipeline tags and library data", () => {
