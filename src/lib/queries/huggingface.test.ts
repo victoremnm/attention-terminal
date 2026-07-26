@@ -53,7 +53,6 @@ describe("hf_model_snapshots migration schema consistency", () => {
     "last_modified",
     "is_private",
     "is_gated",
-    "ingested_at",
     "scan_at",
   ];
 
@@ -72,7 +71,6 @@ describe("hf_model_snapshots migration schema consistency", () => {
         argMax(last_modified, ingested_at) AS last_modified,
         argMax(is_private, ingested_at) AS is_private,
         argMax(is_gated, ingested_at) AS is_gated,
-        max(ingested_at) AS ingested_at,
         max(scan_at) AS scan_at
     FROM raw.hf_model_snapshots
     GROUP BY scan_kind, model_id;
@@ -99,11 +97,9 @@ describe("hf_model_snapshots migration schema consistency", () => {
     }
   });
 
-  it("curated.hf_model_latest uses max only for immutable timestamps", () => {
-    const monotonicCols = ["ingested_at", "scan_at"];
-    for (const col of monotonicCols) {
-      expect(migrationDDL).toContain(`max(${col})`);
-    }
+  it("curated.hf_model_latest uses max only for monotonic scan_at", () => {
+    expect(migrationDDL).toContain("max(scan_at) AS scan_at");
+    expect(migrationDDL).not.toContain("max(ingested_at)");
   });
 
   it("raw view exists as passthrough", () => {
