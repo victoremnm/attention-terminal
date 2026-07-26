@@ -5,8 +5,6 @@ import { RenderedAnswer } from "./RenderedAnswer";
 import type { EventTimelineRow } from "@/lib/queries";
 import type { EventDrilldownPayload } from "@/lib/render-payload";
 
-const EVENT_DETAIL_TABLES = ["default.github_events_firehose"];
-
 function EventTypeBadge({ type }: { type: string }) {
   const colors: Record<string, string> = {
     PushEvent: "var(--green)",
@@ -59,18 +57,61 @@ function TimelineRow({
   );
 }
 
-export function EventTimeline({ rows }: { rows: EventTimelineRow[] }) {
+interface EventTimelineProps {
+  rows: EventTimelineRow[];
+  eventTypeFilter?: string[];
+  onFilterLoading?: (loading: boolean) => void;
+}
+
+export function EventTimeline({
+  rows: initialRows,
+  eventTypeFilter,
+  onFilterLoading,
+}: EventTimelineProps) {
   const [selected, setSelected] = useState<EventTimelineRow | undefined>();
   const [detail, setDetail] = useState<EventDrilldownPayload | undefined>();
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | undefined>();
+  const [filteredRows, setFilteredRows] = useState<EventTimelineRow[] | null>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
   const openerRef = useRef<HTMLButtonElement | null>(null);
   const requestRef = useRef(0);
   const abortRef = useRef<AbortController | undefined>(undefined);
 
   useEffect(() => () => abortRef.current?.abort(), []);
+
+  useEffect(() => {
+    if (!eventTypeFilter || eventTypeFilter.length === 0) {
+      setFilteredRows(null);
+      onFilterLoading?.(false);
+      return;
+    }
+    let cancelled = false;
+    const controller = new AbortController();
+    onFilterLoading?.(true);
+    const params = new URLSearchParams();
+    for (const et of eventTypeFilter) params.append("eventType", et);
+    params.set("window", "24h");
+    fetch(`/api/events?${params.toString()}`, { signal: controller.signal })
+      .then((res) => (res.ok ? res.json() : Promise.reject(new Error("filtered feed failed"))))
+      .then((body) => {
+        if (!cancelled) {
+          setFilteredRows(body.data ?? []);
+          onFilterLoading?.(false);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setFilteredRows([]);
+          onFilterLoading?.(false);
+        }
+      });
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [eventTypeFilter, onFilterLoading]);
 
   useEffect(() => {
     if (!open) return;
@@ -119,11 +160,17 @@ export function EventTimeline({ rows }: { rows: EventTimelineRow[] }) {
     openerRef.current?.focus();
   }
 
+  const rows = filteredRows ?? initialRows;
+
   return (
     <>
       <div className="events-timeline" role="list" aria-label="Event timeline">
         {rows.length === 0 && (
-          <p className="events-empty mono">No events ingested yet. The firehose task runs at :05 past every hour.</p>
+          <p className="events-empty mono">
+            {eventTypeFilter && eventTypeFilter.length > 0
+              ? "No events match the selected filter."
+              : "No events ingested yet. The firehose task runs at :05 past every hour."}
+          </p>
         )}
         {rows.map((row, i) => (
           <TimelineRow key={`${row.event_id}-${i}`} row={row} onSelect={openDrawer} />

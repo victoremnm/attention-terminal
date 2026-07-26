@@ -1,36 +1,38 @@
+"use client";
+
+import { useCallback, useState } from "react";
 import { SurfaceNav } from "@/components/SurfaceNav";
 import { EventTimeline } from "@/components/EventTimeline";
-import {
-  eventTimelineFeed,
-  eventVolumeFeed,
-  firehoseStats,
-  firehoseRepoSignal,
-  firehoseEventMix,
-  type EventVolumeRow,
-  type FirehoseStatsRow,
-  type FirehoseRepoSignalRow,
-  type FirehoseEventMixRow,
+import { EventTypeExplorer } from "@/components/EventTypeExplorer";
+import type {
+  EventTimelineRow,
+  EventVolumeRow,
+  FirehoseStatsRow,
+  FirehoseRepoSignalRow,
+  FirehoseEventMixRow,
+  EventTypeHourlyRow,
 } from "@/lib/queries";
 
+const TYPE_COLORS: Record<string, string> = {
+  PushEvent: "var(--green)",
+  WatchEvent: "var(--gold)",
+  ForkEvent: "var(--purple)",
+  PullRequestEvent: "var(--blue)",
+  IssuesEvent: "var(--red)",
+  CreateEvent: "var(--cyan)",
+  DeleteEvent: "var(--muted)",
+  ReleaseEvent: "var(--orange)",
+  IssueCommentEvent: "var(--muted)",
+  PullRequestReviewEvent: "var(--blue)",
+  PullRequestReviewCommentEvent: "var(--blue)",
+};
+
 function EventTypeBadge({ type }: { type: string }) {
-  const colors: Record<string, string> = {
-    PushEvent: "var(--green)",
-    WatchEvent: "var(--gold)",
-    ForkEvent: "var(--purple)",
-    PullRequestEvent: "var(--blue)",
-    IssuesEvent: "var(--red)",
-    CreateEvent: "var(--cyan)",
-    DeleteEvent: "var(--muted)",
-    ReleaseEvent: "var(--orange)",
-    IssueCommentEvent: "var(--muted)",
-    PullRequestReviewEvent: "var(--blue)",
-    PullRequestReviewCommentEvent: "var(--blue)",
-  };
   return (
     <span
       className="mono"
       style={{
-        color: colors[type] ?? "var(--muted)",
+        color: TYPE_COLORS[type] ?? "var(--muted)",
         fontSize: "10px",
         letterSpacing: ".08em",
       }}
@@ -102,21 +104,29 @@ function EventMixRow({ row }: { row: FirehoseEventMixRow }) {
   );
 }
 
-export async function EventsSurface() {
-  const [timeline, volume, statsResult, signalResult, eventMixResult] = await Promise.all([
-    eventTimelineFeed(50),
-    eventVolumeFeed(),
-    firehoseStats(),
-    firehoseRepoSignal(24, 20),
-    firehoseEventMix(24, 100),
-  ]);
+interface EventsSurfaceProps {
+  timeline: EventTimelineRow[];
+  volume: EventVolumeRow[];
+  stats: FirehoseStatsRow;
+  signalData: FirehoseRepoSignalRow[];
+  eventMixData: FirehoseEventMixRow[];
+  hourlyData: EventTypeHourlyRow[];
+}
 
-  const stats = statsResult.data[0] ?? {
-    total_events: "0",
-    total_repos: "0",
-    total_actors: "0",
-    latest_event: "",
-  };
+export function EventsSurface({
+  timeline,
+  volume,
+  stats,
+  signalData,
+  eventMixData,
+  hourlyData,
+}: EventsSurfaceProps) {
+  const [filterEventTypes, setFilterEventTypes] = useState<string[]>([]);
+  const [filterLoading, setFilterLoading] = useState(false);
+
+  const handleFilterChange = useCallback((types: string[]) => {
+    setFilterEventTypes(types);
+  }, []);
 
   return (
     <>
@@ -135,10 +145,10 @@ export async function EventsSurface() {
         <section className="events-section">
           <h2 className="events-section-title mono">REPO_SIGNALS_24H</h2>
           <div className="events-signal-grid">
-            {signalResult.data.length === 0 && (
+            {signalData.length === 0 && (
               <p className="events-empty mono">No signal data yet.</p>
             )}
-            {signalResult.data.map((row, i) => (
+            {signalData.map((row, i) => (
               <SignalCard key={row.repo_name} row={row} />
             ))}
           </div>
@@ -147,27 +157,48 @@ export async function EventsSurface() {
         <section className="events-section">
           <h2 className="events-section-title mono">ACTIVITY_MIX_24H</h2>
           <div className="events-mix">
-            {eventMixResult.data.length === 0 && (
+            {eventMixData.length === 0 && (
               <p className="events-empty mono">No event mix data yet.</p>
             )}
-            {eventMixResult.data.map((row) => (
+            {eventMixData.map((row) => (
               <EventMixRow key={`${row.repo_name}-${row.event_type}-${row.action}`} row={row} />
             ))}
           </div>
         </section>
 
         <section className="events-section">
-          <h2 className="events-section-title mono">TIMELINE</h2>
-          <EventTimeline rows={timeline.data} />
+          <h2 className="events-section-title mono">EVENT_TYPE_EXPLORER_24H</h2>
+          <EventTypeExplorer
+            hourlyData={hourlyData}
+            onFilterChange={handleFilterChange}
+            activeEventTypes={filterEventTypes}
+          />
+        </section>
+
+        <section className="events-section">
+          <h2 className="events-section-title mono">
+            TIMELINE
+            {filterEventTypes.length > 0 && (
+              <span className="mono events-filter-label">
+                filtered: {filterEventTypes.map((t) => t.replace("Event", "")).join(", ")}
+              </span>
+            )}
+            {filterLoading && <span className="mono events-filter-loading">loading…</span>}
+          </h2>
+          <EventTimeline
+            rows={timeline}
+            eventTypeFilter={filterEventTypes.length > 0 ? filterEventTypes : undefined}
+            onFilterLoading={setFilterLoading}
+          />
         </section>
 
         <section className="events-section">
           <h2 className="events-section-title mono">VOLUME_BY_REPO_24H</h2>
           <div className="events-volume">
-            {volume.data.length === 0 && (
+            {volume.length === 0 && (
               <p className="events-empty mono">No volume data yet.</p>
             )}
-            {volume.data.slice(0, 30).map((row, i) => (
+            {volume.slice(0, 30).map((row, i) => (
               <VolumeBar key={`${row.repo_name}-${row.event_type}-${i}`} row={row} />
             ))}
           </div>
