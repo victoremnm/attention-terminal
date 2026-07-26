@@ -1,9 +1,10 @@
-import { randomUUID } from "node:crypto";
-
 import { clickhouseInsert, ensureTablesExist } from "../src/lib/clickhouse";
 
 async function logTelemetryAndLearnings() {
-  const sessionId = process.env.ATTENTION_SESSION_ID ?? randomUUID();
+  const sessionId = process.env.ATTENTION_SESSION_ID;
+  if (!sessionId) {
+    throw new Error("ATTENTION_SESSION_ID is required for stable telemetry deduplication");
+  }
   const now = new Date().toISOString();
 
   // Ensure tables exist before inserting
