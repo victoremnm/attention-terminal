@@ -24,7 +24,7 @@ function Card({
 }: {
   card: TickerCard;
   state?: "loading" | "selected";
-  onOpenRepo: (repoName: string) => void;
+  onOpenRepo: (repoName: string, opener: HTMLButtonElement) => void;
 }) {
   const [copied, setCopied] = useState(false);
   const stats = card.stats?.filter((stat) => stat.value !== "0").slice(0, 6) ?? [];
@@ -72,7 +72,7 @@ function Card({
           className="tk-card-button"
           aria-label={`Open live ClickHouse details for ${card.repoName}`}
           title="Open this repo's details"
-          onClick={() => onOpenRepo(card.repoName!)}
+          onClick={(event) => onOpenRepo(card.repoName!, event.currentTarget)}
         >
           {inner}
           {actionLabel && <span className="tk-action mono">{actionLabel}</span>}
@@ -112,7 +112,7 @@ function Lane({
   cards: TickerCard[];
   selectedRepo?: string;
   loadingRepo?: string;
-  onOpenRepo: (repoName: string) => void;
+  onOpenRepo: (repoName: string, opener: HTMLButtonElement) => void;
 }) {
   const [copiedLane, setCopiedLane] = useState(false);
 
@@ -174,6 +174,7 @@ export function TickerRail({ initial, ingestToken }: { initial: TickerLanes; ing
   const [drilldownError, setDrilldownError] = useState<string | undefined>();
   const [copiedTickerMd, setCopiedTickerMd] = useState(false);
   const drilldownCloseRef = useRef<HTMLButtonElement>(null);
+  const drilldownOpenerRef = useRef<HTMLButtonElement | null>(null);
 
   async function handleCopyTickerMd() {
     try {
@@ -232,18 +233,19 @@ export function TickerRail({ initial, ingestToken }: { initial: TickerLanes; ing
     if (!drilldownOpen) return;
     drilldownCloseRef.current?.focus();
     function closeOnEscape(event: KeyboardEvent) {
-      if (event.key === "Escape") setDrilldownOpen(false);
+      if (event.key === "Escape") closeDrilldown();
     }
     window.addEventListener("keydown", closeOnEscape);
     return () => window.removeEventListener("keydown", closeOnEscape);
   }, [drilldownOpen]);
 
-  async function openRepo(repoName: string) {
+  async function openRepo(repoName: string, opener: HTMLButtonElement) {
     const requestId = drilldownRequest.current + 1;
     drilldownRequest.current = requestId;
     drilldownAbort.current?.abort();
     const controller = new AbortController();
     drilldownAbort.current = controller;
+    drilldownOpenerRef.current = opener;
     setDrilldownOpen(true);
     setSelectedRepo(repoName);
     setLoadingRepo(repoName);
@@ -265,6 +267,7 @@ export function TickerRail({ initial, ingestToken }: { initial: TickerLanes; ing
 
   function closeDrilldown() {
     setDrilldownOpen(false);
+    drilldownOpenerRef.current?.focus();
   }
 
   return (

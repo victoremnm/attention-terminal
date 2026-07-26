@@ -75,6 +75,7 @@ describe("TickerRail", () => {
     act(() => screen.getByRole("button", { name: "Close repository details" }).click());
     expect(screen.queryByRole("dialog", { name: "REPO DETAILS" })).not.toBeInTheDocument();
     expect(screen.getByText("NEW REPOS")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /open live clickhouse details for acme\/widget/i })).toHaveFocus();
   });
 
   it("supports Escape without clearing the loaded details state", async () => {
@@ -85,6 +86,6 @@ describe("TickerRail", () => {
 
     act(() => fireEvent.keyDown(window, { key: "Escape" }));
     expect(screen.queryByRole("dialog", { name: "REPO DETAILS" })).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /open live clickhouse details for acme\/widget/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /open live clickhouse details for acme\/widget/i })).toHaveFocus();
   });
 });

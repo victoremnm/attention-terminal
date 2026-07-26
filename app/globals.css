@@ -400,7 +400,7 @@ a { color: inherit; }
   top: 16px;
   right: 16px;
   bottom: 16px;
-  z-index: 997;
+  z-index: 1000;
   width: min(720px, calc(100vw - 32px));
   background: var(--panel);
   border: 1px solid var(--line);
