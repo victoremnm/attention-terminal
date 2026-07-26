@@ -61,7 +61,7 @@ export async function GET(request: Request): Promise<Response> {
       actorLogin: row.actor_login,
       actorAvatar: row.actor_avatar,
       createdAt: row.created_at,
-      structured: (structured as Record<string, unknown>) ?? null,
+      structured: (structured as unknown as Record<string, unknown>) ?? null,
       rawPayload,
       rawPayloadTruncated: truncated,
       query: {
