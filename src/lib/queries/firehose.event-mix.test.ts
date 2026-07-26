@@ -81,12 +81,14 @@ describe("firehose event/action mix", () => {
   });
 
   describe("event type hourly aggregation", () => {
-    it("aggregates across repos and actions using sum(countMerge)", async () => {
+    it("merges event states per hour and event type", async () => {
       qMock.mockResolvedValueOnce({ rows: [], provenance: { sql: "SELECT 1", elapsedMs: 0 } });
       await eventTypeHourlyAggregation(24);
       const [sql] = qMock.mock.calls.at(-1) ?? [];
-      expect(String(sql)).toContain("sum(countMerge(events))");
-      expect(String(sql)).toContain("sum(uniqMerge(actors))");
+      expect(String(sql)).toContain("countMerge(events)");
+      expect(String(sql)).toContain("uniqMerge(actors)");
+      expect(String(sql)).not.toContain("sum(countMerge(events))");
+      expect(String(sql)).not.toContain("sum(uniqMerge(actors))");
       expect(String(sql)).toContain("GROUP BY hour_bucket, event_type");
       expect(String(sql)).toContain("ORDER BY hour_bucket ASC");
       expect(String(sql)).toContain("INTERVAL {hours: UInt32} HOUR");
@@ -98,7 +100,8 @@ describe("firehose event/action mix", () => {
       const [sql] = qMock.mock.calls.at(-1) ?? [];
       expect(String(sql)).toContain("LIMIT {limit: UInt32}");
       expect(String(sql)).toContain("GROUP BY event_type");
-      expect(String(sql)).toContain("sum(countMerge(events))");
+      expect(String(sql)).toContain("countMerge(events)");
+      expect(String(sql)).not.toContain("sum(countMerge(events))");
     });
   });
 });

@@ -285,8 +285,8 @@ export async function eventTypeHourlyAggregation(
     SELECT
       toString(toStartOfHour(hour)) AS hour_bucket,
       event_type,
-      toString(sum(countMerge(events))) AS event_count,
-      toString(sum(uniqMerge(actors))) AS actor_count
+      toString(countMerge(events)) AS event_count,
+      toString(uniqMerge(actors)) AS actor_count
     FROM curated.firehose_event_type_action_hourly
     WHERE hour >= now() - INTERVAL {hours: UInt32} HOUR
     GROUP BY hour_bucket, event_type
@@ -306,8 +306,8 @@ export async function eventTypeTotals(
     `
     SELECT
       event_type,
-      toString(sum(countMerge(events))) AS event_count,
-      toString(sum(uniqMerge(actors))) AS actor_count
+      toString(countMerge(events)) AS event_count,
+      toString(uniqMerge(actors)) AS actor_count
     FROM curated.firehose_event_type_action_hourly
     WHERE hour >= now() - INTERVAL {hours: UInt32} HOUR
     GROUP BY event_type
