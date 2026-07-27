@@ -103,7 +103,7 @@ SMOKE_CREATED_AT="$(docker exec "$CONTAINER" clickhouse-client \
   --query "SELECT formatDateTime(now('UTC'), '%Y-%m-%d %H:%i:%S')")"
 docker exec -i "$CONTAINER" clickhouse-client \
   --user default --password "$PASSWORD" \
-  --query 'INSERT INTO default.github_events_firehose FORMAT JSONEachRow' <<JSON
+  --query 'INSERT INTO default.github_events_stream FORMAT JSONEachRow' <<JSON
 {"event_id":990000001,"event_type":"PushEvent","actor_login":"migration-smoke","actor_avatar":"https://avatars.example/migration-smoke","repo_name":"migration-smoke/timeline-repo","owner":"migration-smoke","created_at":"$SMOKE_CREATED_AT","action":"","ref_type":"branch","number":0,"title":null,"payload":"{\"ref\":\"refs/heads/main\",\"head\":\"abc123\",\"before\":\"def456\"}"}
 JSON
 

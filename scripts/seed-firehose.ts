@@ -4,7 +4,7 @@
  * Usage: npx tsx scripts/seed-firehose.ts
  *
  * Inserts 5 sample events matching the GH Archive schema into
- * default.github_events_firehose, then verifies the materialized
+ * default.github_events_stream, then verifies the materialized
  * views (curated.event_volume_hourly, curated.event_volume_daily,
  * curated.event_timeline) picked them up.
  */
@@ -87,12 +87,12 @@ async function seed() {
   console.log("Seeding firehose test data...");
 
   await clickhouseInsert.insert({
-    table: "default.github_events_firehose",
+    table: "default.github_events_stream",
     values: SEED_EVENTS,
     format: "JSONEachRow",
   });
 
-  console.log(`Inserted ${SEED_EVENTS.length} events into default.github_events_firehose`);
+  console.log(`Inserted ${SEED_EVENTS.length} events into default.github_events_stream`);
 
   // Verify MVs picked them up
   const [{ volume_count }] = await selectRows<{ volume_count: string }>(

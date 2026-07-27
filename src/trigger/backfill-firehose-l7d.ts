@@ -2,6 +2,12 @@ import { logger, metadata, task, tags } from "@trigger.dev/sdk";
 import { clickhouse, logIngest, selectRows } from "../lib/clickhouse";
 
 const MAX_FILES_PER_RUN = 24;
+const STREAM_TABLE = "default.github_events_stream";
+// A fully loaded GH Archive hour is ~185K rows; the real-time poller writes
+// at most a few hundred watchlist-repo rows per hour. Only treat an hour as
+// already-loaded when it clears this threshold — otherwise the backfill must
+// still fetch the file (the anti-join protects poller rows from dupes).
+const FULL_HOUR_MIN_ROWS = 50_000;
 
 function hourKey(d: Date): string {
   return `${d.toISOString().slice(0, 10)}-${d.getUTCHours()}`;
@@ -31,14 +37,17 @@ export const backfillFirehoseL7D = task({
       ).map((r) => r.chunk_key)
     );
 
-    // Also skip hours that already have data in the firehose table
-    // (from the migration backfill or previous ingest runs)
+    // Also skip hours that are already fully loaded in the stream table
+    // (from the migration backfill or previous ingest runs). Hours with only
+    // partial real-time-poller rows do NOT count — see FULL_HOUR_MIN_ROWS.
     const existing = new Set(
       (
         await selectRows<{ hour: string }>(
-          `SELECT DISTINCT toString(toStartOfHour(created_at)) AS hour
-           FROM default.github_events_firehose
-           WHERE created_at > now() - INTERVAL 7 DAY`
+          `SELECT toString(toStartOfHour(created_at)) AS hour, count() AS c
+           FROM ${STREAM_TABLE}
+           WHERE created_at > now() - INTERVAL 7 DAY
+           GROUP BY hour
+           HAVING c > ${FULL_HOUR_MIN_ROWS}`
         )
       ).map((r) => r.hour)
     );
@@ -64,10 +73,12 @@ export const backfillFirehoseL7D = task({
       }
 
       const url = `https://data.gharchive.org/${key}.json.gz`;
+      const hourStartUnix = Math.floor(hourStart.getTime() / 1000);
+      const hourEndUnix = hourStartUnix + 3600;
       try {
         await clickhouse.command({
           query: `
-            INSERT INTO default.github_events_firehose
+            INSERT INTO ${STREAM_TABLE}
               (event_id, event_type, actor_login, actor_avatar, repo_name, owner, created_at,
                action, ref_type, number, title, payload)
             SELECT
@@ -89,6 +100,10 @@ export const backfillFirehoseL7D = task({
               payload
             FROM url('${url}', 'JSONEachRow',
                      'id String, type String, actor Tuple(login String, avatar_url String), repo Tuple(name String), payload String, created_at DateTime')
+            WHERE toUInt64OrZero(id) NOT IN (
+              SELECT event_id FROM ${STREAM_TABLE}
+              WHERE created_at >= toDateTime(${hourStartUnix}) AND created_at < toDateTime(${hourEndUnix})
+            )
             SETTINGS input_format_json_read_objects_as_strings = 1,
                      input_format_json_ignore_unknown_keys_in_named_tuple = 1,
                      input_format_skip_unknown_fields = 1,
@@ -104,7 +119,7 @@ export const backfillFirehoseL7D = task({
       }
 
       const [{ rows }] = await selectRows<{ rows: string }>(
-        `SELECT count() AS rows FROM default.github_events_firehose WHERE toStartOfHour(created_at) = toDateTime('${hourKeyNorm}')`
+        `SELECT count() AS rows FROM ${STREAM_TABLE} WHERE toStartOfHour(created_at) = toDateTime('${hourKeyNorm}')`
       );
       await logIngest({ source: "firehose", chunk_key: key, rows_ingested: Number(rows) });
       loaded += 1;

@@ -69,7 +69,7 @@ const TIMELINE_SELECT = `
                          if(event_type = 'ReleaseEvent',
                             concat('published ', coalesce(title, '')),
                             event_type)))))))) AS payload_summary
-  FROM default.github_events_firehose
+  FROM default.github_events_stream
   WHERE created_at >= {cutoff: DateTime} - INTERVAL {windowHours: UInt32} HOUR
     AND created_at < {cutoff: DateTime}
 `;
@@ -119,7 +119,7 @@ async function main() {
           uniqExact(event_id) AS source_event_ids,
           minOrNull(created_at) AS source_min,
           maxOrNull(created_at) AS source_max
-        FROM default.github_events_firehose
+        FROM default.github_events_stream
         WHERE created_at >= {cutoff: DateTime} - INTERVAL {windowHours: UInt32} HOUR
           AND created_at < {cutoff: DateTime}
       `,

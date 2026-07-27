@@ -28,7 +28,7 @@ export interface EventFeedRow {
   payload_summary: string;
 }
 
-export const EVENT_FEED_RAW_TABLE = "default.github_events_firehose";
+export const EVENT_FEED_RAW_TABLE = "default.github_events_stream";
 export const EVENT_FEED_TIMELINE_TABLE = "curated.event_timeline";
 export const EVENT_FEED_MAX_LIMIT = 100;
 
