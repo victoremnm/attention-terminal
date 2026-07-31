@@ -3,7 +3,7 @@ import { clickhouseInsert, selectRows } from "../lib/clickhouse";
 import { classificationJoin, isBotFilter } from "../lib/actor-classification";
 
 // Actor classification dimension refresh (issue #200).
-// Picks distinct actors from raw.github_events (last 7d) that haven't been
+// Picks distinct actors from gh_actor_daily (last 7d) that haven't been
 // classified yet or whose classification is stale (>3 days), then fetches
 // their real account type from the GitHub API (User vs Bot vs Organization).
 // Actors whose login contains [bot] brackets are auto-classified as Bot
@@ -72,8 +72,8 @@ export const refreshActorClassification = schedules.task({
     const candidates = await selectRows<CandidateRow>(
       `WITH recent AS (
          SELECT DISTINCT actor_login
-         FROM raw.github_events
-         WHERE created_at > now() - INTERVAL 7 DAY
+         FROM gh_actor_daily
+         WHERE day > (SELECT max(day) FROM gh_actor_daily) - INTERVAL 7 DAY
            AND actor_login != ''
        ),
        stale AS (

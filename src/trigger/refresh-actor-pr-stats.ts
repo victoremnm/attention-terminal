@@ -115,7 +115,9 @@ interface StatsRow {
 
 // Candidates: actors devScatter()'s 30d window would keep after its own bot /
 // single-repo-mega-pusher filter (src/lib/queries.ts devScatterSql) - enriching
-// an actor devScatter() throws away would waste search-API budget.
+// an actor devScatter() throws away would waste search-API budget. Reads
+// gh_actor_daily (the same rollup devScatter() uses) instead of scanning 30d
+// of raw.github_events per run.
 async function pickActors(): Promise<string[]> {
   const [candidates, existingStats] = await Promise.all([
     selectRows<CandidateRow>(
@@ -124,11 +126,11 @@ async function pickActors(): Promise<string[]> {
          SELECT
            actor_login,
            lower(actor_login) LIKE '%[bot]%' AS is_bot,
-           countIf(event_type = 'PushEvent') AS pushes,
-           uniqExact(repo_name) AS repos,
-           countIf(event_type = 'PullRequestEvent' AND action = 'opened') AS prs
-          FROM raw.github_events
-          WHERE created_at > (SELECT max(created_at) FROM raw.github_events) - INTERVAL 30 DAY
+           sum(pushes) AS pushes,
+           uniqMerge(repos) AS repos,
+           sum(prs_opened) AS prs
+          FROM gh_actor_daily
+          WHERE day > (SELECT max(day) FROM gh_actor_daily) - INTERVAL 30 DAY
            AND actor_login != ''
          GROUP BY actor_login
        ) AS cr

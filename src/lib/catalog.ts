@@ -56,6 +56,8 @@ const RELEVANT_TABLES = new Set([
   "gh_repo_monthly",
   "gh_repo_metadata",
   "gh_repo_activity_feed",
+  "gh_repo_trend_hourly",
+  "gh_repo_trend_feed",
   "gh_actor_daily",
   "gh_actor_pr_stats",
   "ingest_log",
