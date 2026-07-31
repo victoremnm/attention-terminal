@@ -19,7 +19,12 @@
 --
 -- Required manual backfills (MVs only see post-creation inserts):
 -- github_events retains ~30 days, so each backfill is one bounded
--- INSERT ... SELECT, mirroring the gh_actor_daily recipe:
+-- INSERT ... SELECT, mirroring the gh_actor_daily recipe. Each backfill is
+-- bounded to rows older than the MV's creation instant, read from
+-- goose_db_version (written when this migration applied), so rows that the
+-- MV already captured after creation are not re-inserted and ticker metrics
+-- are not inflated. Run the backfills immediately after the CD migration
+-- applies, before catch-up backlogs accumulate.
 --
 --   INSERT INTO gh_repo_trend_hourly
 --   SELECT
@@ -41,6 +46,7 @@
 --   FROM github_events
 --   WHERE repo_name != ''
 --     AND event_type IN ('PushEvent', 'ForkEvent', 'WatchEvent', 'IssuesEvent', 'PullRequestEvent', 'CreateEvent')
+--     AND created_at < (SELECT tstamp FROM goose_db_version WHERE version_id = 20260730000001 AND is_applied = 1)
 --   GROUP BY hour, repo_name, event_type;
 --
 --   INSERT INTO gh_repo_trend_feed
@@ -55,7 +61,8 @@
 --       pr_merged
 --   FROM github_events
 --   WHERE repo_name != ''
---     AND event_type IN ('PushEvent', 'PullRequestEvent');
+--     AND event_type IN ('PushEvent', 'PullRequestEvent')
+--     AND created_at < (SELECT tstamp FROM goose_db_version WHERE version_id = 20260730000001 AND is_applied = 1);
 
 CREATE TABLE IF NOT EXISTS gh_repo_trend_hourly
 (
