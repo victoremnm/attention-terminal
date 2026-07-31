@@ -5,25 +5,31 @@ import type { TickerLanes } from "./types";
 async function assembleTickerLanes(): Promise<TickerLanes> {
   const [repos, forks, shipping, stars] = await Promise.all([
     q<{ name: string; at: string; spark: number[] }>(
-      `WITH (SELECT coalesce(max(hour), toStartOfHour(now())) FROM gh_repo_hourly) AS high_water
-       SELECT repo_name AS name, max(h) AS at,
-              groupArray(6)(cnt) AS spark
-       FROM (
-         SELECT repo_name, toStartOfHour(created_at) AS h, count() AS cnt
-         FROM raw.github_events
-         WHERE event_type = 'CreateEvent'
-           AND ref_type = 'repository'
-           AND created_at > high_water - INTERVAL 6 HOUR
-         GROUP BY repo_name, h ORDER BY repo_name, h
-       ) GROUP BY repo_name ORDER BY at DESC LIMIT 20`,
-      ["raw.github_events", "gh_repo_hourly"]
+      `WITH (SELECT coalesce(max(hour), toStartOfHour(now())) FROM gh_repo_trend_hourly) AS high_water,
+       recent AS (
+         SELECT repo_name, max(h) AS at, groupArray(6)(cnt) AS spark
+         FROM (
+           SELECT repo_name, toStartOfHour(hour) AS h, sum(repos_created) AS cnt
+           FROM gh_repo_trend_hourly
+           WHERE event_type = 'CreateEvent'
+             AND hour > high_water - INTERVAL 6 HOUR
+           GROUP BY repo_name, h
+           HAVING cnt > 0
+           ORDER BY repo_name, h
+         )
+         GROUP BY repo_name
+       )
+       SELECT repo_name AS name, toString(at) AS at, spark
+       FROM recent
+       ORDER BY at DESC
+       LIMIT 20`,
+      ["gh_repo_trend_hourly"]
     ),
     q<{ name: string; forks: string; stars: string; pushes: string; prs: string; issues: string; spark: number[] }>(
-      `WITH
-         (SELECT coalesce(max(hour), toStartOfHour(now())) FROM gh_repo_hourly) AS max_h,
+      `WITH (SELECT coalesce(max(hour), toStartOfHour(now())) FROM gh_repo_trend_hourly) AS max_h,
          per_repo_event AS (
            SELECT repo_name, event_type, countMerge(events) AS event_count
-           FROM gh_repo_hourly
+           FROM gh_repo_trend_hourly
            WHERE hour > max_h - INTERVAL 24 HOUR
              AND event_type IN ('ForkEvent', 'WatchEvent', 'PushEvent', 'PullRequestEvent', 'IssuesEvent')
            GROUP BY repo_name, event_type
@@ -42,10 +48,10 @@ async function assembleTickerLanes(): Promise<TickerLanes> {
          fork_spark AS (
             SELECT repo_name, reverse(groupArray(8)(cnt)) AS spark
             FROM (
-              SELECT repo_name, hour, countMerge(events) AS cnt
-              FROM gh_repo_hourly
-              WHERE hour > max_h - INTERVAL 24 HOUR
-                AND event_type = 'ForkEvent'
+             SELECT repo_name, hour, countMerge(events) AS cnt
+               FROM gh_repo_trend_hourly
+               WHERE hour > max_h - INTERVAL 24 HOUR
+                 AND event_type = 'ForkEvent'
               GROUP BY repo_name, hour
               ORDER BY repo_name, hour DESC
             ) GROUP BY repo_name
@@ -62,7 +68,7 @@ async function assembleTickerLanes(): Promise<TickerLanes> {
        ORDER BY p.pr_count * 5 + p.issue_count * 3 + p.push_count * 2 + least(p.fork_count, 20) DESC,
                 p.fork_count DESC
        LIMIT 20`,
-      ["gh_repo_hourly"]
+      ["gh_repo_trend_hourly"]
     ),
     q<{
       name: string;
@@ -76,8 +82,7 @@ async function assembleTickerLanes(): Promise<TickerLanes> {
       events: string;
       spark: number[];
     }>(
-      `WITH
-         (SELECT coalesce(max(created_at), now()) FROM gh_repo_activity_feed) AS max_time
+      `WITH (SELECT coalesce(max(created_at), now()) FROM gh_repo_trend_feed) AS max_time
        SELECT repo_name AS name,
               sum(commits) AS commit_total,
               countIf(event_type = 'PushEvent') AS push_count,
@@ -91,56 +96,56 @@ async function assembleTickerLanes(): Promise<TickerLanes> {
                 + countIf(event_type = 'PullRequestEvent' AND action = 'closed')
                 + countIf(event_type = 'IssuesEvent' AND action = 'opened') AS events,
               [] AS spark
-       FROM gh_repo_activity_feed
+       FROM gh_repo_trend_feed
         LEFT JOIN (
     SELECT actor_login, argMax(actor_type, fetched_at) AS actor_type
     FROM gh_actor_classification
     GROUP BY actor_login
-  ) cls ON cls.actor_login = gh_repo_activity_feed.actor_login
+  ) cls ON cls.actor_login = gh_repo_trend_feed.actor_login
         WHERE created_at > max_time - INTERVAL 24 HOUR
           AND event_type IN ('PushEvent', 'PullRequestEvent', 'IssuesEvent', 'ForkEvent')
-          AND coalesce(cls.actor_type, '') != 'Bot' AND (cls.actor_type != '' OR lower(gh_repo_activity_feed.actor_login) NOT LIKE '%[bot]%')
+          AND coalesce(cls.actor_type, '') != 'Bot' AND (cls.actor_type != '' OR lower(gh_repo_trend_feed.actor_login) NOT LIKE '%[bot]%')
        GROUP BY repo_name
        HAVING commit_total > 0 OR pr_count > 0 OR closed_pr_count > 0
        ORDER BY commit_total * 4 + closed_pr_count * 5 + pr_count * 3
                 + least(push_count, commit_total) * 2 + actor_count * 2 DESC,
                 commit_total DESC
        LIMIT 20`,
-      ["gh_repo_activity_feed"]
+      ["gh_repo_trend_feed", "gh_actor_classification"]
     ),
     q<{ name: string; stars: string; surge: number; spark: number[] }>(
-      `WITH (SELECT coalesce(max(hour), toStartOfHour(now())) FROM gh_repo_hourly) AS max_h,
+      `WITH (SELECT coalesce(max(hour), toStartOfHour(now())) FROM gh_repo_trend_hourly) AS max_h,
        recent AS (
-          SELECT repo_name, sum(cnt) AS star_total,
-                 reverse(groupArray(8)(cnt)) AS spark
-          FROM (
-            SELECT repo_name, toStartOfHour(hour) AS h, countMerge(events) AS cnt
-            FROM gh_repo_hourly
-            WHERE event_type = 'WatchEvent'
-              AND hour > max_h - INTERVAL 24 HOUR
-            GROUP BY repo_name, h ORDER BY repo_name, h DESC
-          ) GROUP BY repo_name
+         SELECT repo_name, sum(cnt) AS star_total,
+                reverse(groupArray(8)(cnt)) AS spark
+         FROM (
+           SELECT repo_name, toStartOfHour(hour) AS h, countMerge(events) AS cnt
+           FROM gh_repo_trend_hourly
+           WHERE event_type = 'WatchEvent'
+             AND hour > max_h - INTERVAL 24 HOUR
+           GROUP BY repo_name, h ORDER BY repo_name, h DESC
+         ) GROUP BY repo_name
        ),
        base AS (
          SELECT repo_name, sum(cnt) / 29 AS daily_avg
          FROM (
            SELECT repo_name, toDate(hour) AS day, countMerge(events) AS cnt
-           FROM gh_repo_hourly
+           FROM gh_repo_trend_hourly
            WHERE event_type = 'WatchEvent'
              AND hour > max_h - INTERVAL 30 DAY
              AND hour <= max_h - INTERVAL 24 HOUR
-           GROUP BY repo_name, day
-         )
-         GROUP BY repo_name
-       )
-       SELECT r.repo_name AS name,
-              toString(r.star_total) AS stars,
-              round(r.star_total / greatest(any(b.daily_avg), 0.5), 1) AS surge,
-              r.spark AS spark
-       FROM recent r LEFT ANY JOIN base b ON r.repo_name = b.repo_name
-       GROUP BY r.repo_name, r.star_total, r.spark
-       ORDER BY r.star_total DESC LIMIT 20`,
-      ["gh_repo_hourly"]
+          GROUP BY repo_name, day
+        )
+        GROUP BY repo_name
+      )
+      SELECT r.repo_name AS name,
+             toString(r.star_total) AS stars,
+             round(r.star_total / greatest(any(b.daily_avg), 0.5), 1) AS surge,
+             r.spark AS spark
+      FROM recent r LEFT ANY JOIN base b ON r.repo_name = b.repo_name
+      GROUP BY r.repo_name, r.star_total, r.spark
+      ORDER BY r.star_total DESC LIMIT 20`,
+      ["gh_repo_trend_hourly"]
     ),
   ]);
 
@@ -148,7 +153,7 @@ async function assembleTickerLanes(): Promise<TickerLanes> {
     newRepos: repos.rows.map((r) => ({
       kicker: "NEW REPO",
       name: r.name,
-      metric: "born " + (r.at ? r.at.slice(11, 16) : "--:--") + " UTC",
+      metric: "born " + (r.at ? r.at.slice(11, 16) + " UTC" : "--:--"),
       spark: r.spark,
       href: `https://github.com/${r.name}`,
       repoName: r.name,

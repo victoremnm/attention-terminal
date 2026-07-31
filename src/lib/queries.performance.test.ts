@@ -47,12 +47,27 @@ describe("query layer performance & structural optimization tests", () => {
     });
   });
 
-  it("tickerLanes uses cheap gh_repo_hourly watermark and avoids raw.github_events subqueries", async () => {
+  it("tickerLanes reads time-first trend tables anchored to their latest ingested bucket", async () => {
     await tickerLanes();
     const calls = mocks.query.mock.calls.map((c) => String(c[0].query));
+    expect(calls.some((sql) => sql.includes("gh_repo_trend_hourly"))).toBe(true);
+    expect(calls.some((sql) => sql.includes("gh_repo_trend_feed"))).toBe(true);
+    expect(
+      calls.some((sql) =>
+        sql.includes("SELECT coalesce(max(hour), toStartOfHour(now())) FROM gh_repo_trend_hourly")
+      )
+    ).toBe(true);
+    expect(
+      calls.some((sql) =>
+        sql.includes("SELECT coalesce(max(created_at), now()) FROM gh_repo_trend_feed")
+      )
+    ).toBe(true);
+    expect(calls.some((sql) => sql.includes("GROUP BY repo_name, h"))).toBe(true);
     for (const sql of calls) {
-      expect(sql).not.toContain("SELECT max(created_at) FROM raw.github_events");
-      expect(sql).not.toContain("SELECT max(created_at) FROM gh_repo_activity_feed");
+      expect(sql).not.toContain("FROM raw.github_events");
+      expect(sql).not.toContain("FROM gh_repo_activity_feed");
+      expect(sql).not.toContain("FROM gh_repo_hourly");
+      expect(sql).not.toContain("toStartOfHour(now()) - INTERVAL");
     }
   });
 
